@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "SoulMate GenZ",
+    "slug": "soulmate-genz",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#131314"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.soulmate.genz"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#131314"
+      },
+      "package": "com.soulmate.genz"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Cho phép SoulMate truy cập thư viện ảnh để phân tích ảnh meme và tâm sự cùng bạn."
+        }
+      ],
+      "expo-asset"
+    ]
+  }
+}
