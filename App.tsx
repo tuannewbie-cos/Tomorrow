@@ -127,6 +127,7 @@ export default function App() {
           sender: 'ai',
           text: replyText,
           timestamp: Date.now(),
+          memeId: i === replies.length - 1 ? aiResponse.memeId : undefined,
         };
 
         currentHistory = [...currentHistory, aiMsg];

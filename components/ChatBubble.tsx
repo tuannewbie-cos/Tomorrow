@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image, Pressable } from 'react-native';
 import { ChatMessage } from '../types/chat';
+import { getMemeById } from '../constants/memes';
 
 interface ChatBubbleProps {
   message: ChatMessage;
@@ -10,6 +11,7 @@ interface ChatBubbleProps {
 
 export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onPressImage }) => {
   const isAI = message.sender === 'ai';
+  const meme = message.memeId ? getMemeById(message.memeId) : undefined;
 
   const formatTime = (ts: number) => {
     const d = new Date(ts);
@@ -20,11 +22,11 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onPressImage })
     <View style={[styles.container, isAI ? styles.containerAI : styles.containerUser]}>
       {/* Khung bong bóng chat chuẩn phong cách Messenger */}
       <View style={[styles.bubble, isAI ? styles.bubbleAI : styles.bubbleUser]}>
-        {/* Ảnh do người dùng đính kèm (nếu có) */}
-        {message.imageUri && (
-          <Pressable onPress={() => onPressImage && onPressImage(message.imageUri!)}>
+        {/* Ảnh đính kèm (User tải lên hoặc Meme ngữ cảnh từ Tomorrow) */}
+        {(message.imageUri || (isAI && meme)) && (
+          <Pressable onPress={() => onPressImage && onPressImage(message.imageUri || meme?.url || '')}>
             <Image
-              source={{ uri: message.imageUri }}
+              source={{ uri: message.imageUri || meme?.url }}
               style={styles.messageImage}
               resizeMode="cover"
             />
@@ -32,9 +34,11 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onPressImage })
         )}
 
         {/* Nội dung tin nhắn text */}
-        <Text style={[styles.messageText, isAI ? styles.textAI : styles.textUser]}>
-          {message.text}
-        </Text>
+        {message.text ? (
+          <Text style={[styles.messageText, isAI ? styles.textAI : styles.textUser]}>
+            {message.text}
+          </Text>
+        ) : null}
 
         {/* Dấu thời gian tinh tế */}
         <Text style={[styles.timestamp, isAI ? styles.timestampAI : styles.timestampUser]}>
