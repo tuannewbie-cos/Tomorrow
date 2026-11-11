@@ -8,12 +8,12 @@ const GEMINI_KEYS: string[] = [
   process.env.EXPO_PUBLIC_GEMINI_KEY_BACKUP_2 || '',
 ].filter((k) => k.length > 5);
 
-// Danh sách các model siêu tốc và mới nhất
+// Danh sách các model siêu tốc và mới nhất (Gemini 3.x chính thức của Google)
 const ACTIVE_GEMINI_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash',
+  'gemini-3.6-flash',
+  'gemini-flash-latest',
 ];
 
 const GROQ_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY || '';
@@ -120,7 +120,7 @@ async function callGemini(
   userMessage: string,
   imageBase64?: string
 ): Promise<string> {
-  const parts: any[] = [{ text: `${prompt}\n\nTin nhắn người dùng: "${userMessage}"` }];
+  const parts: any[] = [{ text: userMessage }];
 
   if (imageBase64) {
     const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
@@ -144,6 +144,9 @@ async function callGemini(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          systemInstruction: {
+            parts: [{ text: prompt }],
+          },
           contents: [{ parts }],
           generationConfig: {
             temperature: 0.7,
@@ -287,7 +290,52 @@ function localResilientFallback(userMessage: string, hasImage?: boolean): AIResp
     };
   }
 
-  // 2. Học tập, OOP, bài tập, code, deadline
+  // 2. Hỏi tên / Danh tính
+  if (lower.includes('tên gì') || lower.includes('tên là gì') || lower.includes('bạn là ai') || lower.includes('mày là ai') || lower.includes('ai đấy')) {
+    return {
+      replies: ['t là Tomorrow nè :3', 'bạn thân tâm sự của m'],
+      reply: 't là Tomorrow nè :3',
+      memoryNote: '',
+    };
+  }
+
+  // 3. Hỏi giờ / Thời gian
+  if (lower.includes('mấy giờ') || lower.includes('mấy h') || lower.includes('mấy gio') || lower.includes('giờ rồi') || lower.includes('bây giờ là')) {
+    const now = new Date();
+    const timeStr = `${now.getHours()}h${now.getMinutes().toString().padStart(2, '0')}`;
+    return {
+      replies: [`bây giờ là ${timeStr} rồi đấy bố trẻ`, 'định đi đâu hay hẹn ai à'],
+      reply: `bây giờ là ${timeStr} rồi đấy bố trẻ`,
+      memoryNote: '',
+    };
+  }
+
+  // 4. Kể chuyện cười / Tấu hài
+  if (lower.includes('chuyện cười') || lower.includes('kể chuyện') || lower.includes('tấu hài') || lower.includes('hài hước')) {
+    const jokes = [
+      ['hôm nay t đi phỏng vấn người ta hỏi: điểm mạnh của em là gì?', 't bảo: em không biết từ bỏ, thế là bị đuổi ra cửa vì cứ đứng lì ở đó =)))'],
+      ['có một con muỗi bay vào lớp học OOP...', 'thấy con trỏ nó sợ quá lăn ra chết vì null pointer :)))'],
+      ['người ta bảo có tiền chưa chắc đã hạnh phúc...', 'nhưng không có tiền thì chắc chắn cạp đất mà ăn chứ hạnh phúc gì tầm này =)))'],
+    ];
+    const picked = jokes[Math.floor(Math.random() * jokes.length)];
+    return {
+      replies: picked,
+      reply: picked.join(' '),
+      memoryNote: 'Thích nghe kể chuyện cười',
+      memeId: 'side_eye_dog',
+    };
+  }
+
+  // 5. Nguồn gốc / Ai tạo ra
+  if (lower.includes('ai tạo') || lower.includes('ai làm') || lower.includes('sinh ra')) {
+    return {
+      replies: ['do team hackathon tạo ra để bầu bạn vs m nè :3', 'có gì tâm sự tui nghe đi'],
+      reply: 'do team hackathon tạo ra để bầu bạn vs m nè :3',
+      memoryNote: '',
+    };
+  }
+
+  // 6. Học tập, OOP, bài tập, code, deadline
   if (lower.includes('oop') || lower.includes('đề') || lower.includes('leak')) {
     return {
       replies: ['vãi chưa ngủ luôn à', 'xong hết chưa hay vẫn đang fix bug đấy :3'],
@@ -303,7 +351,7 @@ function localResilientFallback(userMessage: string, hasImage?: boolean): AIResp
     };
   }
 
-  // 3. Trạng thái sinh hoạt / ngủ nghỉ ("t ngủ tí", "5p", "mi xao")
+  // 7. Trạng thái sinh hoạt / ngủ nghỉ ("t ngủ tí", "5p", "mi xao")
   if (lower === 't ngủ tí' || lower.includes('ngủ') || lower.includes('đi ngủ')) {
     return {
       replies: ['ok ngủ đi', 'bao h dậy nhắn t'],
@@ -319,7 +367,7 @@ function localResilientFallback(userMessage: string, hasImage?: boolean): AIResp
     };
   }
 
-  // 4. Game, rank, kéo rank, plat, bri
+  // 8. Game, rank, kéo rank, plat, bri
   if (lower.includes('plat') || lower.includes('rank') || lower.includes('chơi') || lower.includes('game') || lower.includes('bri')) {
     return {
       replies: ['ok bri', 'tsau kéo lên plat'],
@@ -328,7 +376,7 @@ function localResilientFallback(userMessage: string, hasImage?: boolean): AIResp
     };
   }
 
-  // 5. Buồn, cô đơn, áp lực thật sự
+  // 9. Buồn, cô đơn, áp lực thật sự
   if (lower.includes('chán') || lower.includes('buồn') || lower.includes('thất bại') || lower.includes('mệt') || lower.includes('cô đơn')) {
     return {
       replies: ['ơi t nghe đây', 'nay lại có chuyện gì trên trường hay ở nhà thế'],
@@ -337,18 +385,9 @@ function localResilientFallback(userMessage: string, hasImage?: boolean): AIResp
     };
   }
 
-  // 6. Tin nhắn ngắn <= 3 từ: Mirror ngắn gọn
-  if (text.split(/\s+/).length <= 3) {
-    return {
-      replies: ['sao đấy', 'nghe nè'],
-      reply: 'sao đấy',
-      memoryNote: '',
-    };
-  }
-
-  // Mặc định: Bình tĩnh lắng nghe
+  // 10. Mặc định: Phản hồi tự nhiên thân mật
   return {
-    replies: ['ơi nghe nè', 'kể nghe xem nào'],
+    replies: ['ơi nghe nè', 'sao tự nhiên hỏi thế :3'],
     reply: 'ơi nghe nè',
     memoryNote: '',
   };
