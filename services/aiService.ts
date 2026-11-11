@@ -19,7 +19,7 @@ const ACTIVE_GEMINI_MODELS = [
 const GROQ_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY || '';
 const OPENAI_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
 
-const TIMEOUT_MS = 10000; // 10 giây timeout phản xạ nhanh
+const TIMEOUT_MS = 25000; // 25 giây timeout thoải mái cho mobile tránh lỗi request canceled
 
 export interface AIResponsePayload {
   replies: string[];
@@ -140,22 +140,36 @@ async function callGemini(
     const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
     try {
-      const res = await fetch(url, {
+      const makeBody = (disableThinking: boolean) => ({
+        systemInstruction: {
+          parts: [{ text: prompt }],
+        },
+        contents: [{ parts }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 1000,
+          responseMimeType: 'application/json',
+          ...(disableThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+        },
+      });
+
+      // 1. Thử gọi với thinkingBudget: 0 để phản hồi siêu tốc và tránh lỗi 503
+      let res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          systemInstruction: {
-            parts: [{ text: prompt }],
-          },
-          contents: [{ parts }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 300,
-            responseMimeType: 'application/json',
-          },
-        }),
+        body: JSON.stringify(makeBody(true)),
         signal: controller.signal,
       });
+
+      // Nếu model báo 400 do không hỗ trợ thinkingConfig, gọi lại bình thường
+      if (res.status === 400) {
+        res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(makeBody(false)),
+          signal: controller.signal,
+        });
+      }
 
       if (res.ok) {
         const data = await res.json();
@@ -223,7 +237,7 @@ async function callOpenAICompatible(
 }
 
 /**
- * Phân tích JSON chuẩn hóa: chỉ giữ "replies" và "memory_note"
+ * Phân tích JSON chuẩn hóa: chỉ giữ "replies" và "memory_note", có khả năng tự sửa lỗi cắt cụt
  */
 function parseAIResponseJson(raw: string): AIResponsePayload | null {
   try {
@@ -233,32 +247,65 @@ function parseAIResponseJson(raw: string): AIResponsePayload | null {
       .replace(/\s*```$/i, '')
       .trim();
 
-    const parsed = JSON.parse(cleaned);
-
-    let replies: string[] = [];
-    if (Array.isArray(parsed.replies)) {
-      replies = parsed.replies
-        .filter((r: unknown) => typeof r === 'string' && (r as string).trim().length > 0)
-        .map((r: string) => r.trim());
-    } else if (typeof parsed.reply === 'string' && parsed.reply.trim().length > 0) {
-      replies = [parsed.reply.trim()];
-    } else if (typeof parsed.reply_text === 'string' && parsed.reply_text.trim().length > 0) {
-      replies = [parsed.reply_text.trim()];
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      // Tự động vá nếu chuỗi JSON bị ngắt cụt đuôi (Unexpected end of input)
+      try {
+        let repaired = cleaned;
+        if (!repaired.endsWith('}')) {
+          if (repaired.endsWith('"')) {
+            repaired += ']}';
+          } else if (repaired.endsWith(',')) {
+            repaired = repaired.slice(0, -1) + ']}';
+          } else {
+            repaired += '"]}';
+          }
+        }
+        parsed = JSON.parse(repaired);
+      } catch {
+        // Fallback trích xuất mảng text bằng biểu thức chính quy
+        const matches = [...cleaned.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)].map((m) => m[1]);
+        const validTexts = matches.filter(
+          (m) => m.length > 1 && !m.includes('replies') && !m.includes('memory_note')
+        );
+        if (validTexts.length > 0) {
+          return {
+            replies: validTexts.slice(0, 3),
+            reply: validTexts[0],
+            memoryNote: '',
+          };
+        }
+      }
     }
 
-    if (replies.length > 0) {
-      const memoryNote = (parsed.memory_note || parsed.updated_user_memory || '').trim();
-      return {
-        replies,
-        reply: replies[0],
-        memoryNote,
-        memoryUpdate: memoryNote
-          ? {
-              currentProblem: memoryNote,
-              summary: memoryNote,
-            }
-          : undefined,
-      };
+    if (parsed) {
+      let replies: string[] = [];
+      if (Array.isArray(parsed.replies)) {
+        replies = parsed.replies
+          .filter((r: unknown) => typeof r === 'string' && (r as string).trim().length > 0)
+          .map((r: string) => r.trim());
+      } else if (typeof parsed.reply === 'string' && parsed.reply.trim().length > 0) {
+        replies = [parsed.reply.trim()];
+      } else if (typeof parsed.reply_text === 'string' && parsed.reply_text.trim().length > 0) {
+        replies = [parsed.reply_text.trim()];
+      }
+
+      if (replies.length > 0) {
+        const memoryNote = (parsed.memory_note || parsed.updated_user_memory || '').trim();
+        return {
+          replies,
+          reply: replies[0],
+          memoryNote,
+          memoryUpdate: memoryNote
+            ? {
+                currentProblem: memoryNote,
+                summary: memoryNote,
+              }
+            : undefined,
+        };
+      }
     }
   } catch (e) {
     console.warn('[AI] JSON parse warning, falling back:', e);
