@@ -23,7 +23,7 @@ import {
   DEFAULT_USER_MEMORY,
 } from './storage/chatStorage';
 import {
-  sendMessageToSoulMate,
+  sendMessageToTomorrow,
   getColdGreetingText,
 } from './services/aiService';
 import { ChatBubble } from './components/ChatBubble';
@@ -82,6 +82,8 @@ export default function App() {
     }
   }, [messages.length, isLoading]);
 
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
   // Xử lý gửi tin nhắn mới
   const handleSendMessage = async (text: string, imageBase64?: string, imageUri?: string) => {
     const userMsg: ChatMessage = {
@@ -102,29 +104,45 @@ export default function App() {
     await saveChatHistory(updatedMessages);
 
     try {
-      // 3. Gửi sang AI Service (Kèm bộ nhớ dài hạn & 10 tin nhắn gần nhất)
-      const aiResponse = await sendMessageToSoulMate(
+      // 3. Gửi sang AI Service (Kèm bộ nhớ dài hạn & lịch sử gần nhất)
+      const aiResponse = await sendMessageToTomorrow(
         text,
         userMemory,
         updatedMessages,
         imageBase64
       );
 
-      const aiMsg: ChatMessage = {
-        id: `ai-${Date.now()}`,
-        sender: 'ai',
-        text: aiResponse.reply,
-        timestamp: Date.now(),
-        emotion: aiResponse.emotion,
-        memeId: aiResponse.memeId,
-        suggestedReplies: aiResponse.suggestedReplies,
-      };
+      const replies =
+        aiResponse.replies && aiResponse.replies.length > 0
+          ? aiResponse.replies
+          : [aiResponse.reply || 'ơi'];
 
-      const finalMessages = [...updatedMessages, aiMsg];
-      setMessages(finalMessages);
-      await saveChatHistory(finalMessages);
+      let currentHistory = [...updatedMessages];
 
-      // Cập nhật User Memory Profile nếu AI nhận diện sự thay đổi
+      // Hiệu ứng tách tin nhắn (Multi-Bubble) tuần tự như người thật gõ phím
+      for (let i = 0; i < replies.length; i++) {
+        const replyText = replies[i];
+        const aiMsg: ChatMessage = {
+          id: `ai-${Date.now()}-${i}`,
+          sender: 'ai',
+          text: replyText,
+          timestamp: Date.now(),
+        };
+
+        currentHistory = [...currentHistory, aiMsg];
+        setMessages(currentHistory);
+        await saveChatHistory(currentHistory);
+
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 50);
+
+        if (i < replies.length - 1) {
+          await sleep(380); // Độ trễ tự nhiên giữa các bong bóng tin nhắn (300ms - 500ms)
+        }
+      }
+
+      // Cập nhật ngầm User Memory Profile nếu có ghi chú mới
       if (aiResponse.memoryUpdate) {
         const newMemory = {
           ...userMemory,
@@ -179,10 +197,10 @@ export default function App() {
     return (
       <View style={styles.splashContainer}>
         <StatusBar style="light" />
-        <Sparkles size={36} color="#A78BFA" />
-        <Text style={styles.splashTitle}>SoulMate GenZ</Text>
-        <Text style={styles.splashSubtitle}>Khôi phục bộ nhớ tâm lý...</Text>
-        <ActivityIndicator size="small" color="#8B5CF6" style={{ marginTop: 20 }} />
+        <Sparkles size={36} color="#0084FF" />
+        <Text style={styles.splashTitle}>Tomorrow</Text>
+        <Text style={styles.splashSubtitle}>Đang kết nối...</Text>
+        <ActivityIndicator size="small" color="#0084FF" style={{ marginTop: 20 }} />
       </View>
     );
   }
@@ -195,7 +213,7 @@ export default function App() {
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <StatusBar style="light" />
 
-        {/* 1. Header Bar chuẩn phong cách Gemini Mobile */}
+        {/* 1. Header Bar chuẩn Messenger */}
         <View style={styles.header}>
           <Pressable
             style={({ pressed }) => [styles.headerBtn, pressed && styles.btnPressed]}
@@ -206,15 +224,12 @@ export default function App() {
 
           <View style={styles.headerCenter}>
             <View style={styles.titleRow}>
-              <Text style={styles.headerTitle}>SoulMate GenZ</Text>
+              <Text style={styles.headerTitle}>Tomorrow</Text>
               <View style={styles.liveBadge}>
                 <Dot size={18} color="#10B981" />
-                <Text style={styles.liveText}>AI Live</Text>
+                <Text style={styles.liveText}>Online</Text>
               </View>
             </View>
-            <Text style={styles.headerSubtitle} numberOfLines={1}>
-              {userMemory.currentProblem ? `Đang nhớ: ${userMemory.currentProblem}` : 'AI Bạn Tri Kỷ Chữa Lành'}
-            </Text>
           </View>
 
           <Pressable
@@ -246,7 +261,6 @@ export default function App() {
               renderItem={({ item }) => (
                 <ChatBubble
                   message={item}
-                  onSelectSuggestion={(reply) => handleSendMessage(reply)}
                 />
               )}
               contentContainerStyle={styles.chatListContent}
@@ -254,8 +268,8 @@ export default function App() {
               ListFooterComponent={
                 isLoading ? (
                   <View style={styles.typingIndicator}>
-                    <ActivityIndicator size="small" color="#A78BFA" />
-                    <Text style={styles.typingText}>SoulMate đang suy ngẫm & thấu cảm...</Text>
+                    <ActivityIndicator size="small" color="#0084FF" />
+                    <Text style={styles.typingText}>Tomorrow đang nhắn...</Text>
                   </View>
                 ) : undefined
               }
@@ -374,9 +388,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   typingText: {
-    color: '#A78BFA',
+    color: '#0084FF',
     fontSize: 12,
-    fontStyle: 'italic',
   },
   btnPressed: {
     opacity: 0.7,

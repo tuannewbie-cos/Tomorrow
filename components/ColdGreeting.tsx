@@ -56,42 +56,28 @@ export const ColdGreeting: React.FC<ColdGreetingProps> = ({
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      {/* Brand Header Gemini Style */}
+      {/* Brand Header */}
       <View style={styles.brandContainer}>
         <View style={styles.geminiBadge}>
-          <Sparkles size={16} color="#A78BFA" />
-          <Text style={styles.geminiBadgeText}>SoulMate GenZ AI</Text>
+          <Sparkles size={16} color="#0084FF" />
+          <Text style={styles.geminiBadgeText}>Tomorrow</Text>
         </View>
 
-        {/* Gradient Container giả lập Text Gradient phong cách Gemini */}
+        {/* Gradient Container */}
         <View style={styles.gradientBox}>
           <LinearGradient
-            colors={['#4285F4', '#9B51E0', '#FF4081']}
+            colors={['#0084FF', '#A855F7', '#EC4899']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
             style={styles.gradientPill}
           />
           <Text style={styles.greetingTitle}>
-            {hasHistory ? `Chào ${userMemory.nickname || 'bro'},` : 'Chào đằng ấy,'}
+            {hasHistory ? `Chào ${userMemory.nickname || 'bạn'},` : 'Chào bạn,'}
           </Text>
         </View>
 
         <Text style={styles.greetingSubtext}>{greetingText}</Text>
       </View>
-
-      {/* Box tóm tắt ngữ cảnh bộ nhớ (Minh chứng lưu trữ qua Kill-App) */}
-      {hasHistory && userMemory.currentProblem ? (
-        <View style={styles.memoryCard}>
-          <View style={styles.memoryCardHeader}>
-            <Heart size={14} color="#F43F5E" />
-            <Text style={styles.memoryCardTitle}>Ngữ cảnh được AI ghi nhớ</Text>
-          </View>
-          <Text style={styles.memoryProblemText}>"{userMemory.currentProblem}"</Text>
-          <Text style={styles.memoryHint}>
-            💡 Đóng app mở lại dữ liệu vẫn nguyên vẹn 100%
-          </Text>
-        </View>
-      ) : null}
 
       {/* Suggestion Chips */}
       <View style={styles.chipsSection}>

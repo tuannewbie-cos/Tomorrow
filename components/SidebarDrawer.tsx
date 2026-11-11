@@ -75,8 +75,8 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           {/* Header */}
           <View style={styles.drawerHeader}>
             <View style={styles.brandRow}>
-              <Sparkles size={20} color="#A78BFA" />
-              <Text style={styles.brandTitle}>SoulMate GenZ</Text>
+              <Sparkles size={20} color="#0084FF" />
+              <Text style={styles.brandTitle}>Tomorrow</Text>
             </View>
             <Pressable style={styles.closeBtn} onPress={onClose}>
               <X size={20} color="#9CA3AF" />

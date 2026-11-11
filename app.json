@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "SoulMate GenZ",
+    "name": "Tomorrow",
     "slug": "soulmate-genz",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -26,7 +26,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Cho phép SoulMate truy cập thư viện ảnh để phân tích ảnh meme và tâm sự cùng bạn."
+          "photosPermission": "Cho phép Tomorrow truy cập thư viện ảnh để cùng chia sẻ hình ảnh với bạn."
         }
       ],
       "expo-asset"

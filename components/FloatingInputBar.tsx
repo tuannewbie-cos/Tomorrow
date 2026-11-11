@@ -36,7 +36,7 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
       if (status !== 'granted') {
         Alert.alert(
           'Cần cấp quyền',
-          'Vui lòng cấp quyền truy cập thư viện ảnh để gửi hình ảnh cho SoulMate AI.'
+          'Vui lòng cấp quyền truy cập thư viện ảnh để gửi hình ảnh cho Tomorrow.'
         );
         return;
       }
@@ -103,11 +103,11 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
           >
             <X size={14} color="#FFF" />
           </Pressable>
-          <Text style={styles.imagePreviewLabel}>Ảnh gửi kèm cho AI Vision</Text>
+          <Text style={styles.imagePreviewLabel}>Ảnh gửi kèm</Text>
         </View>
       )}
 
-      {/* Floating Pill Input Bar chuẩn Google Gemini */}
+      {/* Floating Pill Input Bar phong cách Messenger */}
       <View style={styles.pillContainer}>
         {/* Nút đính kèm ảnh */}
         <Pressable
@@ -115,7 +115,7 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
           onPress={handlePickImage}
           disabled={isLoading}
         >
-          <ImageIcon size={22} color={selectedImage ? '#60A5FA' : '#9CA3AF'} />
+          <ImageIcon size={22} color={selectedImage ? '#0084FF' : '#9CA3AF'} />
         </Pressable>
 
         {/* Nút chọn nhanh Emoji */}
@@ -124,13 +124,13 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
           onPress={() => setShowEmojiPicker((prev) => !prev)}
           disabled={isLoading}
         >
-          <Smile size={22} color={showEmojiPicker ? '#A78BFA' : '#9CA3AF'} />
+          <Smile size={22} color={showEmojiPicker ? '#0084FF' : '#9CA3AF'} />
         </Pressable>
 
         {/* TextInput đa dòng */}
         <TextInput
           style={styles.input}
-          placeholder="Tâm sự cùng SoulMate nè..."
+          placeholder="Nhắn cho Tomorrow..."
           placeholderTextColor="#6B7280"
           value={inputText}
           onChangeText={setInputText}
@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   sendButtonActive: {
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#0084FF',
   },
   sendButtonPressed: {
     opacity: 0.8,
