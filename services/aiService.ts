@@ -1,30 +1,36 @@
 import { ChatMessage, EmotionData, UserMemoryProfile } from '../types/chat';
-import { getMemeForContext } from '../constants/memes';
 
-// Cấu hình danh sách Key xoay vòng & API endpoints
-const GEMINI_KEYS: string[] = [
-  process.env.EXPO_PUBLIC_GEMINI_API_KEY || '',
+// Cấu hình API Key (Ưu tiên Key chính, hỗ trợ thêm các key dự phòng nếu có)
+const PRIMARY_GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
+const BACKUP_GEMINI_KEYS: string[] = [
   process.env.EXPO_PUBLIC_GEMINI_KEY_BACKUP_1 || '',
   process.env.EXPO_PUBLIC_GEMINI_KEY_BACKUP_2 || '',
 ].filter((k) => k.length > 5);
 
-// Danh sách các model siêu tốc và mới nhất (Gemini 3.x chính thức của Google)
-const ACTIVE_GEMINI_MODELS = [
-  'gemini-3.1-flash-lite',
-  'gemini-3.5-flash',
-  'gemini-3.6-flash',
-  'gemini-flash-latest',
+const ALL_GEMINI_KEYS = [PRIMARY_GEMINI_KEY, ...BACKUP_GEMINI_KEYS].filter((k) => k.length > 5);
+
+/**
+ * 1. KHAI BÁO DANH SÁCH MODEL XOAY VÒNG 3 TẦNG MIỄN PHÍ (MODEL FALLBACK CHAIN)
+ * Tự động chuyển đổi giữa 3 tầng model miễn phí trên cùng 1 API Key để không bao giờ bị gián đoạn:
+ * - Tầng 1: gemini-3.8-flash (hoặc gemini-2.5-flash) - Bắt vibe và tâm lý tốt nhất
+ * - Tầng 2: gemini-3.5-flash-lite (hoặc gemini-3.1-flash-lite) - Dự phòng tốc độ cao, bể quota độc lập
+ * - Tầng 3: gemma-4-31b-it - Dự phòng cuối, mô hình mở tính quota riêng
+ */
+export const FREE_MODEL_CHAIN: string[] = [
+  'gemini-3.8-flash',      // Tầng 1 (Chính - Bắt vibe và tâm lý tốt nhất)
+  'gemini-2.5-flash',      // Tầng 1 (Dự phòng thêm của tầng 1)
+  'gemini-3.5-flash-lite', // Tầng 2 (Dự phòng tốc độ cao - Bể quota độc lập)
+  'gemini-3.1-flash-lite', // Tầng 2 (Dự phòng thêm của tầng 2)
+  'gemma-4-31b-it',        // Tầng 3 (Dự phòng cuối - Mô hình mở tính quota riêng)
 ];
 
-const GROQ_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY || '';
-const OPENAI_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
-
-const TIMEOUT_MS = 25000; // 25 giây timeout thoải mái cho mobile tránh lỗi request canceled
+// Timeout 10 giây cho mỗi lần gọi theo quy chuẩn hackathon
+const TIMEOUT_MS = 10000;
 
 export interface AIResponsePayload {
   replies: string[];
   memoryNote?: string;
-  // Các trường tương thích ngược nếu có module cũ tham chiếu
+  // Các trường tương thích ngược nếu module cũ có tham chiếu
   reply?: string;
   emotion?: EmotionData;
   memeId?: string;
@@ -32,212 +38,223 @@ export interface AIResponsePayload {
   memoryUpdate?: Partial<UserMemoryProfile>;
 }
 
+export interface UserStyleAnalysis {
+  isCapitalized: boolean;
+  hasShorthand: boolean;
+  wordCount: number;
+  detectedShorthands: string[];
+  styleHint: string;
+}
+
 /**
- * SYSTEM_INSTRUCTION: TRÁI TIM CỦA "TOMORROW" (PHIÊN BẢN NÂNG CẤP V2)
+ * 2. SYSTEM_INSTRUCTION: TRÁI TIM CỦA "TOMORROW"
  * Đảm bảo 100% nhắn tin tự nhiên như người thật trên Messenger.
  */
 export const SYSTEM_INSTRUCTION = `Bạn tên là "Tomorrow" — một người bạn tâm sự có thật, biết lắng nghe, thấu cảm tâm lý và trò chuyện tự nhiên như một con người thực thụ trên Messenger.
 
-QUY TẮC SỐNG CÒN ĐỂ NHẮN TIN NHƯ CON NGƯỜI (TUYỆT ĐỐI TUÂN THỦ):
-
-1. QUY TẮC ĐỐI XỨNG ĐỘ DÀI & NĂNG LƯỢNG (TOKEN MIRRORING):
+QUY TẮC SỐNG CÒN ĐỂ NHẮN TIN NHƯ CON NGƯỜI:
+1. ĐỐI XỨNG ĐỘ DÀI & TÁCH BONG BÓNG CHAT (MULTI-BUBBLE):
 - Người dùng nhắn ngắn bao nhiêu, bạn nhắn ngắn bấy nhiêu.
-- Nếu user chỉ nhắn 1-3 từ ("yo", "ê", "alo", "chán", "mệt"): BẮT BUỘC chỉ đáp 1-4 từ như "yo", "ơi", "sao đấy", "nghe". TUYỆT ĐỐI CẤM xổ ra một tràng dài.
-- Tách ý thành các câu ngắn trong mảng "replies" (mỗi câu chỉ từ 1 đến 10 chữ) giống hệt cách người thật nhấn Enter liên tục trên Messenger, không viết thành đoạn văn dài lê thê.
+- Nếu user chỉ nhắn "yo", "ê", "alo": Chỉ trả lời 1-3 chữ ("yo", "ơi", "sao đấy"). Tuyệt đối không xổ ra một đoạn văn dài.
+- Tách câu trả lời thành 1 đến 3 câu ngắn trong mảng "replies" (mỗi câu 1-12 chữ) giống hệt cách người thật gõ từng dòng trên Messenger.
 
-2. SAO CHÉP GIỌNG ĐIỆU, ĐẠI TỪ & CÁCH GÕ PHÍM CỦA USER:
-- Quan sát kỹ cách user gõ phím để bắt chước ngay lập tức:
-  + Nếu user viết thường toàn bộ, không viết hoa đầu câu, không chấm cuối câu -> Bạn cũng viết thường toàn bộ, KHÔNG chấm câu kết thúc tin nhắn ngắn.
-  + Nếu user dùng teencode hoặc từ viết tắt tự nhiên ("t", "m", "k", "r", "dc", "ko", "vl", "tsau", "bao h", "bri", ":3", ":))", "=)))") -> Lập tức dùng đúng hệ từ vựng và xưng hô bạn bè thân thiết tương ứng ("t - m", "tui - ông/bà").
-  + Nếu user xưng "mình - bạn", viết có dấu chỉn chu (người đi làm / sinh viên nghiêm túc) -> Đáp lại bằng giọng điềm đạm, ấm áp, xưng "bạn - mình".
-  + Nếu user lớn tuổi xưng "bác / cô / chú" -> Lập tức xưng "cháu", thêm kính ngữ "dạ", "ạ", tôn trọng lễ phép chuẩn mực Việt Nam.
-  + Nếu user nhỏ tuổi xưng "em / tớ" -> Xưng "bạn / anh / chị" dịu dàng như anh chị em trong nhà.
-- CẤM các câu sáo rỗng hoặc cố gồng Gen Z giả tạo (cấm "mấy người đẹp trai/xinh gái", cấm lạm dụng emoji 😂, 🥺, ✨ ở mọi câu). Chỉ dùng biểu cảm chữ (":3", ":))") khi user có dùng.
+2. SAO CHÉP GIỌNG ĐIỆU, CHỮ VIẾT TẮT & ĐỘ TUỔI:
+- Nếu user viết thường toàn bộ, không chấm câu, dùng từ viết tắt ("t", "m", "k", "r", "dc", "ko", "vl", "tsau", "bao h", ":3") -> Bạn cũng viết thường toàn bộ, không chấm câu và dùng đúng hệ từ vựng, cách xưng hô đó.
+- Nếu user lịch sự, nghiêm túc, người đi làm hoặc lớn tuổi (xưng "mình - bạn", "anh/chị - em", "bác - cháu", đầy đủ dấu câu) -> Chuyển ngay sang giọng văn điềm đạm, ấm áp, chuẩn mực tương ứng.
+- CẤM dùng văn mẫu AI, cấm giảng đạo lý, cấm liệt kê giải pháp 1-2-3, cấm lạm dụng emoji 😂🥺✨ ở cuối mỗi câu.
 
-3. KỸ NĂNG TÂM LÝ & BẦU BẠN (CHỮA LÀNH ẨN MÌNH - STEALTH HEALING):
-- Khi user nói chuyện phiếm (chơi game, ăn uống, học hành, deadline OOP, leo rank...): Bắt nhịp đời thường, cà khịa nhẹ nhàng hoặc tiếp lời như bạn chí cốt.
-- Khi user tâm sự chuyện buồn, áp lực, cô đơn, thất tình:
-  + Đừng giảng đạo lý, đừng liệt kê giải pháp 1-2-3 như bác sĩ hay sách giáo khoa.
-  + Nhìn thấu nụ cười gượng (như ":))", "k sao đâu") để kéo lớp phòng vệ xuống.
-  + Hỏi thăm ngắn gọn đúng trọng tâm, lắng nghe và cho phép user được trút bỏ gánh nặng.
-
-VÍ DỤ MẪU CHUẨN XÁC (FEW-SHOT EXAMPLES):
-
-Ví dụ 1 (User chào ngắn):
-User: "yo"
-Output: {"replies": ["yo", "sao đấy"], "memory_note": ""}
-
-Ví dụ 2 (Gen Z thức đêm làm đồ án):
-User: "nay fix bug oop cay vl, chạy mãi đ ra kq :3"
-Output: {"replies": ["vãi bug gì đấy", "lại dính con trỏ hay ép kiểu à :3"], "memory_note": "Đang làm bài môn OOP"}
-
-Ví dụ 3 (Người đi làm bất an vì kinh tế):
-User: "Công ty mình vừa thông báo cắt giảm nhân sự đợt 2, xung quanh mọi người bàn tán hoang mang quá."
-Output: {"replies": ["nghe tin đấy thì bất an thật sự bạn ạ", "không khí văn phòng mấy ngày này chắc ngột ngạt lắm"], "memory_note": "Công ty cắt giảm nhân sự, đang lo lắng về việc làm"}
-
-Ví dụ 4 (Người lớn tuổi cô đơn):
-User: "Chào cháu, đêm đã khuya rồi mà bác vẫn chưa chợp mắt được."
-Output: {"replies": ["cháu chào bác ạ", "đêm lạnh rồi mà bác vẫn khó ngủ thế ạ, trong người có thấy mệt không bác"], "memory_note": "Bác lớn tuổi hay bị mất ngủ ban đêm"}
-
-Ví dụ 5 (Gen Z gượng cười che giấu tổn thương):
-User: "t vẫn ăn bám ở nhà, thấy phế ghê nhưng mà k sao đâu :))"
-Output: {"replies": ["thôi đừng cười trừ :))", "k sao đâu cái đầu m á, trong lòng đang nghẹn thấy bà nội luôn đúng k"], "memory_note": "Đang bị áp lực đồng trang lứa và tự ti về bản thân"}
-
-Luôn trả về duy nhất định dạng JSON hợp lệ:
+3. ĐỊNH DẠNG ĐẦU RA BẮT BUỘC (STRICT JSON):
+Chỉ trả về duy nhất JSON hợp lệ gồm 2 trường:
 {
-  "replies": ["câu 1", "câu 2 (tùy chọn)"],
-  "memory_note": "ghi chú ngắn gọn về user nếu có thông tin mới, nếu không để chuỗi rỗng"
+  "replies": ["bong bóng chat 1", "bong bóng chat 2 (nếu cần)"],
+  "memory_note": "ghi chú ngắn thông tin mới về user để lưu AsyncStorage, hoặc để chuỗi rỗng"
 }`;
+
+/**
+ * Hàm phân tích phong cách cục bộ miễn phí (extractUserStyleLocal):
+ * Chạy ngay trên máy đo tin nhắn người dùng:
+ * - Có viết hoa đầu câu không
+ * - Có dùng từ viết tắt (t, m, k, r, dc, ko, vl, :3) không
+ * - Độ dài bao nhiêu chữ
+ * Đính kèm dòng gợi ý siêu ngắn vào cuối tin nhắn gửi lên AI:
+ * [Gợi ý style: giữ nguyên xưng hô, độ dài tương đương, viết thường/viết tắt giống user]
+ */
+export function extractUserStyleLocal(text: string): UserStyleAnalysis {
+  const trimmed = text.trim();
+  const words = trimmed.split(/\s+/).filter(Boolean);
+  const wordCount = words.length;
+
+  // Kiểm tra viết hoa đầu câu
+  const firstChar = trimmed.charAt(0);
+  const isCapitalized =
+    firstChar !== '' &&
+    firstChar === firstChar.toUpperCase() &&
+    firstChar !== firstChar.toLowerCase();
+
+  // Kiểm tra từ viết tắt / teencode thông dụng
+  const shorthandKeywords = ['t', 'm', 'k', 'r', 'dc', 'ko', 'vl', ':3'];
+  const detectedShorthands: string[] = [];
+
+  for (const kw of shorthandKeywords) {
+    if (kw === ':3') {
+      if (trimmed.includes(':3')) detectedShorthands.push(':3');
+    } else {
+      const reg = new RegExp(`(^|\\s|[.,!?;])${kw}($|\\s|[.,!?;])`, 'i');
+      if (reg.test(trimmed)) detectedShorthands.push(kw);
+    }
+  }
+
+  const hasShorthand = detectedShorthands.length > 0;
+  const styleHint =
+    '[Gợi ý style: giữ nguyên xưng hô, độ dài tương đương, viết thường/viết tắt giống user]';
+
+  return {
+    isCapitalized,
+    hasShorthand,
+    wordCount,
+    detectedShorthands,
+    styleHint,
+  };
+}
+
+/**
+ * Tự động nhận diện Endpoint theo định dạng API Key:
+ * - Nếu key bắt đầu bằng `AQ.`: gọi qua https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:generateContent?key=${API_KEY}
+ * - Nếu key bắt đầu bằng `AIza`: gọi qua https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}
+ */
+export function getEndpointsForModel(model: string, apiKey: string): string[] {
+  if (apiKey.startsWith('AQ.')) {
+    // Ưu tiên endpoint aiplatform theo chuẩn Vertex AI/Agent Studio, kèm generativelanguage dự phòng
+    return [
+      `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+    ];
+  }
+  return [
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+  ];
+}
 
 /**
  * Ghép SYSTEM_INSTRUCTION với bộ nhớ ngầm và lịch sử tin nhắn gần nhất
  */
 function buildSystemPrompt(userMemory: UserMemoryProfile, recentChats: ChatMessage[]): string {
   const recentContext = recentChats
-    .slice(-8)
+    .slice(-6)
     .map((m) => `${m.sender === 'user' ? 'User' : 'Tomorrow'}: ${m.text}`)
     .join('\n');
 
-  return `${SYSTEM_INSTRUCTION}
+  let prompt = SYSTEM_INSTRUCTION;
 
----
-[BỘ NHỚ NGẦM VỀ BẠN]:
+  if (userMemory.currentProblem || userMemory.summary || userMemory.userName) {
+    prompt += `\n\n[HỒ SƠ BỘ NHỚ USER TỪ ASYNCSTORAGE]:
 - Tên/Xưng hô: ${userMemory.userName || userMemory.nickname || 'bạn'}
-- Vấn đề gần nhất: ${userMemory.currentProblem || 'Không có'}
-- Ghi nhớ: ${userMemory.summary || 'Không có'}
+- Vấn đề gần nhất: ${userMemory.currentProblem || 'Chưa có'}
+- Ghi nhớ: ${userMemory.summary || 'Chưa có'}`;
+  }
 
-[LỊCH SỬ TIN NHẮN ĐỂ SO TƯƠNG ĐỒNG VĂN PHONG (MIRRORING)]:
-${recentContext || '(Bắt đầu cuộc trò chuyện mới)'}
-`;
+  if (recentContext) {
+    prompt += `\n\n[LỊCH SỬ TIN NHẮN GẦN NHẤT]:\n${recentContext}`;
+  }
+
+  return prompt;
 }
 
 /**
- * Gọi REST API Gemini với cơ chế xoay vòng Model và hỗ trợ Vision (Base64)
+ * Thực hiện 1 lượt gọi API tới 1 URL cụ thể kèm timeout 10 giây qua AbortController
  */
-async function callGemini(
-  apiKey: string,
-  prompt: string,
-  userMessage: string,
-  imageBase64?: string
-): Promise<string> {
-  const parts: any[] = [{ text: userMessage }];
-
-  if (imageBase64) {
-    const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-    parts.push({
-      inline_data: {
-        mime_type: 'image/jpeg',
-        data: cleanBase64,
-      },
-    });
-  }
-
-  let lastError: any = null;
-
-  for (const modelName of ACTIVE_GEMINI_MODELS) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-    try {
-      const makeBody = (disableThinking: boolean) => ({
-        systemInstruction: {
-          parts: [{ text: prompt }],
-        },
-        contents: [{ parts }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 1000,
-          responseMimeType: 'application/json',
-          ...(disableThinking ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
-        },
-      });
-
-      // 1. Thử gọi với thinkingBudget: 0 để phản hồi siêu tốc và tránh lỗi 503
-      let res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(makeBody(true)),
-        signal: controller.signal,
-      });
-
-      // Nếu model báo 400 do không hỗ trợ thinkingConfig, gọi lại bình thường
-      if (res.status === 400) {
-        res = await fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(makeBody(false)),
-          signal: controller.signal,
-        });
-      }
-
-      if (res.ok) {
-        const data = await res.json();
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          clearTimeout(timeoutId);
-          return text;
-        }
-      } else {
-        const errText = await res.text();
-        console.warn(`[AI] Model ${modelName} code ${res.status}:`, errText);
-      }
-    } catch (err: any) {
-      lastError = err;
-      console.warn(`[AI] Model ${modelName} warning:`, err?.message);
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  }
-
-  throw lastError || new Error('Tất cả models Gemini đều tạm thời bận.');
-}
-
-/**
- * Fallback qua Groq Llama 3.3 hoặc OpenAI GPT-4o-mini
- */
-async function callOpenAICompatible(
-  endpoint: string,
-  apiKey: string,
-  model: string,
+async function executeApiCall(
+  url: string,
   systemPrompt: string,
-  userMessage: string
+  userMessageWithHint: string,
+  imageBase64?: string
 ): Promise<string> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
+    const parts: any[] = [{ text: userMessageWithHint }];
+
+    if (imageBase64) {
+      const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+      parts.push({
+        inline_data: {
+          mime_type: 'image/jpeg',
+          data: cleanBase64,
+        },
+      });
+    }
+
+    const payload = {
+      systemInstruction: {
+        parts: [{ text: systemPrompt }],
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
+      contents: [{ parts }],
+      generationConfig: {
         temperature: 0.7,
-        max_tokens: 300,
-      }),
+        maxOutputTokens: 600,
+        responseMimeType: 'application/json',
+      },
+    };
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
 
-    if (!res.ok) {
-      throw new Error(`Fallback Model Error ${res.status}`);
+    if (res.ok) {
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) return text;
     }
 
-    const data = await res.json();
-    return data?.choices?.[0]?.message?.content || '';
+    const errStatus = res.status;
+    const errText = await res.text().catch(() => '');
+    throw new Error(`HTTP ${errStatus}: ${errText.slice(0, 100)}`);
   } finally {
     clearTimeout(timeoutId);
   }
 }
 
 /**
- * Phân tích JSON chuẩn hóa: chỉ giữ "replies" và "memory_note", có khả năng tự sửa lỗi cắt cụt
+ * Logic Fallback & Timeout theo Model Fallback Chain:
+ * - Viết vòng lặp for (const model of FREE_MODEL_CHAIN) kèm AbortController timeout 10 giây cho mỗi lần gọi.
+ * - Nếu model tầng trên trả về HTTP status 429 (Too Many Requests), 503 (Overloaded), 404 hoặc lỗi mạng,
+ *   tự động console.warn và nhảy sang model tầng tiếp theo ngay lập tức mà không báo lỗi lên màn hình người dùng.
+ */
+async function callModelFallbackChain(
+  apiKey: string,
+  systemPrompt: string,
+  userMessageWithHint: string,
+  imageBase64?: string
+): Promise<string> {
+  let lastError: any = null;
+
+  for (const model of FREE_MODEL_CHAIN) {
+    const endpoints = getEndpointsForModel(model, apiKey);
+
+    for (const url of endpoints) {
+      try {
+        const text = await executeApiCall(url, systemPrompt, userMessageWithHint, imageBase64);
+        if (text) {
+          return text;
+        }
+      } catch (err: any) {
+        lastError = err;
+        const msg = err?.message || String(err);
+        // Tự động log warning và chuyển sang model tầng tiếp theo ngay lập tức
+        console.warn(`[AI Fallback Chain] Model "${model}" gặp lỗi (${msg}), tự động fallback sang tầng tiếp theo...`);
+      }
+    }
+  }
+
+  throw lastError || new Error('Tất cả model trong Free Model Chain đều tạm thời bận.');
+}
+
+/**
+ * Phân tích JSON chuẩn hóa: chỉ trích xuất "replies" và "memory_note"
  */
 function parseAIResponseJson(raw: string): AIResponsePayload | null {
   try {
@@ -251,7 +268,7 @@ function parseAIResponseJson(raw: string): AIResponsePayload | null {
     try {
       parsed = JSON.parse(cleaned);
     } catch {
-      // Tự động vá nếu chuỗi JSON bị ngắt cụt đuôi (Unexpected end of input)
+      // Tự động vá nếu chuỗi JSON bị cắt cụt đuôi
       try {
         let repaired = cleaned;
         if (!repaired.endsWith('}')) {
@@ -265,10 +282,10 @@ function parseAIResponseJson(raw: string): AIResponsePayload | null {
         }
         parsed = JSON.parse(repaired);
       } catch {
-        // Fallback trích xuất mảng text bằng biểu thức chính quy
+        // Fallback trích xuất mảng text
         const matches = [...cleaned.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)].map((m) => m[1]);
         const validTexts = matches.filter(
-          (m) => m.length > 1 && !m.includes('replies') && !m.includes('memory_note')
+          (m) => m.length > 0 && !m.includes('replies') && !m.includes('memory_note')
         );
         if (validTexts.length > 0) {
           return {
@@ -288,12 +305,10 @@ function parseAIResponseJson(raw: string): AIResponsePayload | null {
           .map((r: string) => r.trim());
       } else if (typeof parsed.reply === 'string' && parsed.reply.trim().length > 0) {
         replies = [parsed.reply.trim()];
-      } else if (typeof parsed.reply_text === 'string' && parsed.reply_text.trim().length > 0) {
-        replies = [parsed.reply_text.trim()];
       }
 
       if (replies.length > 0) {
-        const memoryNote = (parsed.memory_note || parsed.updated_user_memory || '').trim();
+        const memoryNote = (parsed.memory_note || '').trim();
         return {
           replies,
           reply: replies[0],
@@ -308,13 +323,14 @@ function parseAIResponseJson(raw: string): AIResponsePayload | null {
       }
     }
   } catch (e) {
-    console.warn('[AI] JSON parse warning, falling back:', e);
+    console.warn('[AI] Lỗi phân tích JSON:', e);
   }
   return null;
 }
 
 /**
- * Local Resilient Fallback Engine - Phản hồi siêu tốc 100% người thật khi offline/mất mạng
+ * Local Resilient Fallback Engine - Phản hồi tự nhiên chuẩn con người khi offline/mất mạng
+ * Tuyệt đối không chèn meme chó Shiba sai lệch, không sinh badge hay chip rườm rà.
  */
 function localResilientFallback(userMessage: string, hasImage?: boolean): AIResponsePayload {
   const text = userMessage.trim();
@@ -324,11 +340,11 @@ function localResilientFallback(userMessage: string, hasImage?: boolean): AIResp
     return {
       replies: ['ảnh gì đây', 'nhìn buồn cười vãi :3'],
       reply: 'ảnh gì đây',
-      memoryNote: 'Vừa chia sẻ hình ảnh',
+      memoryNote: 'Vừa gửi ảnh',
     };
   }
 
-  // 1. Chào hỏi cực ngắn (yo, ê, alo, hú, hi...)
+  // Chào hỏi ngắn ("yo", "ê", "alo", "hi")
   if (/^(yo|ê|e|alo|hú|hu|helo|hello|hi|hii)$/i.test(lower)) {
     return {
       replies: ['yo', 'sao đấy'],
@@ -337,8 +353,14 @@ function localResilientFallback(userMessage: string, hasImage?: boolean): AIResp
     };
   }
 
-  // 2. Hỏi tên / Danh tính
-  if (lower.includes('tên gì') || lower.includes('tên là gì') || lower.includes('bạn là ai') || lower.includes('mày là ai') || lower.includes('ai đấy')) {
+  // Hỏi tên / Danh tính
+  if (
+    lower.includes('tên gì') ||
+    lower.includes('tên là gì') ||
+    lower.includes('bạn là ai') ||
+    lower.includes('mày là ai') ||
+    lower.includes('ai đấy')
+  ) {
     return {
       replies: ['t là Tomorrow nè :3', 'bạn thân tâm sự của m'],
       reply: 't là Tomorrow nè :3',
@@ -346,67 +368,31 @@ function localResilientFallback(userMessage: string, hasImage?: boolean): AIResp
     };
   }
 
-  // 3. Hỏi giờ / Thời gian
-  if (lower.includes('mấy giờ') || lower.includes('mấy h') || lower.includes('mấy gio') || lower.includes('giờ rồi') || lower.includes('bây giờ là')) {
-    const now = new Date();
-    const timeStr = `${now.getHours()}h${now.getMinutes().toString().padStart(2, '0')}`;
+  // Học tập, OOP, bài tập, code, deadline
+  if (lower.includes('oop') || lower.includes('đề') || lower.includes('thi')) {
     return {
-      replies: [`bây giờ là ${timeStr} rồi đấy bố trẻ`, 'định đi đâu hay hẹn ai à'],
-      reply: `bây giờ là ${timeStr} rồi đấy bố trẻ`,
-      memoryNote: '',
-    };
-  }
-
-  // 4. Kể chuyện cười / Tấu hài
-  if (lower.includes('chuyện cười') || lower.includes('kể chuyện') || lower.includes('tấu hài') || lower.includes('hài hước')) {
-    const jokes = [
-      ['hôm nay t đi phỏng vấn người ta hỏi: điểm mạnh của em là gì?', 't bảo: em không biết từ bỏ, thế là bị đuổi ra cửa vì cứ đứng lì ở đó =)))'],
-      ['có một con muỗi bay vào lớp học OOP...', 'thấy con trỏ nó sợ quá lăn ra chết vì null pointer :)))'],
-      ['người ta bảo có tiền chưa chắc đã hạnh phúc...', 'nhưng không có tiền thì chắc chắn cạp đất mà ăn chứ hạnh phúc gì tầm này =)))'],
-    ];
-    const picked = jokes[Math.floor(Math.random() * jokes.length)];
-    return {
-      replies: picked,
-      reply: picked.join(' '),
-      memoryNote: 'Thích nghe kể chuyện cười',
-      memeId: 'side_eye_dog',
-    };
-  }
-
-  // 5. Nguồn gốc / Ai tạo ra
-  if (lower.includes('ai tạo') || lower.includes('ai làm') || lower.includes('sinh ra')) {
-    return {
-      replies: ['do team hackathon tạo ra để bầu bạn vs m nè :3', 'có gì tâm sự tui nghe đi'],
-      reply: 'do team hackathon tạo ra để bầu bạn vs m nè :3',
-      memoryNote: '',
-    };
-  }
-
-  // 6. Học tập, OOP, bài tập, code, deadline
-  if (lower.includes('oop') || lower.includes('đề') || lower.includes('leak')) {
-    return {
-      replies: ['vãi chưa ngủ luôn à', 'xong hết chưa hay vẫn đang fix bug đấy :3'],
-      reply: 'vãi chưa ngủ luôn à',
-      memoryNote: 'Đang học môn OOP, hay thức khuya chạy bài',
+      replies: ['căng thế', 'ôn đến đâu r b', 'đừng lo quá nà :3'],
+      reply: 'căng thế',
+      memoryNote: 'Đang lo lắng về môn OOP/kỳ thi',
     };
   }
   if (lower.includes('bug') || lower.includes('fix') || lower.includes('code') || lower.includes('deadline')) {
     return {
-      replies: ['lại bị dí deadline à', 'thôi nghỉ tí đi m, căng quá r'],
-      reply: 'lại bị dí deadline à',
-      memoryNote: 'Đang bị áp lực deadline và chạy bài',
+      replies: ['lại dính bug à', 'nghỉ tí đi m, căng quá r'],
+      reply: 'lại dính bug à',
+      memoryNote: 'Đang bị áp lực deadline và bug',
     };
   }
 
-  // 7. Trạng thái sinh hoạt / ngủ nghỉ ("t ngủ tí", "5p", "mi xao")
-  if (lower === 't ngủ tí' || lower.includes('ngủ') || lower.includes('đi ngủ')) {
+  // Sinh hoạt / ngủ nghỉ ("t ngủ tí", "5p")
+  if (lower.includes('ngủ')) {
     return {
       replies: ['ok ngủ đi', 'bao h dậy nhắn t'],
       reply: 'ok ngủ đi',
       memoryNote: '',
     };
   }
-  if (lower.includes('5p') || lower.includes('ăn cơm') || lower.includes('mi xao') || lower.includes('đợi')) {
+  if (lower.includes('5p') || lower.includes('ăn cơm') || lower.includes('đợi')) {
     return {
       replies: ['ok', 'lẹ lên t đợi'],
       reply: 'ok',
@@ -414,25 +400,16 @@ function localResilientFallback(userMessage: string, hasImage?: boolean): AIResp
     };
   }
 
-  // 8. Game, rank, kéo rank, plat, bri
-  if (lower.includes('plat') || lower.includes('rank') || lower.includes('chơi') || lower.includes('game') || lower.includes('bri')) {
+  // Tâm trạng chán, buồn, áp lực
+  if (lower.includes('chán') || lower.includes('buồn') || lower.includes('mệt') || lower.includes('cô đơn')) {
     return {
-      replies: ['ok bri', 'tsau kéo lên plat'],
-      reply: 'ok bri',
-      memoryNote: 'Thích chơi game leo rank cùng bạn bè',
-    };
-  }
-
-  // 9. Buồn, cô đơn, áp lực thật sự
-  if (lower.includes('chán') || lower.includes('buồn') || lower.includes('thất bại') || lower.includes('mệt') || lower.includes('cô đơn')) {
-    return {
-      replies: ['ơi t nghe đây', 'nay lại có chuyện gì trên trường hay ở nhà thế'],
+      replies: ['ơi t nghe đây', 'nay lại có chuyện gì thế'],
       reply: 'ơi t nghe đây',
-      memoryNote: 'Đang cảm thấy chán nản và tự ti về bản thân',
+      memoryNote: 'Đang cảm thấy mệt mỏi và cần người lắng nghe',
     };
   }
 
-  // 10. Mặc định: Phản hồi tự nhiên thân mật
+  // Mặc định
   return {
     replies: ['ơi nghe nè', 'sao tự nhiên hỏi thế :3'],
     reply: 'ơi nghe nè',
@@ -441,77 +418,39 @@ function localResilientFallback(userMessage: string, hasImage?: boolean): AIResp
 }
 
 /**
- * Gửi tin nhắn chính với chu trình Multi-Key & Fallback siêu tốc
+ * Gửi tin nhắn chính tới Tomorrow qua Model Fallback Chain
  */
-export async function sendMessageToSoulMate(
+export async function sendMessageToTomorrow(
   userText: string,
   userMemory: UserMemoryProfile,
   recentChats: ChatMessage[],
   imageBase64?: string
 ): Promise<AIResponsePayload> {
+  const userStyle = extractUserStyleLocal(userText);
+  const userMessageWithHint = `${userText}\n\n${userStyle.styleHint}`;
   const systemPrompt = buildSystemPrompt(userMemory, recentChats);
-  const contextMeme = getMemeForContext(userText);
 
-  const formatPayload = (p: AIResponsePayload): AIResponsePayload => {
-    // Chỉ đính kèm meme khi ngữ cảnh thật sự khớp hoặc user chủ động đề cập meme/ảnh
-    if (!p.memeId && contextMeme && (userText.toLowerCase().includes('meme') || userText.toLowerCase().includes('ảnh') || userText.toLowerCase().includes('k sao đâu :))'))) {
-      return { ...p, memeId: contextMeme.id };
-    }
-    return p;
-  };
-
-  // 1. Thử qua Gemini (gemini-2.5-flash / gemini-2.0-flash)
-  for (let i = 0; i < GEMINI_KEYS.length; i++) {
-    const key = GEMINI_KEYS[i];
+  // 1. Thử qua danh sách API Key với Model Fallback Chain
+  for (let keyIdx = 0; keyIdx < ALL_GEMINI_KEYS.length; keyIdx++) {
+    const key = ALL_GEMINI_KEYS[keyIdx];
     try {
-      const rawRes = await callGemini(key, systemPrompt, userText, imageBase64);
+      const rawRes = await callModelFallbackChain(key, systemPrompt, userMessageWithHint, imageBase64);
       const parsed = parseAIResponseJson(rawRes);
-      if (parsed) return formatPayload(parsed);
+      if (parsed && parsed.replies && parsed.replies.length > 0) {
+        return parsed;
+      }
     } catch (err: any) {
-      console.warn(`[AI] Gemini Key #${i + 1} lỗi:`, err?.message || err);
+      console.warn(`[AI Service] API Key #${keyIdx + 1} lỗi:`, err?.message || err);
     }
   }
 
-  // 2. Fallback sang Groq Llama 3.3
-  if (GROQ_KEY) {
-    try {
-      const rawRes = await callOpenAICompatible(
-        'https://api.groq.com/openai/v1/chat/completions',
-        GROQ_KEY,
-        'llama-3.3-70b-versatile',
-        systemPrompt,
-        userText
-      );
-      const parsed = parseAIResponseJson(rawRes);
-      if (parsed) return formatPayload(parsed);
-    } catch (err: any) {
-      console.warn('[AI] Groq fallback lỗi:', err?.message);
-    }
-  }
-
-  // 3. Fallback sang OpenAI GPT-4o-mini
-  if (OPENAI_KEY) {
-    try {
-      const rawRes = await callOpenAICompatible(
-        'https://api.openai.com/v1/chat/completions',
-        OPENAI_KEY,
-        'gpt-4o-mini',
-        systemPrompt,
-        userText
-      );
-      const parsed = parseAIResponseJson(rawRes);
-      if (parsed) return formatPayload(parsed);
-    } catch (err: any) {
-      console.warn('[AI] OpenAI fallback lỗi:', err?.message);
-    }
-  }
-
-  // 4. Kích hoạt Local Resilient Fallback Engine chuẩn xác 100%
-  console.log('[AI] Kích hoạt Local Resilient Fallback Engine (Tomorrow GenZ)');
-  return formatPayload(localResilientFallback(userText, !!imageBase64));
+  // 2. Chống sập tức thì: Fallback cục bộ mượt mà 100% không báo lỗi màn hình
+  console.log('[AI Service] Kích hoạt Local Resilient Fallback Engine cho Tomorrow');
+  return localResilientFallback(userText, !!imageBase64);
 }
 
-export const sendMessageToTomorrow = sendMessageToSoulMate;
+// Giữ lại alias để tương thích ngược tuyệt đối
+export const sendMessageToSoulMate = sendMessageToTomorrow;
 
 /**
  * Sinh câu chào mở app tinh tế, không sến súa

@@ -1,31 +1,37 @@
-# 💜 SoulMate GenZ — AI Bạn Tri Kỷ & Chữa Lành Tâm Lý
+# 💙 Tomorrow — AI Bạn Tri Kỷ & Tâm Sự Như Con Người Thực Thụ
 
-> **Dự án ứng dụng di động hỗ trợ sức khỏe tinh thần cho giới trẻ Gen Z**, kết hợp chuyên môn tâm lý học đường với phong cách trò chuyện gần gũi, dí dỏm chuẩn văn hóa mạng xã hội (TikTok, Threads). Ứng dụng tích hợp mô hình ngôn ngữ lớn đa phương thức (Multimodal AI), nhận diện cảm xúc thời gian thực và lưu trữ ngữ cảnh dài hạn chống sập khi đóng ứng dụng.
+> **Phiên bản "Tomorrow - Ngày 1"**: Ứng dụng di động tâm sự và lắng nghe cảm xúc, sử dụng 100% **Gemini API Free Tier** với cơ chế Model Fallback Chain 3 tầng thông minh, phân tích phong cách cục bộ và giao diện Messenger Multi-Bubble tự nhiên như người thật gõ phím.
 
 ---
 
-## ✨ Điểm Nổi Bật (Key Features)
+## ✨ Điểm Nổi Bật (Key Features - Phiên bản Tomorrow)
 
-### 1. 🧠 Bộ Nhớ Ngữ Cảnh Dài Hạn (Cold Start & Kill-App Resilience)
-- **Lưu trữ tức thì qua AsyncStorage:** Mọi cuộc hội thoại và hồ sơ tâm lý người dùng (`CHAT_HISTORY_V1`, `USER_MEMORY_PROFILE_V1`) được đồng bộ liên tục.
-- **Không nháy trắng (Zero White-Flash):** Khi mở lại app (kể cả sau khi kill app hoàn toàn), hệ thống nạp dữ liệu song song trước khi ẩn Splash Screen.
-- **Lời chào thông minh theo ngữ cảnh cũ:**
-  - Nếu là người mới: *"Chào đằng ấy, hôm nay tâm trạng thế nào?"*
-  - Nếu đã từng chia sẻ: AI tự động nhớ và hỏi thăm lại vấn đề cũ (VD: *"Chào bro, vụ deadline hôm qua đỡ căng chưa hay vẫn đang overthinking đấy?"*).
+### 1. 🔄 Cơ Chế Xoay Vòng 3 Tầng Model Miễn Phí (Model Fallback Chain)
+- **Tự động vượt hạn mức 15 lượt/phút (lỗi 429 & 503):** Chuyển đổi linh hoạt giữa 3 tầng model miễn phí trên cùng 1 API Key (`process.env.EXPO_PUBLIC_GEMINI_API_KEY`):
+  1. **Tầng 1 (Chính - Bắt vibe và tâm lý tốt nhất):** `gemini-3.8-flash` (hoặc `gemini-2.5-flash`)
+  2. **Tầng 2 (Dự phòng tốc độ cao - Bể quota độc lập):** `gemini-3.5-flash-lite` (hoặc `gemini-3.1-flash-lite`)
+  3. **Tầng 3 (Dự phòng cuối - Mô hình mở tính quota riêng):** `gemma-4-31b-it`
+- **Nhận diện Endpoint theo định dạng API Key:**
+  - Nếu key bắt đầu bằng `AQ.`: Ưu tiên gọi qua `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:generateContent?key=${API_KEY}` (Vertex AI / Agent Studio) và tự động fallback sang `generativelanguage` nếu cần.
+  - Nếu key bắt đầu bằng `AIza`: Gọi qua `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}` (Google AI Studio).
+- **Timeout 10 giây & AbortController:** Mỗi lượt gọi đều được quản lý với thời gian chờ tối đa 10s. Nếu gặp mã `429`, `503`, `404` hoặc lỗi mạng, tự động `console.warn` và nhảy sang model tiếp theo ngay lập tức mà không gây gián đoạn hay báo lỗi lên màn hình người dùng.
 
-### 2. 🎭 Vibe Gen Z Thực Thụ & Nhận Diện Cảm Xúc Thời Gian Thực
-- **Linh hoạt tuyệt đối:** Chuyển đổi mượt mà giữa chế độ an ủi, lắng nghe chân thành khi người dùng khủng hoảng/áp lực, và chế độ tấu hài, bắt trend TikTok khi người dùng trêu đùa/gửi meme.
-- **Badge Cảm Xúc:** Mỗi câu trả lời của AI đều gắn kèm huy hiệu phân tích cảm xúc (VD: `😟 Overthinking 🌀 - Mức độ: 4/5` hoặc `😂 Tự luyến tấu hài - Mức độ: 5/5`).
-- **Gợi ý phản hồi nhanh (Suggested Replies):** Tự động sinh các chip phản hồi (ví dụ: `💬 Bắt bài nhanh vậy bà zà! 🤣`) để người dùng tương tác chỉ bằng một chạm.
+### 2. ⚡ Bộ Phân Tích Phong Cách Cục Bộ (extractUserStyleLocal)
+- Chạy trực tiếp trên thiết bị (zero latency & zero cost) để đo lường:
+  - Có viết hoa đầu câu không
+  - Có dùng từ viết tắt / teencode (`t, m, k, r, dc, ko, vl, :3`) không
+  - Đo lường độ dài số lượng từ
+- Đính kèm dòng gợi ý: `[Gợi ý style: giữ nguyên xưng hô, độ dài tương đương, viết thường/viết tắt giống user]` giúp các model tầng 2 và 3 vẫn nhại giọng cực kỳ tự nhiên.
 
-### 3. 🖼️ Đa Phương Thức (AI Vision & Meme Gen Z)
-- **Hỗ trợ gửi ảnh:** Người dùng có thể đính kèm ảnh bài kiểm tra, tin nhắn crush, hoặc ảnh chụp màn hình; AI Vision sẽ phân tích chi tiết hình ảnh và đưa ra lời bình đồng điệu.
-- **Kho Meme Nội Bộ (`MEME_LIBRARY`):** Tự động render các meme kinh điển tương ứng với cảm xúc (IShowSpeed hoang mang `speed_wtf`, mèo khóc `crying_cat`, gấu ôm `warm_hug`, Doge cà khịa `doge_cheer`).
+### 3. 💬 Giao Diện Messenger Tinh Gọn & Hiệu Ứng Multi-Bubble
+- **Tên hiển thị:** "Tomorrow" kèm huy hiệu trạng thái Online trực tiếp.
+- **Placeholder ô nhập:** `"Nhắn cho Tomorrow..."`.
+- **Hiệu ứng Multi-Bubble:** Tách câu trả lời thành từng bong bóng chat độc lập và xuất hiện lần lượt với độ trễ `350ms` giữa các câu để mô phỏng chính xác thao tác gõ từng dòng trên Messenger.
+- **Dọn dẹp giao diện:** Đã gỡ bỏ badge "Mức độ: x/5", bỏ suggestion chips và tắt hoàn toàn tính năng tự động chèn meme chó Shiba sai lệch.
 
-### 4. 🛡️ Cơ Chế Xoay Vòng Multi-Key & Multi-Model Fallback
-- Tự động xoay vòng qua danh sách API Key và các model thế hệ mới nhất của Google (`gemini-3.1-flash-lite`, `gemini-3.5-flash`, `gemini-3.6-flash`).
-- Hỗ trợ chuyển tiếp sang Groq (`llama-3.3-70b-versatile`) và OpenAI (`gpt-4o-mini`).
-- **Resilient Cognitive Mock Engine:** Trong trường hợp mất kết nối mạng hoàn toàn hoặc hết quota toàn bộ key, bộ suy luận cục bộ vẫn hoạt động ổn định, đảm bảo ứng dụng không bao giờ bị gián đoạn hay crash.
+### 4. 🧠 Bộ Nhớ Ngữ Cảnh Dài Hạn (AsyncStorage)
+- Đọc/ghi ngầm `USER_MEMORY_PROFILE_V1` và `CHAT_HISTORY_V1` vào `AsyncStorage`.
+- Khi đóng/mở lại app hoặc kill app hoàn toàn, toàn bộ bối cảnh cuộc trò chuyện và thông tin người dùng vẫn được bảo toàn nguyên vẹn 100%.
 
 ---
 
@@ -35,11 +41,10 @@
 | :--- | :--- |
 | **Framework** | React Native (Expo SDK 58.0.0, Managed Workflow) |
 | **Ngôn ngữ** | TypeScript (Strict mode) |
-| **UI Components** | React Native Safe Area Context, Expo Linear Gradient, Lucide Icons |
+| **UI Components** | React Native Safe Area Context, Lucide Icons (`lucide-react-native`) |
 | **Lưu trữ cục bộ** | `@react-native-async-storage/async-storage` (v2.2.0) |
 | **Thư viện ảnh** | `expo-image-picker` (v58.0.10) |
-| **AI Engine** | Google Generative AI REST API (Gemini 3.x Flash Multimodal) |
-| **Build & Deploy** | EAS Build (`eas.json` cấu hình sẵn APK Android & iOS) |
+| **AI Engine** | Google Gemini API (Free Tier: `gemini-3.8-flash`, `gemini-3.5-flash-lite`, `gemma-4-31b-it`) |
 
 ---
 
@@ -48,21 +53,15 @@
 ### 1. Yêu cầu môi trường
 - Node.js >= 18.x (khuyên dùng Node 20+)
 - npm hoặc yarn
-- Ứng dụng **Expo Go** trên điện thoại (iOS / Android)
+- Ứng dụng **Expo Go** trên điện thoại iOS / Android
 
 ### 2. Cài đặt dependencies
 ```bash
-git clone https://github.com/tuannewbie-cos/mental-health.git
-cd mental-health
-npm install --legacy-peer-deps
+npm install
 ```
 
-### 3. Cấu hình biến môi trường
-Tạo file `.env` từ file mẫu `.env.example`:
-```bash
-cp .env.example .env
-```
-Điền khóa API của bạn vào file `.env`:
+### 3. Cấu hình biến môi trường (`.env`)
+Tạo file `.env` ở thư mục gốc:
 ```env
 EXPO_PUBLIC_GEMINI_API_KEY=your_gemini_api_key_here
 ```
@@ -71,54 +70,4 @@ EXPO_PUBLIC_GEMINI_API_KEY=your_gemini_api_key_here
 ```bash
 npx expo start
 ```
-- Mở **Camera** (trên iPhone) hoặc ứng dụng **Expo Go** (trên Android) và quét mã QR trên terminal để trải nghiệm.
-
-### 5. Build file APK độc lập qua EAS Build
-```bash
-npx eas-cli build -p android --profile preview
-```
-
----
-
-## 📁 Cấu Trúc Thư Mục
-
-```text
-mental-health/
-├── app.json                  # Cấu hình Expo SDK 58 & quyền truy cập Media
-├── eas.json                  # Cấu hình build APK Android & iOS qua EAS
-├── package.json              # Quản lý dependencies dự án
-├── tsconfig.json             # Cấu hình TypeScript Strict Mode
-├── App.tsx                   # Điểm khởi chạy gốc & khôi phục AsyncStorage
-├── types/
-│   └── chat.ts               # Interface TypeScript (ChatMessage, EmotionData, MemoryProfile)
-├── constants/
-│   └── memes.ts              # Kho từ điển MEME_LIBRARY Gen Z
-├── storage/
-│   └── chatStorage.ts        # Quản lý AsyncStorage bền vững (Kill-app resilience)
-├── services/
-│   └── aiService.ts          # SYSTEM_INSTRUCTION & Multi-Key Multi-Model Fallback Engine
-└── components/
-    ├── ChatBubble.tsx        # Bong bóng chat kèm Badge Cảm xúc & Meme reaction
-    ├── ColdGreeting.tsx      # Lời chào Gradient Gemini + Suggestion Chips
-    ├── FloatingInputBar.tsx  # Thanh nhập nổi (chọn ảnh, emoji, text đa dòng)
-    └── SidebarDrawer.tsx     # Quản lý phiên tâm sự & theo dõi bộ nhớ AI
-```
-
----
-
-## 🗺️ Lộ Trình Phát Triển Dài Hạn (Roadmap)
-
-- [x] Giao diện chuẩn Google Gemini Dark Mode (`#131314` & `#1E1F20`).
-- [x] Khôi phục ngữ cảnh sau khi kill app hoàn toàn với AsyncStorage.
-- [x] Nhận diện cảm xúc thời gian thực kèm Badge Cảm Xúc & Suggested Replies.
-- [x] Hỗ trợ AI Vision đọc ảnh và phản hồi Meme Gen Z.
-- [ ] **Gửi tin nhắn thoại (Voice Notes & Speech-to-Text):** Cho phép người dùng nói chuyện trực tiếp với AI khi quá mệt mỏi không muốn gõ chữ.
-- [ ] **Nhật ký cảm xúc (Mood Tracker & Analytics):** Biểu đồ theo dõi tâm trạng theo tuần/tháng.
-- [ ] **Góc chia sẻ ẩn danh (Safe Space Community):** Không gian kết nối người dùng có cùng nỗi niềm.
-- [ ] **Bài tập thở & Âm thanh chữa lành (Soundscapes / White Noise):** Tích hợp âm thanh mưa rơi, sóng biển giúp ngủ ngon.
-
----
-
-## 📄 Bản Quyền & Giấy Phép
-Dự án được xây dựng với mục tiêu phi lợi nhuận nhằm hỗ trợ chăm sóc sức khỏe tinh thần cho cộng đồng trẻ em và thanh thiếu niên.
-MIT License © 2026 SoulMate GenZ Team.
+Quét mã QR bằng Expo Go trên điện thoại để trải nghiệm trò chuyện mượt mà cùng Tomorrow!

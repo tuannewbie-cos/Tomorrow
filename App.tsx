@@ -43,7 +43,7 @@ export default function App() {
 
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
 
-  // 1. KHÔI PHỤC NGỮ CẢNH TỨC THÌ KHI MỞ APP (TIÊU CHÍ KILL APP 40 ĐIỂM)
+  // 1. KHÔI PHỤC NGỮ CẢNH TỨC THÌ KHI MỞ APP (AsyncStorage: CHAT_HISTORY_V1 & USER_MEMORY_PROFILE_V1)
   useEffect(() => {
     async function rehydrateContext() {
       try {
@@ -100,11 +100,11 @@ export default function App() {
     setMessages(updatedMessages);
     setIsLoading(true);
 
-    // 2. Lưu ngay vào AsyncStorage để đảm bảo dù bị kill app lúc này tin nhắn vẫn còn
+    // 2. Lưu ngay vào AsyncStorage để đảm bảo không mất tin nhắn khi kill app
     await saveChatHistory(updatedMessages);
 
     try {
-      // 3. Gửi sang AI Service (Kèm bộ nhớ dài hạn & lịch sử gần nhất)
+      // 3. Gửi sang AI Service với Model Fallback Chain 3 tầng
       const aiResponse = await sendMessageToTomorrow(
         text,
         userMemory,
@@ -119,7 +119,7 @@ export default function App() {
 
       let currentHistory = [...updatedMessages];
 
-      // Hiệu ứng tách tin nhắn (Multi-Bubble) tuần tự như người thật gõ phím
+      // Hiệu ứng Multi-bubble: Duyệt qua từng phần tử và hiển thị lần lượt từng bong bóng chat với độ trễ 350ms
       for (let i = 0; i < replies.length; i++) {
         const replyText = replies[i];
         const aiMsg: ChatMessage = {
@@ -127,7 +127,6 @@ export default function App() {
           sender: 'ai',
           text: replyText,
           timestamp: Date.now(),
-          memeId: i === replies.length - 1 ? aiResponse.memeId : undefined,
         };
 
         currentHistory = [...currentHistory, aiMsg];
@@ -139,11 +138,11 @@ export default function App() {
         }, 50);
 
         if (i < replies.length - 1) {
-          await sleep(380); // Độ trễ tự nhiên giữa các bong bóng tin nhắn (300ms - 500ms)
+          await sleep(350); // Độ trễ chính xác 350ms giữa các câu
         }
       }
 
-      // Cập nhật ngầm User Memory Profile nếu có ghi chú mới
+      // Cập nhật ngầm User Memory Profile nếu có ghi chú mới để lưu AsyncStorage
       if (aiResponse.memoryUpdate) {
         const newMemory = {
           ...userMemory,
@@ -178,7 +177,7 @@ export default function App() {
     await saveChatHistory([]);
   };
 
-  // Xóa toàn bộ lịch sử
+  // Xóa toàn bộ lịch sử & Reset
   const handleClearAll = async () => {
     await clearAllChatData();
     setMessages([]);
@@ -214,7 +213,7 @@ export default function App() {
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <StatusBar style="light" />
 
-        {/* 1. Header Bar chuẩn Messenger */}
+        {/* 1. Header Bar chuẩn Messenger: Hiển thị "Tomorrow", xóa dòng "Đang nhớ: ..." */}
         <View style={styles.header}>
           <Pressable
             style={({ pressed }) => [styles.headerBtn, pressed && styles.btnPressed]}
@@ -367,11 +366,6 @@ const styles = StyleSheet.create({
     color: '#10B981',
     fontSize: 10,
     fontWeight: '700',
-  },
-  headerSubtitle: {
-    color: '#9CA3AF',
-    fontSize: 11,
-    marginTop: 1,
   },
   keyboardContainer: {
     flex: 1,

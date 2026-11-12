@@ -1,17 +1,14 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image, Pressable } from 'react-native';
 import { ChatMessage } from '../types/chat';
-import { getMemeById } from '../constants/memes';
 
 interface ChatBubbleProps {
   message: ChatMessage;
   onPressImage?: (uri: string) => void;
-  onSelectSuggestion?: (text: string) => void;
 }
 
 export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onPressImage }) => {
   const isAI = message.sender === 'ai';
-  const meme = message.memeId ? getMemeById(message.memeId) : undefined;
 
   const formatTime = (ts: number) => {
     const d = new Date(ts);
@@ -20,20 +17,20 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onPressImage })
 
   return (
     <View style={[styles.container, isAI ? styles.containerAI : styles.containerUser]}>
-      {/* Khung bong bóng chat chuẩn phong cách Messenger */}
+      {/* Khung bong bóng chat phong cách Messenger */}
       <View style={[styles.bubble, isAI ? styles.bubbleAI : styles.bubbleUser]}>
-        {/* Ảnh đính kèm (User tải lên hoặc Meme ngữ cảnh từ Tomorrow) */}
-        {(message.imageUri || (isAI && meme)) && (
-          <Pressable onPress={() => onPressImage && onPressImage(message.imageUri || meme?.url || '')}>
+        {/* Ảnh đính kèm (chỉ hiển thị khi người dùng tải ảnh lên, tắt hoàn toàn meme chó Shiba tự động) */}
+        {message.imageUri && (
+          <Pressable onPress={() => onPressImage && onPressImage(message.imageUri || '')}>
             <Image
-              source={{ uri: message.imageUri || meme?.url }}
+              source={{ uri: message.imageUri }}
               style={styles.messageImage}
               resizeMode="cover"
             />
           </Pressable>
         )}
 
-        {/* Nội dung tin nhắn text */}
+        {/* Nội dung bong bóng tin nhắn text */}
         {message.text ? (
           <Text style={[styles.messageText, isAI ? styles.textAI : styles.textUser]}>
             {message.text}
@@ -51,7 +48,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onPressImage })
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 4,
+    marginVertical: 3,
     paddingHorizontal: 12,
     width: '100%',
   },
@@ -65,7 +62,7 @@ const styles = StyleSheet.create({
     maxWidth: '82%',
     borderRadius: 18,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 9,
   },
   bubbleAI: {
     backgroundColor: '#242526',
@@ -105,4 +102,3 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.75)',
   },
 });
-
