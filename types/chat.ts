@@ -39,6 +39,8 @@ export interface MemeItem {
   id: string;
   title: string;
   url: string;
-  category: 'comfort' | 'funny' | 'shock' | 'relatable' | 'love';
+  category: 'comfort' | 'funny' | 'shock' | 'relatable' | 'love' | 'exhausted' | 'chill' | 'crying';
   description: string;
+  contextTrigger?: string;
+  emotionTag?: string;
 }

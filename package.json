@@ -1,6 +1,6 @@
 {
   "name": "soulmate-genz",
-  "displayName": "SoulMate GenZ",
+  "displayName": "Tomorrow",
   "version": "1.0.0",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
@@ -17,6 +17,7 @@
     "expo-constants": "~58.0.15",
     "expo-image-picker": "~58.0.10",
     "expo-linear-gradient": "~58.0.3",
+    "expo-splash-screen": "~58.0.14",
     "expo-status-bar": "~58.0.4",
     "lucide-react-native": "^0.475.0",
     "react": "19.3.0",

@@ -1,23 +1,26 @@
 {
   "expo": {
-    "name": "SoulMate GenZ",
+    "name": "Tomorrow",
     "slug": "soulmate-genz",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
       "backgroundColor": "#131314"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.soulmate.genz"
+      "bundleIdentifier": "com.tuannewbie.tomorrow"
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#131314"
       },
-      "package": "com.soulmate.genz"
+      "package": "com.tuannewbie.tomorrow"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -26,10 +29,19 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Cho phép SoulMate truy cập thư viện ảnh để phân tích ảnh meme và tâm sự cùng bạn."
+          "photosPermission": "Cho phép Tomorrow truy cập thư viện ảnh để cùng chia sẻ hình ảnh với bạn."
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#131314",
+          "image": "./assets/splash.png",
+          "imageWidth": 200,
+          "resizeMode": "contain"
+        }
+      ]
     ]
   }
 }
