@@ -57,6 +57,8 @@
 
 ### 2. Cài đặt dependencies
 ```bash
+git clone https://github.com/tuannewbie-cos/Tomorrow.git
+cd Tomorrow
 npm install
 ```
 
