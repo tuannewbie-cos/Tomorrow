@@ -71,3 +71,8 @@ EXPO_PUBLIC_GEMINI_API_KEY=your_gemini_api_key_here
 npx expo start
 ```
 Quét mã QR bằng Expo Go trên điện thoại để trải nghiệm trò chuyện mượt mà cùng Tomorrow!
+
+---
+
+## 📄 Bản Quyền & Giấy Phép
+Dự án được xây dựng với mục tiêu phi lợi nhuận nhằm hỗ trợ chăm sóc sức khỏe tinh thần cho cộng đồng giới trẻ.
