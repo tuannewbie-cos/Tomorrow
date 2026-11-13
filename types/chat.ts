@@ -8,7 +8,8 @@ export interface EmotionData {
 
 export interface ChatMessage {
   id: string;
-  sender: 'user' | 'ai';
+  role: 'user' | 'model';
+  sender?: 'user' | 'ai'; // Tương thích ngược
   text: string;
   timestamp: number;
   imageUri?: string;
@@ -30,9 +31,10 @@ export interface UserMemoryProfile {
 
 export interface ChatSession {
   id: string;
-  title: string;
+  title: string; // Tự động lấy từ tin nhắn đầu tiên của user (cắt ngắn 30 ký tự)
   updatedAt: number;
-  messageCount: number;
+  messages: ChatMessage[];
+  messageCount?: number;
 }
 
 export interface MemeItem {

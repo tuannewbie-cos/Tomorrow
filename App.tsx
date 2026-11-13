@@ -13,12 +13,11 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { ChatMessage, UserMemoryProfile, ChatSession } from './types/chat';
 import {
-  loadChatHistory,
-  saveChatHistory,
-  loadUserMemoryProfile,
-  saveUserMemoryProfile,
   loadSessions,
   saveSessions,
+  deleteSession,
+  loadUserMemoryProfile,
+  saveUserMemoryProfile,
   clearAllChatData,
   DEFAULT_USER_MEMORY,
 } from './storage/chatStorage';
@@ -30,39 +29,42 @@ import { ChatBubble } from './components/ChatBubble';
 import { ColdGreeting } from './components/ColdGreeting';
 import { FloatingInputBar } from './components/FloatingInputBar';
 import { SidebarDrawer } from './components/SidebarDrawer';
-import { Menu, Sparkles, Plus, Dot } from 'lucide-react-native';
+import { Menu, Sparkles, Plus, Dot, SquarePen } from 'lucide-react-native';
 
 export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [userMemory, setUserMemory] = useState<UserMemoryProfile>(DEFAULT_USER_MEMORY);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [activeSessionId, setActiveSessionId] = useState<string>('session-main');
+  const [userMemory, setUserMemory] = useState<UserMemoryProfile>(DEFAULT_USER_MEMORY);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isReady, setIsReady] = useState<boolean>(false);
-  const [isDrawerOpen, setIsDrawerOpen] = useState<boolean>(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
 
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
 
-  // 1. KHÔI PHỤC NGỮ CẢNH TỨC THÌ KHI MỞ APP (AsyncStorage: CHAT_HISTORY_V1 & USER_MEMORY_PROFILE_V1)
+  // 1. MỖI LẦN MỞ LẠI APP (COLD START / KILL APP):
+  // Màn hình chính LUÔN LUÔN là một cuộc trò chuyện mới hoàn toàn trống
+  // Toàn bộ các đoạn chat từ những lần trước đã lưu trong CHAT_SESSIONS_V2
   useEffect(() => {
     async function rehydrateContext() {
       try {
-        console.log('[Bootstrap] Đang nạp dữ liệu từ AsyncStorage...');
-        const [savedHistory, savedMemory, savedSessions] = await Promise.all([
-          loadChatHistory(),
-          loadUserMemoryProfile(),
+        console.log('[Bootstrap] Đang nạp danh sách phiên trò chuyện từ CHAT_SESSIONS_V2...');
+        const [savedSessions, savedMemory] = await Promise.all([
           loadSessions(),
+          loadUserMemoryProfile(),
         ]);
 
-        if (savedHistory && savedHistory.length > 0) {
-          setMessages(savedHistory);
+        if (savedSessions && savedSessions.length > 0) {
+          setSessions(savedSessions);
         }
         if (savedMemory) {
           setUserMemory(savedMemory);
         }
-        if (savedSessions && savedSessions.length > 0) {
-          setSessions(savedSessions);
-        }
+
+        // Quy tắc trải nghiệm giống Google Gemini:
+        // Luôn mở ra màn hình trống để bắt đầu phiên mới
+        setMessages([]);
+        setCurrentSessionId(null);
       } catch (err) {
         console.error('[Bootstrap] Lỗi khi nạp dữ liệu:', err);
       } finally {
@@ -84,10 +86,11 @@ export default function App() {
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  // Xử lý gửi tin nhắn mới
+  // 2. XỬ LÝ GỬI TIN NHẮN MỚI
   const handleSendMessage = async (text: string, imageBase64?: string, imageUri?: string) => {
     const userMsg: ChatMessage = {
       id: `usr-${Date.now()}`,
+      role: 'user',
       sender: 'user',
       text,
       timestamp: Date.now(),
@@ -95,21 +98,61 @@ export default function App() {
       imageBase64,
     };
 
-    // 1. Cập nhật state UI ngay lập tức
+    let activeId = currentSessionId;
+    let nextSessions = [...sessions];
     const updatedMessages = [...messages, userMsg];
+
+    // Nếu đang ở màn hình trống (currentSessionId === null):
+    // Tự động khởi tạo một session mới, lấy tin nhắn đầu tiên (cắt 30 ký tự) làm tiêu đề
+    if (!activeId) {
+      activeId = `session-${Date.now()}`;
+      setCurrentSessionId(activeId);
+
+      const rawTitle = text.trim() || (imageUri ? 'Hình ảnh gửi kèm' : 'Tâm sự mới');
+      const sessionTitle = rawTitle.length > 30 ? `${rawTitle.slice(0, 30)}...` : rawTitle;
+
+      const newSession: ChatSession = {
+        id: activeId,
+        title: sessionTitle,
+        updatedAt: Date.now(),
+        messages: updatedMessages,
+      };
+
+      nextSessions = [newSession, ...sessions];
+      setSessions(nextSessions);
+    } else {
+      // Cập nhật session hiện tại và đưa lên đầu danh sách
+      const existing = sessions.find((s) => s.id === activeId);
+      const remaining = sessions.filter((s) => s.id !== activeId);
+      const updatedSession: ChatSession = {
+        id: activeId,
+        title: existing?.title || (text.trim().slice(0, 30) + '...'),
+        updatedAt: Date.now(),
+        messages: updatedMessages,
+      };
+      nextSessions = [updatedSession, ...remaining];
+      setSessions(nextSessions);
+    }
+
+    // Cập nhật UI ngay lập tức
     setMessages(updatedMessages);
     setIsLoading(true);
 
-    // 2. Lưu ngay vào AsyncStorage để đảm bảo không mất tin nhắn khi kill app
-    await saveChatHistory(updatedMessages);
+    // Đồng bộ session vào AsyncStorage (CHAT_SESSIONS_V2)
+    await saveSessions(nextSessions);
 
     try {
-      // 3. Gửi sang AI Service với Model Fallback Chain 3 tầng
+      // Tìm 3 tin nhắn cuối của phiên trước đó (nếu đây là phiên vừa tạo)
+      const previousSession = sessions.find((s) => s.id !== activeId);
+      const previousSessionMessages = previousSession?.messages?.slice(-3);
+
+      // Gửi sang AI Service với Model Fallback Chain và Trí nhớ xuyên suốt
       const aiResponse = await sendMessageToTomorrow(
         text,
         userMemory,
         updatedMessages,
-        imageBase64
+        imageBase64,
+        previousSessionMessages
       );
 
       const replies =
@@ -119,11 +162,12 @@ export default function App() {
 
       let currentHistory = [...updatedMessages];
 
-      // Hiệu ứng Multi-bubble: Duyệt qua từng phần tử và hiển thị lần lượt từng bong bóng chat với độ trễ 350ms
+      // Hiệu ứng Multi-bubble: Hiển thị lần lượt từng bong bóng chat với độ trễ 350ms
       for (let i = 0; i < replies.length; i++) {
         const replyText = replies[i];
         const aiMsg: ChatMessage = {
           id: `ai-${Date.now()}-${i}`,
+          role: 'model',
           sender: 'ai',
           text: replyText,
           timestamp: Date.now(),
@@ -131,18 +175,29 @@ export default function App() {
 
         currentHistory = [...currentHistory, aiMsg];
         setMessages(currentHistory);
-        await saveChatHistory(currentHistory);
+
+        // Cập nhật lại session trong storage với messages mới
+        const currentSessionIndex = nextSessions.findIndex((s) => s.id === activeId);
+        if (currentSessionIndex !== -1) {
+          nextSessions[currentSessionIndex] = {
+            ...nextSessions[currentSessionIndex],
+            updatedAt: Date.now(),
+            messages: currentHistory,
+          };
+          setSessions([...nextSessions]);
+          await saveSessions(nextSessions);
+        }
 
         setTimeout(() => {
           flatListRef.current?.scrollToEnd({ animated: true });
         }, 50);
 
         if (i < replies.length - 1) {
-          await sleep(350); // Độ trễ chính xác 350ms giữa các câu
+          await sleep(350);
         }
       }
 
-      // Cập nhật ngầm User Memory Profile nếu có ghi chú mới để lưu AsyncStorage
+      // Cập nhật ngầm User Memory Profile nếu có thông tin mới
       if (aiResponse.memoryUpdate) {
         const newMemory = {
           ...userMemory,
@@ -159,37 +214,38 @@ export default function App() {
     }
   };
 
-  // Tạo phiên trò chuyện mới
-  const handleCreateNewSession = async () => {
-    const newSessionId = `session-${Date.now()}`;
-    const newSession: ChatSession = {
-      id: newSessionId,
-      title: `Tâm sự mới ${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`,
-      updatedAt: Date.now(),
-      messageCount: 0,
-    };
-
-    const updatedSessions = [newSession, ...sessions];
-    setSessions(updatedSessions);
-    setActiveSessionId(newSessionId);
+  // 3. TẠO CUỘC TRÒ CHUYỆN MỚI (+ Cuộc trò chuyện mới)
+  const handleCreateNewSession = () => {
+    setCurrentSessionId(null);
     setMessages([]);
-    await saveSessions(updatedSessions);
-    await saveChatHistory([]);
   };
 
-  // Xóa toàn bộ lịch sử & Reset
+  // 4. CHỌN 1 PHIÊN TRÒ CHUYỆN CŨ TỪ SIDEBAR
+  const handleSelectSession = (sessionId: string) => {
+    const selected = sessions.find((s) => s.id === sessionId);
+    if (selected) {
+      setCurrentSessionId(selected.id);
+      setMessages(selected.messages || []);
+    }
+  };
+
+  // 5. XÓA 1 PHIÊN TRÒ CHUYỆN
+  const handleDeleteSession = async (sessionId: string) => {
+    const updated = await deleteSession(sessionId);
+    setSessions(updated);
+    if (currentSessionId === sessionId) {
+      setCurrentSessionId(null);
+      setMessages([]);
+    }
+  };
+
+  // 6. XÓA TOÀN BỘ LỊCH SỬ & RESET
   const handleClearAll = async () => {
     await clearAllChatData();
+    setSessions([]);
+    setCurrentSessionId(null);
     setMessages([]);
     setUserMemory(DEFAULT_USER_MEMORY);
-    setSessions([
-      {
-        id: 'session-main',
-        title: 'Tâm sự đêm muộn 🌙',
-        updatedAt: Date.now(),
-        messageCount: 0,
-      },
-    ]);
   };
 
   // Màn hình khởi động nhanh chống nháy trắng (Dark Splash)
@@ -213,15 +269,18 @@ export default function App() {
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <StatusBar style="light" />
 
-        {/* 1. Header Bar chuẩn Messenger: Hiển thị "Tomorrow", xóa dòng "Đang nhớ: ..." */}
+        {/* 1. Header Bar chuẩn phong cách Gemini Mobile */}
         <View style={styles.header}>
+          {/* Nút ☰ bên trái mở Sidebar */}
           <Pressable
             style={({ pressed }) => [styles.headerBtn, pressed && styles.btnPressed]}
-            onPress={() => setIsDrawerOpen(true)}
+            onPress={() => setIsSidebarOpen(true)}
+            hitSlop={8}
           >
             <Menu size={22} color="#D1D5DB" />
           </Pressable>
 
+          {/* Tiêu đề "Tomorrow" ở giữa */}
           <View style={styles.headerCenter}>
             <View style={styles.titleRow}>
               <Text style={styles.headerTitle}>Tomorrow</Text>
@@ -232,15 +291,17 @@ export default function App() {
             </View>
           </View>
 
+          {/* Nút Cuộc trò chuyện mới bên phải */}
           <Pressable
             style={({ pressed }) => [styles.headerBtn, pressed && styles.btnPressed]}
             onPress={handleCreateNewSession}
+            hitSlop={8}
           >
-            <Plus size={22} color="#D1D5DB" />
+            <SquarePen size={20} color="#D1D5DB" />
           </Pressable>
         </View>
 
-        {/* 2. Thân Màn Hình: Cold Greeting hoặc Tin Nhắn Chat */}
+        {/* 2. Thân Màn Hình: Màn hình chào ColdGreeting (khi trống) hoặc Bong bóng Chat */}
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardContainer}
@@ -283,14 +344,15 @@ export default function App() {
           />
         </KeyboardAvoidingView>
 
-        {/* Sidebar Drawer */}
+        {/* 4. Thanh bên Lịch sử (Sidebar / Drawer phong cách Gemini) */}
         <SidebarDrawer
-          visible={isDrawerOpen}
-          onClose={() => setIsDrawerOpen(false)}
+          visible={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
           sessions={sessions}
-          activeSessionId={activeSessionId}
-          onSelectSession={(id) => setActiveSessionId(id)}
+          activeSessionId={currentSessionId}
+          onSelectSession={handleSelectSession}
           onCreateNewSession={handleCreateNewSession}
+          onDeleteSession={handleDeleteSession}
           onClearAll={handleClearAll}
           userMemory={userMemory}
         />

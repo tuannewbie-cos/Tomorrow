@@ -8,7 +8,7 @@ interface ChatBubbleProps {
 }
 
 export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onPressImage }) => {
-  const isAI = message.sender === 'ai';
+  const isAI = message.role === 'model' || message.sender === 'ai';
 
   const formatTime = (ts: number) => {
     const d = new Date(ts);

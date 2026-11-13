@@ -137,24 +137,41 @@ export function getEndpointsForModel(model: string, apiKey: string): string[] {
 
 /**
  * Ghép SYSTEM_INSTRUCTION với bộ nhớ ngầm và lịch sử tin nhắn gần nhất
+ * Kèm 3 tin nhắn cuối của phiên trước đó nếu cuộc trò chuyện hiện tại là phiên mới
  */
-function buildSystemPrompt(userMemory: UserMemoryProfile, recentChats: ChatMessage[]): string {
+function buildSystemPrompt(
+  userMemory: UserMemoryProfile,
+  recentChats: ChatMessage[],
+  previousSessionMessages?: ChatMessage[]
+): string {
   const recentContext = recentChats
     .slice(-6)
-    .map((m) => `${m.sender === 'user' ? 'User' : 'Tomorrow'}: ${m.text}`)
+    .map((m) => `${(m.role === 'user' || m.sender === 'user') ? 'User' : 'Tomorrow'}: ${m.text}`)
     .join('\n');
 
   let prompt = SYSTEM_INSTRUCTION;
 
-  if (userMemory.currentProblem || userMemory.summary || userMemory.userName) {
-    prompt += `\n\n[HỒ SƠ BỘ NHỚ USER TỪ ASYNCSTORAGE]:
+  // Luôn nạp hồ sơ bộ nhớ dài hạn từ USER_MEMORY_PROFILE_V1
+  if (userMemory.currentProblem || userMemory.summary || userMemory.userName || userMemory.nickname) {
+    prompt += `\n\n[HỒ SƠ BỘ NHỚ USER TỪ ASYNCSTORAGE (USER_MEMORY_PROFILE_V1)]:
 - Tên/Xưng hô: ${userMemory.userName || userMemory.nickname || 'bạn'}
-- Vấn đề gần nhất: ${userMemory.currentProblem || 'Chưa có'}
-- Ghi nhớ: ${userMemory.summary || 'Chưa có'}`;
+- Biệt danh: ${userMemory.nickname || 'bro'}
+- Vấn đề theo dõi: ${userMemory.currentProblem || 'Chưa có'}
+- Khí chất & Thói quen: ${userMemory.moodTrend || 'Chưa có'}
+- Ghi nhớ dài hạn: ${userMemory.summary || 'Chưa có'}`;
+  }
+
+  // Nếu là phiên mới hoặc tin nhắn còn ít, đính kèm 3 tin nhắn cuối của phiên trước đó
+  if (recentChats.length <= 2 && previousSessionMessages && previousSessionMessages.length > 0) {
+    const prevContext = previousSessionMessages
+      .slice(-3)
+      .map((m) => `${(m.role === 'user' || m.sender === 'user') ? 'User' : 'Tomorrow'}: ${m.text}`)
+      .join('\n');
+    prompt += `\n\n[BỐI CẢNH 3 TIN NHẮN CUỐI CỦA PHIÊN GẦN NHẤT]:\n${prevContext}\n(Lưu ý: Bạn và người dùng đã nói chuyện này ở phiên trước, hãy nhớ ngữ cảnh như một người bạn thật sự)`;
   }
 
   if (recentContext) {
-    prompt += `\n\n[LỊCH SỬ TIN NHẮN GẦN NHẤT]:\n${recentContext}`;
+    prompt += `\n\n[LỊCH SỬ TIN NHẮN PHIÊN HIỆN TẠI]:\n${recentContext}`;
   }
 
   return prompt;
@@ -424,11 +441,12 @@ export async function sendMessageToTomorrow(
   userText: string,
   userMemory: UserMemoryProfile,
   recentChats: ChatMessage[],
-  imageBase64?: string
+  imageBase64?: string,
+  previousSessionMessages?: ChatMessage[]
 ): Promise<AIResponsePayload> {
   const userStyle = extractUserStyleLocal(userText);
   const userMessageWithHint = `${userText}\n\n${userStyle.styleHint}`;
-  const systemPrompt = buildSystemPrompt(userMemory, recentChats);
+  const systemPrompt = buildSystemPrompt(userMemory, recentChats, previousSessionMessages);
 
   // 1. Thử qua danh sách API Key với Model Fallback Chain
   for (let keyIdx = 0; keyIdx < ALL_GEMINI_KEYS.length; keyIdx++) {
