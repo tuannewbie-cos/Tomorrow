@@ -29,6 +29,7 @@ import { ChatBubble } from './components/ChatBubble';
 import { ColdGreeting } from './components/ColdGreeting';
 import { FloatingInputBar } from './components/FloatingInputBar';
 import { SidebarDrawer } from './components/SidebarDrawer';
+import { TypingIndicator } from './components/TypingIndicator';
 import { Menu, Sparkles, Plus, Dot, SquarePen } from 'lucide-react-native';
 
 export default function App() {
@@ -37,6 +38,7 @@ export default function App() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [userMemory, setUserMemory] = useState<UserMemoryProfile>(DEFAULT_USER_MEMORY);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isTomorrowTyping, setIsTomorrowTyping] = useState<boolean>(false);
   const [isReady, setIsReady] = useState<boolean>(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(false);
 
@@ -75,14 +77,14 @@ export default function App() {
     rehydrateContext();
   }, []);
 
-  // Tự động cuộn xuống cuối khi có tin nhắn mới
+  // Tự động cuộn xuống cuối khi có tin nhắn mới hoặc Tomorrow đang gõ phím
   useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
       }, 150);
     }
-  }, [messages.length, isLoading]);
+  }, [messages.length, isTomorrowTyping]);
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -134,12 +136,25 @@ export default function App() {
       setSessions(nextSessions);
     }
 
-    // Cập nhật UI ngay lập tức
+    // Giai đoạn 1 (User vừa gửi tin nhắn):
+    // Hiển thị ngay tin nhắn của user lên màn hình
     setMessages(updatedMessages);
     setIsLoading(true);
 
     // Đồng bộ session vào AsyncStorage (CHAT_SESSIONS_V2)
     await saveSessions(nextSessions);
+
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 50);
+
+    // Đợi khoảng nghỉ tự nhiên 350ms (giống thời gian người thật nhìn thấy tin nhắn),
+    // sau đó bật setIsTomorrowTyping(true) để hiện bong bóng 3 chấm nảy và cuộn xuống đáy
+    await sleep(350);
+    setIsTomorrowTyping(true);
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 50);
 
     try {
       // Tìm 3 tin nhắn cuối của phiên trước đó (nếu đây là phiên vừa tạo)
@@ -162,11 +177,25 @@ export default function App() {
 
       let currentHistory = [...updatedMessages];
 
-      // Hiệu ứng Multi-bubble: Hiển thị lần lượt từng bong bóng chat với độ trễ 350ms
-      for (let i = 0; i < replies.length; i++) {
-        const replyText = replies[i];
+      // Giai đoạn 2 (Khi API trả về mảng replies: string[]):
+      // Duyệt tuần tự từng câu replyText trong mảng replies bằng vòng lặp for...of bất đồng bộ
+      for (const [index, replyText] of replies.entries()) {
+        // Tính thời gian gõ giả lập theo độ dài câu
+        const typingDuration = Math.min(Math.max(replyText.length * 45, 650), 2200);
+
+        // Đảm bảo setIsTomorrowTyping(true) đang bật trong suốt khoảng typingDuration này
+        setIsTomorrowTyping(true);
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 50);
+
+        await sleep(typingDuration);
+
+        // Hết typingDuration: Tắt setIsTomorrowTyping(false), đẩy replyText đó vào mảng messages
+        setIsTomorrowTyping(false);
+
         const aiMsg: ChatMessage = {
-          id: `ai-${Date.now()}-${i}`,
+          id: `ai-${Date.now()}-${index}`,
           role: 'model',
           sender: 'ai',
           text: replyText,
@@ -174,9 +203,9 @@ export default function App() {
         };
 
         currentHistory = [...currentHistory, aiMsg];
-        setMessages(currentHistory);
+        setMessages([...currentHistory]);
 
-        // Cập nhật lại session trong storage với messages mới
+        // Cập nhật lại session trong storage với messages mới (CHAT_SESSIONS_V2)
         const currentSessionIndex = nextSessions.findIndex((s) => s.id === activeId);
         if (currentSessionIndex !== -1) {
           nextSessions[currentSessionIndex] = {
@@ -192,8 +221,14 @@ export default function App() {
           flatListRef.current?.scrollToEnd({ animated: true });
         }, 50);
 
-        if (i < replies.length - 1) {
-          await sleep(350);
+        // Nếu vẫn còn câu tiếp theo trong mảng replies:
+        // Nghỉ 300ms (nhịp ngắt ngón tay sau khi bấm Enter của người thật), rồi bật lại setIsTomorrowTyping(true)
+        if (index < replies.length - 1) {
+          await sleep(300);
+          setIsTomorrowTyping(true);
+          setTimeout(() => {
+            flatListRef.current?.scrollToEnd({ animated: true });
+          }, 50);
         }
       }
 
@@ -210,6 +245,7 @@ export default function App() {
     } catch (error) {
       console.error('[App] Lỗi trò chuyện:', error);
     } finally {
+      setIsTomorrowTyping(false);
       setIsLoading(false);
     }
   };
@@ -326,14 +362,7 @@ export default function App() {
               )}
               contentContainerStyle={styles.chatListContent}
               showsVerticalScrollIndicator={false}
-              ListFooterComponent={
-                isLoading ? (
-                  <View style={styles.typingIndicator}>
-                    <ActivityIndicator size="small" color="#0084FF" />
-                    <Text style={styles.typingText}>Tomorrow đang nhắn...</Text>
-                  </View>
-                ) : undefined
-              }
+              ListFooterComponent={<TypingIndicator visible={isTomorrowTyping} />}
             />
           )}
 
@@ -436,17 +465,6 @@ const styles = StyleSheet.create({
   chatListContent: {
     paddingVertical: 16,
     paddingHorizontal: 8,
-  },
-  typingIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  typingText: {
-    color: '#0084FF',
-    fontSize: 12,
   },
   btnPressed: {
     opacity: 0.7,
