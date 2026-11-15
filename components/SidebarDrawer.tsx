@@ -146,17 +146,27 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
       </View>
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Nút Tạo Phiên Mới (+ Cuộc trò chuyện mới) */}
+        {/* Nút Tạo Phiên Mới (Cuộc trò chuyện mới chuẩn Desktop macOS) */}
         <Pressable
           style={({ pressed }) => [
             styles.newChatBtn,
             {
-              backgroundColor: theme.btnBg,
-              borderColor: theme.bubbleUser,
+              backgroundColor: theme.mode === 'dark' ? 'rgba(30, 34, 45, 0.85)' : '#F1F5F9',
+              borderColor: isNewChatHovered
+                ? (theme.mode === 'dark' ? '#60A5FA' : '#3B82F6')
+                : (theme.mode === 'dark' ? 'rgba(96, 165, 250, 0.35)' : 'rgba(37, 99, 235, 0.25)'),
             },
-            isNewChatHovered && { backgroundColor: theme.btnHover },
+            isNewChatHovered && {
+              backgroundColor: theme.mode === 'dark' ? 'rgba(37, 99, 235, 0.16)' : 'rgba(37, 99, 235, 0.08)',
+              shadowColor: '#3B82F6',
+              shadowOpacity: 0.28,
+              shadowRadius: 10,
+            },
             pressed && styles.btnPressed,
-            Platform.OS === 'web' && { cursor: 'pointer' as any },
+            Platform.OS === 'web' && ({
+              cursor: 'pointer',
+              transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+            } as any),
           ]}
           onPress={() => {
             onCreateNewSession();
@@ -165,8 +175,15 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           onHoverIn={() => setIsNewChatHovered(true)}
           onHoverOut={() => setIsNewChatHovered(false)}
         >
-          <Plus size={18} color={theme.textPrimary} />
-          <Text style={[styles.newChatText, { color: theme.textPrimary }]}>+ Cuộc trò chuyện mới</Text>
+          <Plus size={18} color={isNewChatHovered ? '#60A5FA' : theme.textPrimary} />
+          <Text
+            style={[
+              styles.newChatText,
+              { color: isNewChatHovered ? (theme.mode === 'dark' ? '#93C5FD' : '#2563EB') : theme.textPrimary },
+            ]}
+          >
+            Cuộc trò chuyện mới
+          </Text>
         </Pressable>
 
         {/* Danh sách Gần đây (Recent Sessions) */}
@@ -361,19 +378,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderRadius: 24,
-    paddingVertical: 11,
-    gap: 8,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    gap: 10,
     marginBottom: 20,
     shadowColor: '#2563EB',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.08,
     shadowRadius: 6,
     elevation: 2,
   },
   newChatText: {
-    fontWeight: '700',
-    fontSize: 14,
+    fontWeight: '600',
+    fontSize: 13.5,
+    letterSpacing: -0.2,
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
+        : undefined,
   },
   sessionSection: {
     marginBottom: 24,

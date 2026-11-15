@@ -18,7 +18,88 @@ export const DEFAULT_USER_MEMORY: UserMemoryProfile = {
   interests: ['Lướt TikTok/Reels', 'Nghe nhạc Chill', 'Meme mèo'],
   lastActiveDate: new Date().toISOString(),
   summary: 'Người dùng cần không gian trò chuyện tâm sự nhẹ nhàng, không phán xét.',
+  currentProject: 'Dự án Tomorrow v3 & Nâng cấp Proto-Jarvis',
+  habits: ['Làm việc tập trung', 'Thức đêm khi có dự án gấp'],
+  recentMood: 'Tập trung và nhiệt huyết',
 };
+
+/**
+ * Danh sách các tiêu đề tạm thời / generic cần được thay thế tự động
+ */
+export const GENERIC_TITLES = [
+  'cuộc trò chuyện mới',
+  'cuộc trò chuyện trước đó',
+  'tâm sự mới',
+  'hình ảnh gửi kèm',
+  'hello',
+  'hi',
+  'yo',
+  'ê',
+  'alo',
+  'test',
+  'hú',
+  '',
+];
+
+/**
+ * Tự động dọn dẹp các phiên chat cũ đang bị đặt tên là "hello", "yo" hoặc tiêu đề generic:
+ * Đọc tin nhắn có ý nghĩa hoặc dài nhất của user trong phiên đó để tạo lại tiêu đề tóm tắt gọn gàng.
+ */
+export function cleanOldSessionsWithGenericTitles(sessions: ChatSession[]): {
+  cleanedSessions: ChatSession[];
+  changed: boolean;
+} {
+  let changed = false;
+
+  const cleanedSessions = sessions.map((session) => {
+    const rawTitle = (session.title || '').trim();
+    const titleLower = rawTitle.toLowerCase();
+
+    const isGeneric =
+      GENERIC_TITLES.includes(titleLower) ||
+      titleLower.length < 6 ||
+      /^(hello|hi|yo|ê|alo|hú|test|e)[!.? ]*$/i.test(titleLower);
+
+    if (!isGeneric) {
+      return session;
+    }
+
+    // Tìm tin nhắn của người dùng trong phiên
+    const userMessages = (session.messages || []).filter(
+      (m) => m.role === 'user' || m.sender === 'user'
+    );
+
+    // Tìm tin nhắn dài nhất hoặc có nội dung thực sự (không phải generic greeting)
+    let bestUserMsg = '';
+    for (const msg of userMessages) {
+      const text = (msg.text || '').trim();
+      const textLower = text.toLowerCase();
+      const isGreeting =
+        GENERIC_TITLES.includes(textLower) ||
+        /^(hello|hi|yo|ê|alo|hú|test|e)[!.? ]*$/i.test(textLower);
+      if (!isGreeting && text.length > bestUserMsg.length) {
+        bestUserMsg = text;
+      }
+    }
+
+    let newTitle = 'Cuộc trò chuyện mới';
+    if (bestUserMsg.length > 0) {
+      newTitle = bestUserMsg.length > 30 ? `${bestUserMsg.slice(0, 30)}...` : bestUserMsg;
+    }
+
+    if (newTitle !== session.title) {
+      changed = true;
+      return {
+        ...session,
+        title: newTitle,
+      };
+    }
+
+    return session;
+  });
+
+  return { cleanedSessions, changed };
+}
 
 /**
  * Hàm dọn sạch các ghi chú nhầm về đêm muộn / thức khuya nếu trước đó lỡ lưu
@@ -58,7 +139,12 @@ export async function loadSessions(): Promise<ChatSession[]> {
     if (raw) {
       const parsed: ChatSession[] = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return parsed.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+        const sorted = parsed.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+        const { cleanedSessions, changed } = cleanOldSessionsWithGenericTitles(sorted);
+        if (changed) {
+          await saveSessions(cleanedSessions);
+        }
+        return cleanedSessions;
       }
     }
 
@@ -68,8 +154,16 @@ export async function loadSessions(): Promise<ChatSession[]> {
       const legacyMsgs: any[] = JSON.parse(legacyHistoryRaw);
       if (Array.isArray(legacyMsgs) && legacyMsgs.length > 0) {
         const firstUserMsg = legacyMsgs.find((m) => m.role === 'user' || m.sender === 'user');
-        const titleText = firstUserMsg?.text?.trim() || 'Cuộc trò chuyện trước đó';
-        const title = titleText.length > 30 ? titleText.slice(0, 30) + '...' : titleText;
+        const textLower = (firstUserMsg?.text || '').trim().toLowerCase();
+        const isGreeting =
+          GENERIC_TITLES.includes(textLower) ||
+          /^(hello|hi|yo|ê|alo|hú|test|e)[!.? ]*$/i.test(textLower);
+
+        let title = 'Cuộc trò chuyện mới';
+        if (!isGreeting && firstUserMsg?.text?.trim()) {
+          const rawText = firstUserMsg.text.trim();
+          title = rawText.length > 30 ? rawText.slice(0, 30) + '...' : rawText;
+        }
 
         const migratedSession: ChatSession = {
           id: `session-migrated-${Date.now()}`,

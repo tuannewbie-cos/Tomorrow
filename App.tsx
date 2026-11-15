@@ -23,6 +23,7 @@ import {
   clearAllChatData,
   DEFAULT_USER_MEMORY,
   cleanNightNotesFromMemory,
+  GENERIC_TITLES,
 } from './storage/chatStorage';
 import {
   sendMessageToTomorrow,
@@ -147,8 +148,18 @@ export default function App() {
       activeId = `session-${Date.now()}`;
       setCurrentSessionId(activeId);
 
-      const rawTitle = text.trim() || (imageUri ? 'Hình ảnh gửi kèm' : 'Tâm sự mới');
-      const sessionTitle = rawTitle.length > 30 ? `${rawTitle.slice(0, 30)}...` : rawTitle;
+      const trimmedText = text.trim();
+      const lower = trimmedText.toLowerCase();
+      const isGreeting =
+        GENERIC_TITLES.includes(lower) ||
+        /^(hello|hi|yo|ê|e|alo|hú|hu|helo|test)[!.? ]*$/i.test(lower);
+
+      let sessionTitle = 'Cuộc trò chuyện mới';
+      if (!isGreeting && trimmedText.length > 0) {
+        sessionTitle = trimmedText.length > 30 ? `${trimmedText.slice(0, 30)}...` : trimmedText;
+      } else if (imageUri && !trimmedText) {
+        sessionTitle = 'Hình ảnh gửi kèm';
+      }
 
       const newSession: ChatSession = {
         id: activeId,
@@ -164,7 +175,7 @@ export default function App() {
       const remaining = sessions.filter((s) => s.id !== activeId);
       const updatedSession: ChatSession = {
         id: activeId,
-        title: existing?.title || (text.trim().slice(0, 30) + '...'),
+        title: existing?.title || 'Cuộc trò chuyện mới',
         updatedAt: Date.now(),
         messages: updatedMessages,
       };
@@ -199,6 +210,20 @@ export default function App() {
         previousSessionMessages
       );
 
+      // Cập nhật session_title thông minh từ AI phản hồi
+      const aiSessionTitle = (aiResponse.session_title || aiResponse.sessionTitle || '').trim();
+      const currentSess = nextSessions.find((s) => s.id === activeId);
+      const currentTitleLower = (currentSess?.title || '').trim().toLowerCase();
+      const isCurrentTitleGeneric =
+        GENERIC_TITLES.includes(currentTitleLower) ||
+        currentTitleLower.length < 6 ||
+        /^(hello|hi|yo|ê|alo|hú|test|cuộc trò chuyện)[!.? ]*$/i.test(currentTitleLower);
+
+      let updatedTitle = currentSess?.title || 'Cuộc trò chuyện mới';
+      if (aiSessionTitle && isCurrentTitleGeneric) {
+        updatedTitle = aiSessionTitle;
+      }
+
       const replies =
         aiResponse.replies && aiResponse.replies.length > 0
           ? aiResponse.replies
@@ -224,6 +249,7 @@ export default function App() {
           sender: 'ai',
           text: replyText,
           timestamp: Date.now(),
+          jarvisIntent: aiResponse.jarvis_intent,
         };
 
         currentHistory = [...currentHistory, aiMsg];
@@ -233,8 +259,10 @@ export default function App() {
         if (currentSessionIndex !== -1) {
           nextSessions[currentSessionIndex] = {
             ...nextSessions[currentSessionIndex],
+            title: updatedTitle,
             updatedAt: Date.now(),
             messages: currentHistory,
+            lastIntent: aiResponse.jarvis_intent,
           };
           setSessions([...nextSessions]);
           await saveSessions(nextSessions);
@@ -253,12 +281,18 @@ export default function App() {
         }
       }
 
-      if (aiResponse.memoryUpdate) {
+      if (aiResponse.memoryUpdate || aiResponse.memory_note) {
+        const memoryNote = aiResponse.memory_note || aiResponse.memoryNote;
+        const memoryUpdateObj = aiResponse.memoryUpdate || (memoryNote ? {
+          currentProblem: memoryNote,
+          summary: memoryNote,
+        } : {});
+
         const cleanedUpdate = cleanNightNotesFromMemory({
           ...userMemory,
-          ...aiResponse.memoryUpdate,
+          ...memoryUpdateObj,
         });
-        const newMemory = {
+        const newMemory: UserMemoryProfile = {
           ...cleanedUpdate,
           lastActiveDate: new Date().toISOString(),
         };

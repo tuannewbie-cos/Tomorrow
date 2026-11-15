@@ -17,6 +17,7 @@ export interface ChatMessage {
   emotion?: EmotionData;
   memeId?: string;
   suggestedReplies?: string[];
+  jarvisIntent?: string;
 }
 
 export interface UserMemoryProfile {
@@ -27,14 +28,19 @@ export interface UserMemoryProfile {
   lastActiveDate: string;
   summary: string;
   nickname: string;
+  // Mở cổng kiến trúc Proto-Jarvis Core
+  currentProject?: string; // Dự án đang làm
+  habits?: string[];       // Thói quen sinh hoạt
+  recentMood?: string;     // Tâm trạng gần đây
 }
 
 export interface ChatSession {
   id: string;
-  title: string; // Tự động lấy từ tin nhắn đầu tiên của user (cắt ngắn 30 ký tự)
+  title: string; // Tự động lấy từ tin nhắn đầu tiên hoặc do AI đặt súc tích 3-5 từ
   updatedAt: number;
   messages: ChatMessage[];
   messageCount?: number;
+  lastIntent?: string;
 }
 
 export interface MemeItem {
