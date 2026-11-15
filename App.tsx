@@ -43,6 +43,13 @@ import {
 } from './constants/theme';
 import { injectWebFonts } from './utils/webFont';
 
+// Kiểm tra câu chào ngắn xã giao hoặc quá ngắn để tránh lưu làm tiêu đề
+const isGreetingOrTooShort = (text: string) => {
+  const clean = (text || '').trim().toLowerCase();
+  const greetings = ['hi', 'hello', 'helo', 'hí', 'halo', 'yo', 'ê', 'alo', 'ơi', 'test', 'ok', 'ừ', 'hả'];
+  return greetings.includes(clean) || clean.length <= 6;
+};
+
 export default function App() {
   const { width } = useWindowDimensions();
   const isDesktopSplitView = width >= 900;
@@ -76,7 +83,33 @@ export default function App() {
         ]);
 
         if (savedSessions && savedSessions.length > 0) {
-          setSessions(savedSessions);
+          let hasUpdatedOldTitles = false;
+          const cleanedSessions = savedSessions.map((sess) => {
+            const rawTitle = (sess.title || '').trim();
+            if (isGreetingOrTooShort(rawTitle)) {
+              // Tìm trong session.messages tin nhắn đầu tiên của user mà !isGreetingOrTooShort(msg.text)
+              const firstMeaningfulMsg = (sess.messages || []).find(
+                (m) => (m.role === 'user' || m.sender === 'user') && !isGreetingOrTooShort(m.text || '')
+              );
+              let newTitle = 'Trò chuyện ngắn';
+              if (firstMeaningfulMsg && firstMeaningfulMsg.text?.trim()) {
+                const cleanMsg = firstMeaningfulMsg.text.trim();
+                newTitle = cleanMsg.length > 30 ? `${cleanMsg.slice(0, 30)}...` : cleanMsg;
+              }
+              if (newTitle !== sess.title) {
+                hasUpdatedOldTitles = true;
+                return { ...sess, title: newTitle };
+              }
+            }
+            return sess;
+          });
+
+          if (hasUpdatedOldTitles) {
+            setSessions(cleanedSessions);
+            await saveSessions(cleanedSessions);
+          } else {
+            setSessions(savedSessions);
+          }
         }
         if (savedMemory) {
           const cleaned = cleanNightNotesFromMemory(savedMemory);
@@ -149,13 +182,8 @@ export default function App() {
       setCurrentSessionId(activeId);
 
       const trimmedText = text.trim();
-      const lower = trimmedText.toLowerCase();
-      const isGreeting =
-        GENERIC_TITLES.includes(lower) ||
-        /^(hello|hi|yo|ê|e|alo|hú|hu|helo|test)[!.? ]*$/i.test(lower);
-
       let sessionTitle = 'Cuộc trò chuyện mới';
-      if (!isGreeting && trimmedText.length > 0) {
+      if (!isGreetingOrTooShort(trimmedText) && trimmedText.length > 0) {
         sessionTitle = trimmedText.length > 30 ? `${trimmedText.slice(0, 30)}...` : trimmedText;
       } else if (imageUri && !trimmedText) {
         sessionTitle = 'Hình ảnh gửi kèm';
@@ -210,18 +238,27 @@ export default function App() {
         previousSessionMessages
       );
 
-      // Cập nhật session_title thông minh từ AI phản hồi
+      // Bước B: Tự động cập nhật tiêu đề ngay khi AI trả lời xong
       const aiSessionTitle = (aiResponse.session_title || aiResponse.sessionTitle || '').trim();
       const currentSess = nextSessions.find((s) => s.id === activeId);
-      const currentTitleLower = (currentSess?.title || '').trim().toLowerCase();
-      const isCurrentTitleGeneric =
-        GENERIC_TITLES.includes(currentTitleLower) ||
-        currentTitleLower.length < 6 ||
-        /^(hello|hi|yo|ê|alo|hú|test|cuộc trò chuyện)[!.? ]*$/i.test(currentTitleLower);
+      const currentTitle = currentSess?.title || 'Cuộc trò chuyện mới';
 
-      let updatedTitle = currentSess?.title || 'Cuộc trò chuyện mới';
-      if (aiSessionTitle && isCurrentTitleGeneric) {
+      let updatedTitle = currentTitle;
+      if (
+        aiSessionTitle.length > 3 &&
+        (currentTitle === 'Cuộc trò chuyện mới' || isGreetingOrTooShort(currentTitle))
+      ) {
         updatedTitle = aiSessionTitle;
+        const currentSessionIndex = nextSessions.findIndex((s) => s.id === activeId);
+        if (currentSessionIndex !== -1) {
+          nextSessions[currentSessionIndex] = {
+            ...nextSessions[currentSessionIndex],
+            title: updatedTitle,
+            updatedAt: Date.now(),
+          };
+          setSessions([...nextSessions]);
+          await saveSessions(nextSessions);
+        }
       }
 
       const replies =

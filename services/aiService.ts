@@ -80,7 +80,7 @@ export const SYSTEM_INSTRUCTION = `Bạn là "Tomorrow" — trợ lý AI cá nh�
 4. ĐỊNH DẠNG ĐẦU RA JSON BẮT BUỘC:
 {
   "replies": ["bong bóng chat 1", "bong bóng chat 2 (tùy chọn, chỉ tách khi cần)"],
-  "session_title": "Tóm tắt chủ đề cuộc trò chuyện trong 3-5 từ (nếu user mới chào 'hello'/'yo' chưa rõ chủ đề thì để chuỗi rỗng '')",
+  "session_title": "Nếu tin nhắn của user đã có chủ đề cụ thể (không phải câu chào xã giao ngắn như 'hi', 'hello', 'helo', 'yo', 'ê', 'alo'), bắt buộc phải sinh session_title tóm tắt chủ đề đó trong 3 đến 5 từ tiếng Việt (VD: 'Gỡ rối bài tập OOP', 'Tâm sự chuyện tối muộn'). Nếu chỉ mới chào hỏi ngắn chưa rõ chủ đề thì bắt buộc để chuỗi rỗng ''",
   "memory_note": "Thông tin quan trọng mới về dự án, thói quen, sở thích hoặc tâm trạng của user để J.A.R.V.I.S. ghi nhớ dài hạn (hoặc để '')",
   "jarvis_intent": "chat | work_assist | emotional_support | system_command"
 }`;
@@ -469,12 +469,12 @@ function parseAIResponseJson(raw: string): AIResponsePayload | null {
       if (replies.length > 0) {
         const memoryNote = (parsed.memory_note || parsed.memoryNote || '').trim();
         const rawTitle = (parsed.session_title || parsed.sessionTitle || '').trim();
-        // Lọc bỏ nếu AI lỡ trả về câu chào dạng generic
+        // Lọc bỏ nếu AI lỡ trả về câu chào dạng generic hoặc quá ngắn
         const titleLower = rawTitle.toLowerCase();
-        const sessionTitle =
-          /^(hello|hi|yo|ê|alo|hú|test|cuộc trò chuyện mới)[!.? ]*$/i.test(titleLower)
-            ? ''
-            : rawTitle;
+        const isGreetingTitle =
+          /^(hi|hello|helo|hí|halo|yo|ê|alo|ơi|test|ok|ừ|hả|cuộc trò chuyện mới)[!.? ]*$/i.test(titleLower) ||
+          titleLower.length <= 3;
+        const sessionTitle = isGreetingTitle ? '' : rawTitle;
 
         const rawIntent = (parsed.jarvis_intent || parsed.jarvisIntent || 'chat').trim();
         const validIntents: JarvisIntent[] = ['chat', 'work_assist', 'emotional_support', 'system_command'];
@@ -706,6 +706,8 @@ export async function sendMessageToTomorrow(
 
 // Giữ lại alias để tương thích ngược tuyệt đối
 export const sendMessageToSoulMate = sendMessageToTomorrow;
+export const sendMessageToAI = sendMessageToTomorrow;
+export const getAIResponse = sendMessageToTomorrow;
 
 /**
  * Sinh câu chào mở app tinh tế, đồng bộ thời gian thực, chuẩn nhân cách Proto-Jarvis

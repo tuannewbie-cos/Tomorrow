@@ -24,6 +24,33 @@ export const DEFAULT_USER_MEMORY: UserMemoryProfile = {
 };
 
 /**
+ * Kiểm tra xem một chuỗi có phải câu chào ngắn xã giao hoặc quá ngắn không
+ */
+export const isGreetingOrTooShort = (text: string): boolean => {
+  const clean = (text || '').trim().toLowerCase();
+  const greetings = [
+    'hi',
+    'hello',
+    'helo',
+    'hí',
+    'halo',
+    'yo',
+    'ê',
+    'alo',
+    'ơi',
+    'test',
+    'ok',
+    'ừ',
+    'hả',
+    'cuộc trò chuyện mới',
+    'tâm sự mới',
+    'hình ảnh gửi kèm',
+    'trò chuyện ngắn',
+  ];
+  return greetings.includes(clean) || clean.length <= 6;
+};
+
+/**
  * Danh sách các tiêu đề tạm thời / generic cần được thay thế tự động
  */
 export const GENERIC_TITLES = [
@@ -31,7 +58,9 @@ export const GENERIC_TITLES = [
   'cuộc trò chuyện trước đó',
   'tâm sự mới',
   'hình ảnh gửi kèm',
+  'trò chuyện ngắn',
   'hello',
+  'helo',
   'hi',
   'yo',
   'ê',
@@ -42,8 +71,9 @@ export const GENERIC_TITLES = [
 ];
 
 /**
- * Tự động dọn dẹp các phiên chat cũ đang bị đặt tên là "hello", "yo" hoặc tiêu đề generic:
- * Đọc tin nhắn có ý nghĩa hoặc dài nhất của user trong phiên đó để tạo lại tiêu đề tóm tắt gọn gàng.
+ * Tự động dọn dẹp các phiên chat cũ đang bị đặt tên là "hello", "helo", "yo" hoặc tiêu đề generic:
+ * Tìm trong session.messages tin nhắn đầu tiên của user mà !isGreetingOrTooShort(msg.text) để lấy làm tiêu đề tóm tắt;
+ * nếu phiên đó chỉ toàn câu chào "hello" thì đổi tên thành "Trò chuyện ngắn".
  */
 export function cleanOldSessionsWithGenericTitles(sessions: ChatSession[]): {
   cleanedSessions: ChatSession[];
@@ -53,38 +83,20 @@ export function cleanOldSessionsWithGenericTitles(sessions: ChatSession[]): {
 
   const cleanedSessions = sessions.map((session) => {
     const rawTitle = (session.title || '').trim();
-    const titleLower = rawTitle.toLowerCase();
 
-    const isGeneric =
-      GENERIC_TITLES.includes(titleLower) ||
-      titleLower.length < 6 ||
-      /^(hello|hi|yo|ê|alo|hú|test|e)[!.? ]*$/i.test(titleLower);
-
-    if (!isGeneric) {
+    if (!isGreetingOrTooShort(rawTitle)) {
       return session;
     }
 
-    // Tìm tin nhắn của người dùng trong phiên
-    const userMessages = (session.messages || []).filter(
-      (m) => m.role === 'user' || m.sender === 'user'
+    // Tìm trong session.messages tin nhắn đầu tiên của user mà !isGreetingOrTooShort(msg.text)
+    const firstMeaningfulUserMsg = (session.messages || []).find(
+      (m) => (m.role === 'user' || m.sender === 'user') && !isGreetingOrTooShort(m.text || '')
     );
 
-    // Tìm tin nhắn dài nhất hoặc có nội dung thực sự (không phải generic greeting)
-    let bestUserMsg = '';
-    for (const msg of userMessages) {
-      const text = (msg.text || '').trim();
-      const textLower = text.toLowerCase();
-      const isGreeting =
-        GENERIC_TITLES.includes(textLower) ||
-        /^(hello|hi|yo|ê|alo|hú|test|e)[!.? ]*$/i.test(textLower);
-      if (!isGreeting && text.length > bestUserMsg.length) {
-        bestUserMsg = text;
-      }
-    }
-
-    let newTitle = 'Cuộc trò chuyện mới';
-    if (bestUserMsg.length > 0) {
-      newTitle = bestUserMsg.length > 30 ? `${bestUserMsg.slice(0, 30)}...` : bestUserMsg;
+    let newTitle = 'Trò chuyện ngắn';
+    if (firstMeaningfulUserMsg && firstMeaningfulUserMsg.text?.trim()) {
+      const cleanMsg = firstMeaningfulUserMsg.text.trim();
+      newTitle = cleanMsg.length > 30 ? `${cleanMsg.slice(0, 30)}...` : cleanMsg;
     }
 
     if (newTitle !== session.title) {
