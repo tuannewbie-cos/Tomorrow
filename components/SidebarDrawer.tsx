@@ -36,6 +36,16 @@ interface SidebarDrawerProps {
   theme?: ThemeColors;
 }
 
+export const formatSessionTitle = (rawTitle?: string): string => {
+  if (!rawTitle) return 'Cuộc trò chuyện mới';
+  const clean = rawTitle.trim().toLowerCase();
+  const banned = ['hello', 'helo', 'hi', 'hí', 'halo', 'yo', 'ê', 'alo', 'ơi', 'test', 'ok', 'ừ'];
+  if (banned.includes(clean) || clean.length <= 4) {
+    return 'Trò chuyện ngắn';
+  }
+  return rawTitle;
+};
+
 export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   visible,
   onClose,
@@ -89,7 +99,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   const handleConfirmDeleteSession = (session: ChatSession) => {
     if (Platform.OS === 'web') {
       const confirmed = window.confirm(
-        `Bạn có chắc muốn xóa cuộc trò chuyện "${session.title}" không?`
+        `Bạn có chắc muốn xóa cuộc trò chuyện "${formatSessionTitle(session.title)}" không?`
       );
       if (confirmed) {
         onDeleteSession(session.id);
@@ -99,7 +109,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
 
     Alert.alert(
       'Xóa cuộc trò chuyện?',
-      `Bạn có chắc muốn xóa cuộc trò chuyện "${session.title}" không?`,
+      `Bạn có chắc muốn xóa cuộc trò chuyện "${formatSessionTitle(session.title)}" không?`,
       [
         { text: 'Hủy', style: 'cancel' },
         {
@@ -245,7 +255,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
                       ]}
                       numberOfLines={1}
                     >
-                      {sess.title || 'Cuộc trò chuyện'}
+                      {formatSessionTitle(sess.title)}
                     </Text>
                   </Pressable>
 

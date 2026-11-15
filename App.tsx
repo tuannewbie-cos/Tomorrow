@@ -44,10 +44,10 @@ import {
 import { injectWebFonts } from './utils/webFont';
 
 // Kiểm tra câu chào ngắn xã giao hoặc quá ngắn để tránh lưu làm tiêu đề
-const isGreetingOrTooShort = (text: string) => {
+export const isGreetingOrTooShort = (text: string) => {
   const clean = (text || '').trim().toLowerCase();
   const greetings = ['hi', 'hello', 'helo', 'hí', 'halo', 'yo', 'ê', 'alo', 'ơi', 'test', 'ok', 'ừ', 'hả'];
-  return greetings.includes(clean) || clean.length <= 6;
+  return greetings.includes(clean) || clean.length < 8;
 };
 
 export default function App() {
@@ -183,7 +183,7 @@ export default function App() {
 
       const trimmedText = text.trim();
       let sessionTitle = 'Cuộc trò chuyện mới';
-      if (!isGreetingOrTooShort(trimmedText) && trimmedText.length > 0) {
+      if (!isGreetingOrTooShort(trimmedText) && trimmedText.length >= 8) {
         sessionTitle = trimmedText.length > 30 ? `${trimmedText.slice(0, 30)}...` : trimmedText;
       } else if (imageUri && !trimmedText) {
         sessionTitle = 'Hình ảnh gửi kèm';
@@ -246,6 +246,7 @@ export default function App() {
       let updatedTitle = currentTitle;
       if (
         aiSessionTitle.length > 3 &&
+        !isGreetingOrTooShort(aiSessionTitle) &&
         (currentTitle === 'Cuộc trò chuyện mới' || isGreetingOrTooShort(currentTitle))
       ) {
         updatedTitle = aiSessionTitle;
@@ -432,7 +433,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v3.2</Text>
               </View>
             </View>
           </View>

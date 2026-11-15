@@ -47,7 +47,7 @@ export const isGreetingOrTooShort = (text: string): boolean => {
     'hình ảnh gửi kèm',
     'trò chuyện ngắn',
   ];
-  return greetings.includes(clean) || clean.length <= 6;
+  return greetings.includes(clean) || clean.length < 8;
 };
 
 /**
