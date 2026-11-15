@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { UserMemoryProfile } from '../types/chat';
 import { Sparkles, Flame, Smile, Heart, Coffee } from 'lucide-react-native';
@@ -91,6 +91,7 @@ export const ColdGreeting: React.FC<ColdGreetingProps> = ({
                 style={({ pressed }) => [
                   styles.chip,
                   pressed && styles.chipPressed,
+                  Platform.OS === 'web' && { cursor: 'pointer' as any },
                 ]}
                 onPress={() => onSelectSuggestion(chip.label)}
               >

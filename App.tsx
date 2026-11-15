@@ -8,6 +8,7 @@ import {
   Platform,
   Pressable,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -30,9 +31,12 @@ import { ColdGreeting } from './components/ColdGreeting';
 import { FloatingInputBar } from './components/FloatingInputBar';
 import { SidebarDrawer } from './components/SidebarDrawer';
 import { TypingIndicator } from './components/TypingIndicator';
-import { Menu, Sparkles, Plus, Dot, SquarePen } from 'lucide-react-native';
+import { Menu, Sparkles, Dot, SquarePen } from 'lucide-react-native';
 
 export default function App() {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -305,72 +309,92 @@ export default function App() {
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <StatusBar style="light" />
 
-        {/* 1. Header Bar chuẩn phong cách Gemini Mobile */}
+        {/* 1. Header Bar chuẩn phong cách Gemini Mobile & MacBook */}
         <View style={styles.header}>
-          {/* Nút ☰ bên trái mở Sidebar */}
-          <Pressable
-            style={({ pressed }) => [styles.headerBtn, pressed && styles.btnPressed]}
-            onPress={() => setIsSidebarOpen(true)}
-            hitSlop={8}
-          >
-            <Menu size={22} color="#D1D5DB" />
-          </Pressable>
+          <View style={[styles.headerInner, isDesktop && styles.desktopHeaderInner]}>
+            {/* Nút ☰ bên trái mở Sidebar */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.headerBtn,
+                pressed && styles.btnPressed,
+                Platform.OS === 'web' && { cursor: 'pointer' as any },
+              ]}
+              onPress={() => setIsSidebarOpen(true)}
+              hitSlop={8}
+            >
+              <Menu size={22} color="#D1D5DB" />
+            </Pressable>
 
-          {/* Tiêu đề "Tomorrow" ở giữa */}
-          <View style={styles.headerCenter}>
-            <View style={styles.titleRow}>
-              <Text style={styles.headerTitle}>Tomorrow</Text>
-              <View style={styles.liveBadge}>
-                <Dot size={18} color="#10B981" />
-                <Text style={styles.liveText}>Online</Text>
+            {/* Tiêu đề "Tomorrow" ở giữa */}
+            <View style={styles.headerCenter}>
+              <View style={styles.titleRow}>
+                <Text style={styles.headerTitle}>Tomorrow</Text>
+                <View style={styles.liveBadge}>
+                  <Dot size={18} color="#10B981" />
+                  <Text style={styles.liveText}>Online</Text>
+                </View>
               </View>
             </View>
-          </View>
 
-          {/* Nút Cuộc trò chuyện mới bên phải */}
-          <Pressable
-            style={({ pressed }) => [styles.headerBtn, pressed && styles.btnPressed]}
-            onPress={handleCreateNewSession}
-            hitSlop={8}
-          >
-            <SquarePen size={20} color="#D1D5DB" />
-          </Pressable>
+            {/* Nút Cuộc trò chuyện mới bên phải */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.headerBtn,
+                pressed && styles.btnPressed,
+                Platform.OS === 'web' && { cursor: 'pointer' as any },
+              ]}
+              onPress={handleCreateNewSession}
+              hitSlop={8}
+            >
+              <SquarePen size={20} color="#D1D5DB" />
+            </Pressable>
+          </View>
         </View>
 
-        {/* 2. Thân Màn Hình: Màn hình chào ColdGreeting (khi trống) hoặc Bong bóng Chat */}
+        {/* 2. Thân Màn Hình: Tối ưu responsive MacBook căn giữa maxWidth 780 */}
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.keyboardContainer}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
         >
-          {messages.length === 0 ? (
-            <ColdGreeting
-              greetingText={greetingText}
-              userMemory={userMemory}
-              hasHistory={false}
-              onSelectSuggestion={(text) => handleSendMessage(text)}
-            />
-          ) : (
-            <FlatList
-              ref={flatListRef}
-              data={messages}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => (
-                <ChatBubble
-                  message={item}
-                />
-              )}
-              contentContainerStyle={styles.chatListContent}
-              showsVerticalScrollIndicator={false}
-              ListFooterComponent={<TypingIndicator visible={isTomorrowTyping} />}
-            />
-          )}
+          <View style={[styles.chatContainer, isDesktop && styles.desktopChatContainer]}>
+            {messages.length === 0 ? (
+              <ColdGreeting
+                greetingText={greetingText}
+                userMemory={userMemory}
+                hasHistory={false}
+                onSelectSuggestion={(text) => handleSendMessage(text)}
+              />
+            ) : (
+              <FlatList
+                ref={flatListRef}
+                data={messages}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <ChatBubble
+                    message={item}
+                    isDesktop={isDesktop}
+                  />
+                )}
+                style={styles.flatListStyle}
+                contentContainerStyle={[
+                  styles.chatListContent,
+                  isDesktop && styles.desktopChatListContent,
+                ]}
+                showsVerticalScrollIndicator={false}
+                ListFooterComponent={
+                  <TypingIndicator visible={isTomorrowTyping} isDesktop={isDesktop} />
+                }
+              />
+            )}
 
-          {/* 3. Floating Pill Input Bar */}
-          <FloatingInputBar
-            onSendMessage={handleSendMessage}
-            isLoading={isLoading}
-          />
+            {/* 3. Floating Pill Input Bar */}
+            <FloatingInputBar
+              onSendMessage={handleSendMessage}
+              isLoading={isLoading}
+              isTomorrowTyping={isTomorrowTyping}
+            />
+          </View>
         </KeyboardAvoidingView>
 
         {/* 4. Thanh bên Lịch sử (Sidebar / Drawer phong cách Gemini) */}
@@ -414,13 +438,22 @@ const styles = StyleSheet.create({
   },
   header: {
     height: 56,
+    borderBottomWidth: 1,
+    borderBottomColor: '#202124',
+    backgroundColor: '#131314',
+    justifyContent: 'center',
+  },
+  headerInner: {
+    height: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#202124',
-    backgroundColor: '#131314',
+    width: '100%',
+  },
+  desktopHeaderInner: {
+    maxWidth: 780,
+    alignSelf: 'center',
   },
   headerBtn: {
     width: 38,
@@ -448,7 +481,7 @@ const styles = StyleSheet.create({
   liveBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    backgroundColor: 'rgba(167, 243, 208, 0.15)',
     borderRadius: 10,
     paddingHorizontal: 6,
     paddingVertical: 1,
@@ -462,9 +495,27 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#131314',
   },
+  chatContainer: {
+    flex: 1,
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'column',
+  },
+  desktopChatContainer: {
+    maxWidth: 780,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  flatListStyle: {
+    flex: 1,
+    width: '100%',
+  },
   chatListContent: {
     paddingVertical: 16,
     paddingHorizontal: 8,
+  },
+  desktopChatListContent: {
+    paddingHorizontal: 4,
   },
   btnPressed: {
     opacity: 0.7,

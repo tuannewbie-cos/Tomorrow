@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   Pressable,
   ScrollView,
   Alert,
+  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { ChatSession, UserMemoryProfile } from '../types/chat';
 import {
@@ -43,8 +45,26 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   onClearAll,
   userMemory,
 }) => {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
+
+  const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
+  const [isNewChatHovered, setIsNewChatHovered] = useState<boolean>(false);
+  const [isClearHovered, setIsClearHovered] = useState<boolean>(false);
+
   // Xác nhận xóa toàn bộ
   const handleConfirmClearAll = () => {
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(
+        'Hành động này sẽ xóa vĩnh viễn tất cả các cuộc trò chuyện và thiết lập lại bộ nhớ tâm lý. Bạn có chắc không?'
+      );
+      if (confirmed) {
+        onClearAll();
+        onClose();
+      }
+      return;
+    }
+
     Alert.alert(
       'Xóa toàn bộ lịch sử?',
       'Hành động này sẽ xóa vĩnh viễn tất cả các cuộc trò chuyện và thiết lập lại bộ nhớ tâm lý. Bạn có chắc không?',
@@ -64,6 +84,16 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
 
   // Xác nhận xóa 1 phiên
   const handleConfirmDeleteSession = (session: ChatSession) => {
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(
+        `Bạn có chắc muốn xóa cuộc trò chuyện "${session.title}" không?`
+      );
+      if (confirmed) {
+        onDeleteSession(session.id);
+      }
+      return;
+    }
+
     Alert.alert(
       'Xóa cuộc trò chuyện?',
       `Bạn có chắc muốn xóa cuộc trò chuyện "${session.title}" không?`,
@@ -88,8 +118,13 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        {/* Khung nội dung Sidebar trái */}
-        <View style={styles.drawerContainer}>
+        {/* Khung nội dung Sidebar trái: trên Desktop cố định 280px */}
+        <View
+          style={[
+            styles.drawerContainer,
+            isDesktop && styles.desktopDrawerContainer,
+          ]}
+        >
           {/* Header */}
           <View style={styles.drawerHeader}>
             <View style={styles.brandRow}>
@@ -97,7 +132,11 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
               <Text style={styles.brandTitle}>Tomorrow</Text>
             </View>
             <Pressable
-              style={({ pressed }) => [styles.closeBtn, pressed && styles.btnPressed]}
+              style={({ pressed }) => [
+                styles.closeBtn,
+                pressed && styles.btnPressed,
+                Platform.OS === 'web' && { cursor: 'pointer' as any },
+              ]}
               onPress={onClose}
               hitSlop={8}
             >
@@ -108,11 +147,18 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
             {/* Nút Tạo Phiên Mới phong cách Gemini (+ Cuộc trò chuyện mới) */}
             <Pressable
-              style={({ pressed }) => [styles.newChatBtn, pressed && styles.btnPressed]}
+              style={({ pressed }) => [
+                styles.newChatBtn,
+                pressed && styles.btnPressed,
+                isNewChatHovered && styles.newChatBtnHovered,
+                Platform.OS === 'web' && { cursor: 'pointer' as any },
+              ]}
               onPress={() => {
                 onCreateNewSession();
                 onClose();
               }}
+              onHoverIn={() => setIsNewChatHovered(true)}
+              onHoverOut={() => setIsNewChatHovered(false)}
             >
               <Plus size={18} color="#FFFFFF" />
               <Text style={styles.newChatText}>+ Cuộc trò chuyện mới</Text>
@@ -132,18 +178,23 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
               ) : (
                 sessions.map((sess) => {
                   const isActive = sess.id === activeSessionId;
+                  const isHovered = hoveredSessionId === sess.id;
                   return (
                     <View
                       key={sess.id}
                       style={[
                         styles.sessionItemContainer,
                         isActive && styles.sessionItemContainerActive,
+                        isHovered && !isActive && styles.sessionItemContainerHovered,
                       ]}
+                      onPointerEnter={() => setHoveredSessionId(sess.id)}
+                      onPointerLeave={() => setHoveredSessionId(null)}
                     >
                       <Pressable
                         style={({ pressed }) => [
                           styles.sessionMainClickArea,
                           pressed && styles.btnPressed,
+                          Platform.OS === 'web' && { cursor: 'pointer' as any },
                         ]}
                         onPress={() => {
                           onSelectSession(sess.id);
@@ -170,6 +221,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
                         style={({ pressed }) => [
                           styles.sessionDeleteBtn,
                           pressed && styles.btnPressed,
+                          Platform.OS === 'web' && { cursor: 'pointer' as any },
                         ]}
                         onPress={() => handleConfirmDeleteSession(sess)}
                         hitSlop={8}
@@ -214,8 +266,15 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           {/* Footer nút xóa toàn bộ lịch sử */}
           <View style={styles.drawerFooter}>
             <Pressable
-              style={({ pressed }) => [styles.clearBtn, pressed && styles.btnPressed]}
+              style={({ pressed }) => [
+                styles.clearBtn,
+                pressed && styles.btnPressed,
+                isClearHovered && styles.clearBtnHovered,
+                Platform.OS === 'web' && { cursor: 'pointer' as any },
+              ]}
               onPress={handleConfirmClearAll}
+              onHoverIn={() => setIsClearHovered(true)}
+              onHoverOut={() => setIsClearHovered(false)}
             >
               <Trash2 size={16} color="#EF4444" />
               <Text style={styles.clearBtnText}>Xóa toàn bộ lịch sử & Reset</Text>
@@ -224,7 +283,10 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
         </View>
 
         {/* Vùng bấm ra ngoài để đóng sidebar */}
-        <Pressable style={styles.backdrop} onPress={onClose} />
+        <Pressable
+          style={[styles.backdrop, Platform.OS === 'web' && { cursor: 'pointer' as any }]}
+          onPress={onClose}
+        />
       </View>
     </Modal>
   );
@@ -249,6 +311,10 @@ const styles = StyleSheet.create({
     paddingTop: 48,
     display: 'flex',
     flexDirection: 'column',
+  },
+  desktopDrawerContainer: {
+    width: 280,
+    maxWidth: 280,
   },
   drawerHeader: {
     flexDirection: 'row',
@@ -295,6 +361,10 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
+  newChatBtnHovered: {
+    backgroundColor: '#26282B',
+    borderColor: '#60A5FA',
+  },
   newChatText: {
     color: '#F3F4F6',
     fontWeight: '700',
@@ -339,6 +409,10 @@ const styles = StyleSheet.create({
   sessionItemContainerActive: {
     backgroundColor: 'rgba(59, 130, 246, 0.12)',
     borderColor: '#3B82F6',
+  },
+  sessionItemContainerHovered: {
+    backgroundColor: '#242528',
+    borderColor: '#3A3B3E',
   },
   sessionMainClickArea: {
     flex: 1,
@@ -427,6 +501,9 @@ const styles = StyleSheet.create({
     gap: 6,
     borderWidth: 1,
     borderColor: 'rgba(239, 68, 68, 0.25)',
+  },
+  clearBtnHovered: {
+    backgroundColor: 'rgba(239, 68, 68, 0.22)',
   },
   clearBtnText: {
     color: '#EF4444',

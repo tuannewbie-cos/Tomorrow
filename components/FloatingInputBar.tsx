@@ -8,14 +8,17 @@ import {
   Image,
   Text,
   Alert,
+  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Image as ImageIcon, Send, X, Smile, Plus } from 'lucide-react-native';
+import { Image as ImageIcon, Send, X, Smile } from 'lucide-react-native';
 
 interface FloatingInputBarProps {
   onSendMessage: (text: string, imageBase64?: string, imageUri?: string) => void;
   isLoading: boolean;
   disabled?: boolean;
+  isTomorrowTyping?: boolean;
 }
 
 const QUICK_EMOJIS = ['😟', '😭', '💔', '🫠', '😂', '🥰', '✨', '☕'];
@@ -24,26 +27,32 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
   onSendMessage,
   isLoading,
   disabled,
+  isTomorrowTyping = false,
 }) => {
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 768;
+
   const [inputText, setInputText] = useState('');
   const [selectedImage, setSelectedImage] = useState<{ uri: string; base64?: string } | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
 
-  // Chọn ảnh từ thư viện thiết bị
+  // Chọn ảnh từ thư viện thiết bị (an toàn trên cả Mobile lẫn Web Desktop)
   const handlePickImage = async () => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Cần cấp quyền',
-          'Vui lòng cấp quyền truy cập thư viện ảnh để gửi hình ảnh cho Tomorrow.'
-        );
-        return;
+      if (Platform.OS !== 'web') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert(
+            'Cần cấp quyền',
+            'Vui lòng cấp quyền truy cập thư viện ảnh để gửi hình ảnh cho Tomorrow.'
+          );
+          return;
+        }
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
+        mediaTypes: ['images'],
+        allowsEditing: Platform.OS !== 'web',
         quality: 0.7,
         base64: true,
       });
@@ -64,7 +73,7 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
   const handleSend = () => {
     const trimmed = inputText.trim();
     if (!trimmed && !selectedImage) return;
-    if (isLoading) return;
+    if (isLoading || isTomorrowTyping) return;
 
     onSendMessage(trimmed, selectedImage?.base64, selectedImage?.uri);
     setInputText('');
@@ -72,19 +81,39 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
     setShowEmojiPicker(false);
   };
 
+  // Phím tắt macOS: Enter để gửi (ngăn xuống dòng), Shift + Enter để xuống dòng
+  const handleKeyPress = (e: any) => {
+    if (Platform.OS === 'web') {
+      const nativeEvent = e.nativeEvent;
+      if (nativeEvent?.key === 'Enter' && !nativeEvent?.shiftKey) {
+        if (typeof e.preventDefault === 'function') {
+          e.preventDefault();
+        }
+        const trimmed = inputText.trim();
+        if ((trimmed || selectedImage) && !isLoading && !isTomorrowTyping) {
+          handleSend();
+        }
+      }
+    }
+  };
+
   const handleAddEmoji = (emoji: string) => {
     setInputText((prev) => prev + emoji);
   };
 
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, isDesktop && styles.desktopWrapper]}>
       {/* Thanh Quick Emoji Popover */}
       {showEmojiPicker && (
         <View style={styles.emojiRow}>
           {QUICK_EMOJIS.map((emoji, idx) => (
             <Pressable
               key={idx}
-              style={({ pressed }) => [styles.emojiBtn, pressed && styles.emojiBtnPressed]}
+              style={({ pressed }) => [
+                styles.emojiBtn,
+                pressed && styles.emojiBtnPressed,
+                Platform.OS === 'web' && { cursor: 'pointer' as any },
+              ]}
               onPress={() => handleAddEmoji(emoji)}
             >
               <Text style={styles.emojiText}>{emoji}</Text>
@@ -98,7 +127,10 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
         <View style={styles.imagePreviewContainer}>
           <Image source={{ uri: selectedImage.uri }} style={styles.imagePreview} />
           <Pressable
-            style={styles.removeImageBtn}
+            style={[
+              styles.removeImageBtn,
+              Platform.OS === 'web' && { cursor: 'pointer' as any },
+            ]}
             onPress={() => setSelectedImage(null)}
           >
             <X size={14} color="#FFF" />
@@ -111,29 +143,41 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
       <View style={styles.pillContainer}>
         {/* Nút đính kèm ảnh */}
         <Pressable
-          style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+          style={({ pressed }) => [
+            styles.iconButton,
+            pressed && styles.iconButtonPressed,
+            Platform.OS === 'web' && { cursor: 'pointer' as any },
+          ]}
           onPress={handlePickImage}
-          disabled={isLoading}
+          disabled={isLoading || isTomorrowTyping}
         >
           <ImageIcon size={22} color={selectedImage ? '#0084FF' : '#9CA3AF'} />
         </Pressable>
 
         {/* Nút chọn nhanh Emoji */}
         <Pressable
-          style={({ pressed }) => [styles.iconButton, pressed && styles.iconButtonPressed]}
+          style={({ pressed }) => [
+            styles.iconButton,
+            pressed && styles.iconButtonPressed,
+            Platform.OS === 'web' && { cursor: 'pointer' as any },
+          ]}
           onPress={() => setShowEmojiPicker((prev) => !prev)}
-          disabled={isLoading}
+          disabled={isLoading || isTomorrowTyping}
         >
           <Smile size={22} color={showEmojiPicker ? '#0084FF' : '#9CA3AF'} />
         </Pressable>
 
-        {/* TextInput đa dòng */}
+        {/* TextInput đa dòng hỗ trợ phím tắt macOS & xóa viền outline xanh mặc định */}
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            Platform.OS === 'web' && ({ outlineStyle: 'none' } as any),
+          ]}
           placeholder="Nhắn cho Tomorrow..."
           placeholderTextColor="#6B7280"
           value={inputText}
           onChangeText={setInputText}
+          onKeyPress={handleKeyPress}
           multiline
           maxLength={1000}
           editable={!isLoading && !disabled}
@@ -143,13 +187,17 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
         <Pressable
           style={({ pressed }) => [
             styles.sendButton,
-            (inputText.trim().length > 0 || selectedImage) && styles.sendButtonActive,
+            (inputText.trim().length > 0 || selectedImage) &&
+              !isLoading &&
+              !isTomorrowTyping &&
+              styles.sendButtonActive,
             pressed && styles.sendButtonPressed,
+            Platform.OS === 'web' && { cursor: 'pointer' as any },
           ]}
           onPress={handleSend}
-          disabled={isLoading || (!inputText.trim() && !selectedImage)}
+          disabled={isLoading || isTomorrowTyping || (!inputText.trim() && !selectedImage)}
         >
-          {isLoading ? (
+          {isLoading || isTomorrowTyping ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <Send
@@ -170,6 +218,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingBottom: 10,
     backgroundColor: 'transparent',
+    width: '100%',
+  },
+  desktopWrapper: {
+    maxWidth: 780,
+    width: '100%',
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   emojiRow: {
     flexDirection: 'row',

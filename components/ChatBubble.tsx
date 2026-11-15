@@ -1,13 +1,16 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Image, Pressable, useWindowDimensions, Platform } from 'react-native';
 import { ChatMessage } from '../types/chat';
 
 interface ChatBubbleProps {
   message: ChatMessage;
   onPressImage?: (uri: string) => void;
+  isDesktop?: boolean;
 }
 
-export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onPressImage }) => {
+export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onPressImage, isDesktop: propIsDesktop }) => {
+  const { width } = useWindowDimensions();
+  const isDesktop = propIsDesktop ?? width >= 768;
   const isAI = message.role === 'model' || message.sender === 'ai';
 
   const formatTime = (ts: number) => {
@@ -18,10 +21,19 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({ message, onPressImage })
   return (
     <View style={[styles.container, isAI ? styles.containerAI : styles.containerUser]}>
       {/* Khung bong bóng chat phong cách Messenger */}
-      <View style={[styles.bubble, isAI ? styles.bubbleAI : styles.bubbleUser]}>
-        {/* Ảnh đính kèm (chỉ hiển thị khi người dùng tải ảnh lên, tắt hoàn toàn meme chó Shiba tự động) */}
+      <View
+        style={[
+          styles.bubble,
+          isAI ? styles.bubbleAI : styles.bubbleUser,
+          { maxWidth: isDesktop ? '72%' : '82%' },
+        ]}
+      >
+        {/* Ảnh đính kèm */}
         {message.imageUri && (
-          <Pressable onPress={() => onPressImage && onPressImage(message.imageUri || '')}>
+          <Pressable
+            style={Platform.OS === 'web' ? { cursor: 'pointer' as any } : undefined}
+            onPress={() => onPressImage && onPressImage(message.imageUri || '')}
+          >
             <Image
               source={{ uri: message.imageUri }}
               style={styles.messageImage}
@@ -59,7 +71,6 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   bubble: {
-    maxWidth: '82%',
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 9,

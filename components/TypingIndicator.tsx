@@ -3,9 +3,10 @@ import { View, StyleSheet, Animated } from 'react-native';
 
 interface TypingIndicatorProps {
   visible: boolean;
+  isDesktop?: boolean;
 }
 
-export const TypingIndicator: React.FC<TypingIndicatorProps> = ({ visible }) => {
+export const TypingIndicator: React.FC<TypingIndicatorProps> = ({ visible, isDesktop }) => {
   const [shouldRender, setShouldRender] = useState<boolean>(visible);
 
   const fadeAnim = useRef(new Animated.Value(visible ? 1 : 0)).current;
