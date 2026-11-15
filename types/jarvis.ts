@@ -9,6 +9,8 @@ import { UserMemoryProfile, ChatMessage } from './chat';
  */
 export type JarvisIntent = 'chat' | 'work_assist' | 'emotional_support' | 'system_command';
 
+export type ConversationState = 'ping' | 'active_chat' | 'deep_work' | 'soft_close' | 'hard_close';
+
 export interface JarvisAction {
   type: string;
   payload?: Record<string, any>;
@@ -19,6 +21,8 @@ export interface ProtoJarvisPayload {
   session_title?: string;
   memory_note?: string;
   jarvis_intent?: JarvisIntent;
+  conversation_state?: ConversationState | string;
+  should_update_title?: boolean;
   actions?: JarvisAction[];
 }
 

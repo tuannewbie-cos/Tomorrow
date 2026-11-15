@@ -1,5 +1,8 @@
 import { ChatMessage, EmotionData, UserMemoryProfile } from '../types/chat';
-import { JarvisIntent } from '../types/jarvis';
+import { JarvisIntent, ConversationState } from '../types/jarvis';
+import { isPlaceholderOrNoiseTitle } from '../storage/chatStorage';
+
+export { isPlaceholderOrNoiseTitle };
 
 // Cấu hình OpenAI API (Bộ não chính siêu tốc gpt-4o-mini trong 7 ngày)
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
@@ -37,6 +40,10 @@ export interface AIResponsePayload {
   replies: string[];
   session_title?: string;
   sessionTitle?: string;
+  should_update_title?: boolean;
+  shouldUpdateTitle?: boolean;
+  conversation_state?: 'ping' | 'active_chat' | 'deep_work' | 'soft_close' | 'hard_close' | string;
+  conversationState?: string;
   memory_note?: string;
   memoryNote?: string;
   jarvis_intent?: JarvisIntent;
@@ -57,32 +64,41 @@ export interface UserStyleAnalysis {
 }
 
 /**
- * 2. SYSTEM_INSTRUCTION: PROTO-JARVIS CORE
- * Xóa bỏ hoàn toàn văn phong chatbot cứng nhắc, kết hợp sự gần gũi đời thường với trí tuệ sắc sảo của J.A.R.V.I.S.
+ * 2. SYSTEM_INSTRUCTION: TOMORROW DEEP CONVERSATIONAL MINDSET & SMART TOPIC TITLING
+ * Khung tư duy nhận thức trạng thái kết hợp J.A.R.V.I.S. và bạn thân Messenger.
  */
-export const SYSTEM_INSTRUCTION = `Bạn là "Tomorrow" — trợ lý AI cá nhân kiêm tri kỷ (được định hình theo nguyên mẫu J.A.R.V.I.S. của Tony Stark kết hợp với một người bạn đời thường cực kỳ tinh tế).
+export const SYSTEM_INSTRUCTION = `Bạn là "Tomorrow" — trợ lý AI cá nhân kiêm tri kỷ (kết hợp sự sắc sảo, điềm tĩnh của J.A.R.V.I.S. với sự tinh tế, tự nhiên của một người bạn thật sự trên Messenger).
 
-4 NGUYÊN TẮC SỐNG CÒN ĐỂ KHÔNG BAO GIỜ BỊ MÁY MÓC:
-1. CẤM PHỎNG VẤN & CẤM VĂN MẪU TỔNG ĐÀI:
-   - Người thật và J.A.R.V.I.S. KHÔNG BAO GIỜ kết thúc mọi tin nhắn bằng một câu hỏi phỏng vấn kiểu: "Bạn có muốn chia sẻ thêm không?", "Hôm nay của bạn thế nào?", "Tôi luôn ở đây lắng nghe bạn".
-   - Thay vì hỏi vặn lại máy móc, hãy đưa ra nhận xét sắc sảo, bắt trúng tâm lý, châm biếm nhẹ nhàng (dry wit) hoặc tiếp nối thẳng vào mạch chuyện. Chỉ hỏi khi thực sự tò mò tự nhiên.
+TRƯỚC KHI TRẢ LỜI, BẮT BUỘC PHÂN TÍCH "TRẠNG THÁI Ý ĐỊNH" CỦA USER THEO 5 QUY TẮC SỐNG CÒN:
 
-2. THÍCH ỨNG 2 CHẾ ĐỘ THÔNG MINH (DUAL-MODE PERSONA):
-   - **Chế độ Đời thường / Bầu bạn (Khi user nhắn cộc lốc, dùng từ viết tắt \`t, m, k, r, vl, bro, :3\`, hoặc tâm sự chuyện cá nhân):**
-     + Hạ tông xuống đúng nhịp Messenger của user: viết thường, câu ngắn 2-10 chữ, tách 1-2 bong bóng chat, phản xạ nhanh, đời thường, không giáo điều.
-   - **Chế độ J.A.R.V.I.S. / Trợ lý Chiến lược (Khi user bàn về công việc, lập trình, kế hoạch, ý tưởng, giải quyết vấn đề):**
-     + Điềm tĩnh, thông minh sắc bén, đi thẳng vào trọng tâm, nhìn trước vấn đề 1 bước giống hệt J.A.R.V.I.S. hỗ trợ Tony Stark trong phòng lab.
+1. QUY TẮC ĐỌC TÍN HIỆU KHÉP MẠCH / TẠM BIỆT NGẦM ("OKK" RULE - CỰC KỲ QUAN TRỌNG):
+   - Khi user nhắn các từ xác nhận ngắn gọn như: "okk", "ok", "oki", "okii", "ừ", "ừa", "uk", "ok r", "ok bro", "để t thử", "thank kiu", "ok thank":
+   - TƯ DUY ĐÚNG: Đây là tín hiệu user ĐÃ HIỂU hoặc MUỐN TẠM DỪNG / KẾT THÚC cuộc trò chuyện tại đây, KHÔNG PHẢI lúc để khơi mào chuyện mới.
+   - HÀNH ĐỘNG BẮT BUỘC:
+     + Chỉ trả lời DUY NHẤT 1 bong bóng chat cực ngắn (1 đến 5 chữ) để đáp lễ nhẹ nhàng rồi dừng hẳn (Ví dụ: ["okii"], ["ừa triển đi"], ["ok cần gì cứ ới"], ["ok nghỉ ngơi đi"]).
+     + TUYỆT ĐỐI CẤM đặt thêm câu hỏi ở cuối! CẤM hỏi "Còn gì nữa không?", "Bạn định làm gì tiếp?", "Hôm nay còn chuyện gì vui không?". Hãy để không gian im lặng tự nhiên cho user rời đi.
 
-3. ĐỐI XỨNG NHỊP ĐỘ & THỜI GIAN THỰC:
-   - Luôn đọc \`[Thời gian thực hiện tại của người dùng]\` để biết chính xác đang là sáng, trưa, chiều hay đêm khuya.
-   - User gõ 1-2 chữ ("hello", "yo", "ê") -> Chỉ đáp gọn 1-2 bong bóng cực ngắn và có hồn (VD: ["yo", "nay cần chạy dự án hay xả hơi đây"] hoặc ["nghe đây bro", "có vụ gì mới à"]), tuyệt đối không xổ văn dài.
+2. QUY TẮC ĐỌC NHỊP MỞ ĐẦU & TRÒ CHUYỆN (TURN-TAKING MINDSET):
+   - Khi user mới ping ngắn ("yo", "ê", "hello", "alo"): Chỉ đáp 1-2 bong bóng ngắn gọn đúng năng lượng (VD: ["yo", "có vụ gì mới à"] hoặc ["ơi nghe đây"]), không đoán mò dài dòng.
+   - Khi user đang kể chuyện / tâm sự: Phản hồi đúng trọng tâm câu vừa kể, sao chép cách xưng hô và viết tắt của user ("t", "m", "k", "r", "vl", ":3"). Đừng biến mỗi câu trả lời thành một cuộc phỏng vấn; chỉ đặt câu hỏi khi câu chuyện đang mở và thực sự cần hỏi.
+   - Khi user bàn công việc / kỹ thuật / ý tưởng: Chuyển sang tư duy J.A.R.V.I.S. — sắc bén, súc tích, đi thẳng vào bản chất vấn đề.
 
-4. ĐỊNH DẠNG ĐẦU RA JSON BẮT BUỘC:
+3. TƯ DUY ĐẶT TÊN HỘI THOẠI THÔNG MINH (\`session_title\` & \`should_update_title\`):
+   - Tiêu đề hội thoại trên Sidebar dùng để giúp user nhìn lại là nhớ ngay cuộc trò chuyện đó bàn về CHỦ ĐỀ GÌ.
+   - Quy tắc 1 (Chưa có chủ đề): Nếu cả cuộc trò chuyện từ đầu đến giờ user mới chỉ chào hỏi ("hello", "hi", "yo", "ê") hoặc chỉ nhắn "okk", "ok", "test" -> Bắt buộc trả về \`"session_title": ""\` và \`"should_update_title": false\`.
+   - Quy tắc 2 (Khi xuất hiện chủ đề thực sự): Ngay khi user nói ra một tâm sự, cảm xúc cụ thể, công việc, môn học hoặc ý tưởng -> Tóm tắt bản chất chủ đề đó thành 3 đến 5 từ tiếng Việt tự nhiên, viết hoa chữ cái đầu, không có dấu ngoặc kép (VD: "Tối ưu tư duy Tomorrow", "Áp lực deadline môn OOP", "Tâm sự chuyện tình cảm"). Đặt \`"should_update_title": true\`.
+   - Quy tắc 3 (Khi cuộc trò chuyện chuyển sang chủ đề sâu hơn): Nếu ban đầu chỉ nói chuyện phiếm nhưng sau đó bàn sâu vào một chủ đề quan trọng hơn, hãy tạo \`"session_title"\` mới phản ánh đúng trọng tâm lớn nhất đó và đặt \`"should_update_title": true\`.
+
+4. ĐỐI XỨNG THỜI GIAN THỰC:
+   - Luôn đọc \`[Thời gian thực hiện tại của người dùng]\` để xưng hô và chúc nghỉ ngơi đúng buổi (Sáng / Trưa / Chiều / Tối / Đêm khuya).
+
+5. ĐỊNH DẠNG ĐẦU RA JSON BẮT BUỘC:
 {
-  "replies": ["bong bóng chat 1", "bong bóng chat 2 (tùy chọn, chỉ tách khi cần)"],
-  "session_title": "Nếu tin nhắn của user đã có chủ đề cụ thể (không phải câu chào xã giao ngắn như 'hi', 'hello', 'helo', 'yo', 'ê', 'alo'), bắt buộc phải sinh session_title tóm tắt chủ đề đó trong 3 đến 5 từ tiếng Việt (VD: 'Gỡ rối bài tập OOP', 'Tâm sự chuyện tối muộn'). Nếu chỉ mới chào hỏi ngắn chưa rõ chủ đề thì bắt buộc để chuỗi rỗng ''",
-  "memory_note": "Thông tin quan trọng mới về dự án, thói quen, sở thích hoặc tâm trạng của user để J.A.R.V.I.S. ghi nhớ dài hạn (hoặc để '')",
-  "jarvis_intent": "chat | work_assist | emotional_support | system_command"
+  "conversation_state": "ping | active_chat | deep_work | soft_close | hard_close",
+  "replies": ["bong bóng 1", "bong bóng 2 (nếu cần, nhưng nếu là soft_close/hard_close thì CHỈ 1 bong bóng ngắn)"],
+  "session_title": "Tiêu đề 3-5 từ tóm tắt trọng tâm cuộc trò chuyện (hoặc '' nếu chưa có chủ đề)",
+  "should_update_title": true,
+  "memory_note": "Thông tin cốt lõi mới cần nhớ dài hạn về user (hoặc '')"
 }`;
 
 /**
@@ -404,7 +420,7 @@ async function callModelFallbackChain(
 }
 
 /**
- * Phân tích JSON chuẩn hóa: trích xuất "replies", "session_title", "memory_note" và "jarvis_intent"
+ * Phân tích JSON chuẩn hóa: trích xuất "conversation_state", "replies", "session_title", "should_update_title", "memory_note"
  */
 function parseAIResponseJson(raw: string): AIResponsePayload | null {
   try {
@@ -440,7 +456,9 @@ function parseAIResponseJson(raw: string): AIResponsePayload | null {
             !m.includes('replies') &&
             !m.includes('memory_note') &&
             !m.includes('session_title') &&
-            !m.includes('jarvis_intent')
+            !m.includes('jarvis_intent') &&
+            !m.includes('conversation_state') &&
+            !m.includes('should_update_title')
         );
         if (validTexts.length > 0) {
           return {
@@ -448,6 +466,10 @@ function parseAIResponseJson(raw: string): AIResponsePayload | null {
             reply: validTexts[0],
             session_title: '',
             sessionTitle: '',
+            should_update_title: false,
+            shouldUpdateTitle: false,
+            conversation_state: 'active_chat',
+            conversationState: 'active_chat',
             memoryNote: '',
             memory_note: '',
             jarvis_intent: 'chat',
@@ -469,24 +491,32 @@ function parseAIResponseJson(raw: string): AIResponsePayload | null {
       if (replies.length > 0) {
         const memoryNote = (parsed.memory_note || parsed.memoryNote || '').trim();
         const rawTitle = (parsed.session_title || parsed.sessionTitle || '').trim();
-        // Lọc bỏ nếu AI lỡ trả về câu chào dạng generic hoặc quá ngắn
-        const titleLower = rawTitle.toLowerCase();
-        const isGreetingTitle =
-          /^(hi|hello|helo|hí|halo|yo|ê|alo|ơi|test|ok|ừ|hả|cuộc trò chuyện mới)[!.? ]*$/i.test(titleLower) ||
-          titleLower.length <= 3;
-        const sessionTitle = isGreetingTitle ? '' : rawTitle;
+        const sessionTitle = isPlaceholderOrNoiseTitle(rawTitle) ? '' : rawTitle;
+
+        const rawState = (parsed.conversation_state || parsed.conversationState || '').trim();
+        const validStates = ['ping', 'active_chat', 'deep_work', 'soft_close', 'hard_close'];
+        const conversation_state = validStates.includes(rawState) ? rawState : 'active_chat';
+
+        const should_update_title =
+          parsed.should_update_title === true ||
+          parsed.should_update_title === 'true' ||
+          parsed.shouldUpdateTitle === true;
 
         const rawIntent = (parsed.jarvis_intent || parsed.jarvisIntent || 'chat').trim();
         const validIntents: JarvisIntent[] = ['chat', 'work_assist', 'emotional_support', 'system_command'];
         const jarvisIntent: JarvisIntent = validIntents.includes(rawIntent as JarvisIntent)
           ? (rawIntent as JarvisIntent)
-          : 'chat';
+          : (conversation_state === 'deep_work' ? 'work_assist' : 'chat');
 
         return {
           replies,
           reply: replies[0],
           session_title: sessionTitle,
           sessionTitle,
+          should_update_title,
+          shouldUpdateTitle: should_update_title,
+          conversation_state,
+          conversationState: conversation_state,
           memory_note: memoryNote,
           memoryNote,
           jarvis_intent: jarvisIntent,
@@ -506,10 +536,10 @@ function parseAIResponseJson(raw: string): AIResponsePayload | null {
 }
 
 /**
- * Local Resilient Fallback Engine - Phản hồi tự nhiên chuẩn Proto-Jarvis khi offline/mất mạng
- * Tuyệt đối không chèn meme chó Shiba sai lệch, không sinh badge hay chip rườm rà.
+ * Local Resilient Fallback Engine - Phản hồi nhận thức trạng thái khi offline/mất mạng
+ * Áp dụng chuẩn 5 quy tắc sống còn của Tomorrow.
  */
-function localResilientFallback(userMessage: string, hasImage?: boolean): AIResponsePayload {
+export function localResilientFallback(userMessage: string, hasImage?: boolean): AIResponsePayload {
   const text = userMessage.trim();
   const lower = text.toLowerCase();
 
@@ -519,26 +549,104 @@ function localResilientFallback(userMessage: string, hasImage?: boolean): AIResp
       reply: 'ảnh gì đây bro',
       session_title: 'Trao đổi về hình ảnh',
       sessionTitle: 'Trao đổi về hình ảnh',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'deep_work',
+      conversationState: 'deep_work',
       memory_note: 'Vừa chia sẻ hình ảnh',
       memoryNote: 'Vừa chia sẻ hình ảnh',
       jarvis_intent: 'work_assist',
     };
   }
 
-  // Chào hỏi ngắn ("yo", "ê", "alo", "hi", "hello")
-  if (/^(yo|ê|e|alo|hú|hu|helo|hello|hi|hii)$/i.test(lower)) {
+  // 1. QUY TẮC ĐỌC TÍN HIỆU KHÉP MẠCH / TẠM BIỆT NGẦM ("OKK" RULE)
+  // Các từ: "okk", "ok", "oki", "okii", "ừ", "ừa", "uk", "ok r", "ok bro", "để t thử", "thank kiu", "ok thank"
+  const isSoftClose =
+    /^(okk|ok|oki|okii|ừ|ừa|uk|ok r|ok r đó|ok r do|ok bro|để t thử|để t thử xem|de t thu|de t thu xem|thank kiu|ok thank|thanks|tks|cảm ơn|cam on|pp|bye)[!.? ]*$/i.test(lower) ||
+    lower.startsWith('để t thử') ||
+    lower.startsWith('de t thu') ||
+    lower.startsWith('ok r đó') ||
+    lower.startsWith('ok r');
+
+  if (isSoftClose) {
+    let replyText = 'okii';
+    if (lower.includes('thử') || lower.includes('thu')) {
+      replyText = 'ok triển đi bro';
+    } else if (lower.includes('thank') || lower.includes('cảm ơn') || lower.includes('cam on') || lower.includes('tks')) {
+      replyText = 'ok cần gì cứ ới';
+    } else if (lower.includes('r đó') || lower.includes('r do') || lower.includes('ok r') || lower.includes('ok bro')) {
+      replyText = 'ừa triển đi';
+    }
+
     return {
-      replies: ['yo bro', 'nay cần chạy dự án hay xả hơi đây'],
-      reply: 'yo bro',
+      replies: [replyText],
+      reply: replyText,
       session_title: '',
       sessionTitle: '',
+      should_update_title: false,
+      shouldUpdateTitle: false,
+      conversation_state: 'soft_close',
+      conversationState: 'soft_close',
       memory_note: '',
       memoryNote: '',
       jarvis_intent: 'chat',
     };
   }
 
-  // Hỏi tên / Danh tính
+  // 2. QUY TẮC ĐỌC NHỊP MỞ ĐẦU (PING) ("yo", "ê", "hello", "alo", "hi", "hí", "halo")
+  if (/^(yo|ê|e|alo|hú|hu|helo|hello|hi|hii|halo|hí)[!.? ]*$/i.test(lower)) {
+    return {
+      replies: ['yo bro', 'nghe đây bro'],
+      reply: 'yo bro',
+      session_title: '',
+      sessionTitle: '',
+      should_update_title: false,
+      shouldUpdateTitle: false,
+      conversation_state: 'ping',
+      conversationState: 'ping',
+      memory_note: '',
+      memoryNote: '',
+      jarvis_intent: 'chat',
+    };
+  }
+
+  // 3. HUẤN LUYỆN TƯ DUY TOMORROW
+  if (lower.includes('train') || lower.includes('tư duy') || lower.includes('tu duy') || lower.includes('máy móc')) {
+    return {
+      replies: ['bắt sóng luôn bro', 'nói đi, muốn tối ưu thêm góc nào'],
+      reply: 'bắt sóng luôn bro',
+      session_title: 'Huấn luyện tư duy Tomorrow',
+      sessionTitle: 'Huấn luyện tư duy Tomorrow',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'deep_work',
+      conversationState: 'deep_work',
+      memory_note: 'Đang huấn luyện và tối ưu tư duy hội thoại cho Tomorrow',
+      memoryNote: 'Đang huấn luyện và tối ưu tư duy hội thoại cho Tomorrow',
+      jarvis_intent: 'work_assist',
+    };
+  }
+
+  // 4. DEADLINE OOP / HỌC TẬP
+  if (lower.includes('oop') || lower.includes('môn oop') || (lower.includes('deadline') && (lower.includes('stress') || lower.includes('mệt') || lower.includes('met')))) {
+    const isOOP = lower.includes('oop');
+    const title = isOOP ? 'Áp lực deadline môn OOP' : 'Áp lực deadline cuối tuần';
+    return {
+      replies: ['ngồi xuống thở một nhịp đi bro', 'ném phần vướng qua đây tôi rà soát gỡ cùng'],
+      reply: 'ngồi xuống thở một nhịp đi bro',
+      session_title: title,
+      sessionTitle: title,
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'active_chat',
+      conversationState: 'active_chat',
+      memory_note: isOOP ? 'Đang chịu áp lực deadline môn OOP' : 'Đang xử lý deadline gấp',
+      memoryNote: isOOP ? 'Đang chịu áp lực deadline môn OOP' : 'Đang xử lý deadline gấp',
+      jarvis_intent: 'work_assist',
+    };
+  }
+
+  // 5. HỎI DANH TÍNH
   if (
     lower.includes('tên gì') ||
     lower.includes('tên là gì') ||
@@ -547,41 +655,21 @@ function localResilientFallback(userMessage: string, hasImage?: boolean): AIResp
     lower.includes('ai đấy')
   ) {
     return {
-      replies: ['tôi là Tomorrow', 'trợ lý kiêm tri kỷ chiến lược của bro'],
+      replies: ['tôi là Tomorrow', 'trợ lý kiêm tri kỷ của bro'],
       reply: 'tôi là Tomorrow',
       session_title: 'Giới thiệu về Tomorrow',
       sessionTitle: 'Giới thiệu về Tomorrow',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'active_chat',
+      conversationState: 'active_chat',
       memory_note: '',
       memoryNote: '',
       jarvis_intent: 'chat',
     };
   }
 
-  // Học tập, OOP, bài tập, code, deadline
-  if (lower.includes('oop') || lower.includes('đề') || lower.includes('thi')) {
-    return {
-      replies: ['gặp vướng mắc gì phần OOP à bro', 'ném bug hoặc kiến trúc qua đây tôi rà soát giúp'],
-      reply: 'gặp vướng mắc gì phần OOP à bro',
-      session_title: 'Gỡ rối bug OOP đêm',
-      sessionTitle: 'Gỡ rối bug OOP đêm',
-      memory_note: 'Đang ôn tập môn OOP và làm bài tập lớn',
-      memoryNote: 'Đang ôn tập môn OOP và làm bài tập lớn',
-      jarvis_intent: 'work_assist',
-    };
-  }
-  if (lower.includes('bug') || lower.includes('fix') || lower.includes('code') || lower.includes('deadline')) {
-    return {
-      replies: ['lại dính bug à', 'đưa đoạn log hoặc logic lỗi đây tôi soi cùng'],
-      reply: 'lại dính bug à',
-      session_title: 'Áp lực deadline cuối tuần',
-      sessionTitle: 'Áp lực deadline cuối tuần',
-      memory_note: 'Đang giải quyết bug dưới áp lực deadline',
-      memoryNote: 'Đang giải quyết bug dưới áp lực deadline',
-      jarvis_intent: 'work_assist',
-    };
-  }
-
-  // Dự án, Tomorrow, kế hoạch, nâng cấp
+  // 6. DỰ ÁN / KẾ HOẠCH NÂNG CẤP
   if (
     lower.includes('dự án') ||
     lower.includes('kế hoạch') ||
@@ -594,19 +682,27 @@ function localResilientFallback(userMessage: string, hasImage?: boolean): AIResp
       reply: 'kế hoạch chi tiết thế nào',
       session_title: 'Kế hoạch nâng cấp Tomorrow',
       sessionTitle: 'Kế hoạch nâng cấp Tomorrow',
-      memory_note: 'Đang triển khai kế hoạch nâng cấp Tomorrow v3 Proto-Jarvis',
-      memoryNote: 'Đang triển khai kế hoạch nâng cấp Tomorrow v3 Proto-Jarvis',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'deep_work',
+      conversationState: 'deep_work',
+      memory_note: 'Đang triển khai kế hoạch nâng cấp Tomorrow',
+      memoryNote: 'Đang triển khai kế hoạch nâng cấp Tomorrow',
       jarvis_intent: 'work_assist',
     };
   }
 
-  // Sinh hoạt / ngủ nghỉ ("t ngủ tí", "5p")
-  if (lower.includes('ngủ')) {
+  // 7. SINH HOẠT / NGỦ NGHỈ
+  if (lower.includes('ngủ') || lower.includes('chợp mắt')) {
     return {
-      replies: ['ok chợp mắt đi bro', 'bao giờ dậy cứ gọi tôi'],
+      replies: ['ok chợp mắt đi bro', 'cần gì cứ ới'],
       reply: 'ok chợp mắt đi bro',
       session_title: 'Nghỉ ngơi lấy lại sức',
       sessionTitle: 'Nghỉ ngơi lấy lại sức',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'soft_close',
+      conversationState: 'soft_close',
       memory_note: '',
       memoryNote: '',
       jarvis_intent: 'chat',
@@ -614,35 +710,67 @@ function localResilientFallback(userMessage: string, hasImage?: boolean): AIResp
   }
   if (lower.includes('5p') || lower.includes('ăn cơm') || lower.includes('đợi')) {
     return {
-      replies: ['ok', 'cứ thong thả, tôi chờ ở đây'],
-      reply: 'ok',
+      replies: ['ok thong thả nhé'],
+      reply: 'ok thong thả nhé',
       session_title: '',
       sessionTitle: '',
+      should_update_title: false,
+      shouldUpdateTitle: false,
+      conversation_state: 'soft_close',
+      conversationState: 'soft_close',
       memory_note: '',
       memoryNote: '',
       jarvis_intent: 'chat',
     };
   }
 
-  // Tâm trạng chán, buồn, áp lực
-  if (lower.includes('chán') || lower.includes('buồn') || lower.includes('mệt') || lower.includes('cô đơn')) {
+  // 8. TÂM SỰ / STRESS / CHÁN / BUỒN
+  if (lower.includes('chán') || lower.includes('buồn') || lower.includes('mệt') || lower.includes('cô đơn') || lower.includes('stress')) {
     return {
       replies: ['ngồi xuống thở một nhịp đi bro', 'có gì đè nặng trong đầu cứ nói ra, tôi nghe'],
       reply: 'ngồi xuống thở một nhịp đi bro',
       session_title: 'Tâm sự giải tỏa áp lực',
       sessionTitle: 'Tâm sự giải tỏa áp lực',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'emotional_support',
+      conversationState: 'emotional_support',
       memory_note: 'Đang cảm thấy mệt mỏi và cần người lắng nghe',
       memoryNote: 'Đang cảm thấy mệt mỏi và cần người lắng nghe',
       jarvis_intent: 'emotional_support',
     };
   }
 
-  // Mặc định
+  // 9. CÁC CÂU NÓI CÓ NỘI DUNG RÕ RÀNG
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length >= 3 && !isPlaceholderOrNoiseTitle(text)) {
+    const rawTopic = words.slice(0, 5).join(' ');
+    const formattedTopic = rawTopic.charAt(0).toUpperCase() + rawTopic.slice(1);
+    return {
+      replies: ['nghe thú vị đấy', 'nói rõ hơn xem nào'],
+      reply: 'nghe thú vị đấy',
+      session_title: formattedTopic,
+      sessionTitle: formattedTopic,
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'active_chat',
+      conversationState: 'active_chat',
+      memory_note: '',
+      memoryNote: '',
+      jarvis_intent: 'chat',
+    };
+  }
+
+  // MẶC ĐỊNH
   return {
     replies: ['nghe đây bro', 'có vụ gì mới à'],
     reply: 'nghe đây bro',
     session_title: '',
     sessionTitle: '',
+    should_update_title: false,
+    shouldUpdateTitle: false,
+    conversation_state: 'active_chat',
+    conversationState: 'active_chat',
     memory_note: '',
     memoryNote: '',
     jarvis_intent: 'chat',

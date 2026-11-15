@@ -24,6 +24,7 @@ import {
   DEFAULT_USER_MEMORY,
   cleanNightNotesFromMemory,
   GENERIC_TITLES,
+  isPlaceholderOrNoiseTitle,
 } from './storage/chatStorage';
 import {
   sendMessageToTomorrow,
@@ -43,11 +44,9 @@ import {
 } from './constants/theme';
 import { injectWebFonts } from './utils/webFont';
 
-// Kiểm tra câu chào ngắn xã giao hoặc quá ngắn để tránh lưu làm tiêu đề
+// Kiểm tra câu chào ngắn xã giao hoặc placeholder (tương thích ngược)
 export const isGreetingOrTooShort = (text: string) => {
-  const clean = (text || '').trim().toLowerCase();
-  const greetings = ['hi', 'hello', 'helo', 'hí', 'halo', 'yo', 'ê', 'alo', 'ơi', 'test', 'ok', 'ừ', 'hả'];
-  return greetings.includes(clean) || clean.length < 8;
+  return isPlaceholderOrNoiseTitle(text);
 };
 
 export default function App() {
@@ -86,10 +85,10 @@ export default function App() {
           let hasUpdatedOldTitles = false;
           const cleanedSessions = savedSessions.map((sess) => {
             const rawTitle = (sess.title || '').trim();
-            if (isGreetingOrTooShort(rawTitle)) {
-              // Tìm trong session.messages tin nhắn đầu tiên của user mà !isGreetingOrTooShort(msg.text)
+            if (isPlaceholderOrNoiseTitle(rawTitle)) {
+              // Tìm trong session.messages tin nhắn đầu tiên của user mà !isPlaceholderOrNoiseTitle(msg.text)
               const firstMeaningfulMsg = (sess.messages || []).find(
-                (m) => (m.role === 'user' || m.sender === 'user') && !isGreetingOrTooShort(m.text || '')
+                (m) => (m.role === 'user' || m.sender === 'user') && !isPlaceholderOrNoiseTitle(m.text || '')
               );
               let newTitle = 'Trò chuyện ngắn';
               if (firstMeaningfulMsg && firstMeaningfulMsg.text?.trim()) {
@@ -183,8 +182,12 @@ export default function App() {
 
       const trimmedText = text.trim();
       let sessionTitle = 'Cuộc trò chuyện mới';
-      if (!isGreetingOrTooShort(trimmedText) && trimmedText.length >= 8) {
-        sessionTitle = trimmedText.length > 30 ? `${trimmedText.slice(0, 30)}...` : trimmedText;
+      if (!isPlaceholderOrNoiseTitle(trimmedText) && trimmedText.length > 6) {
+        const words = trimmedText.split(/\s+/).filter(Boolean);
+        sessionTitle = words.slice(0, 6).join(' ');
+        if (words.length > 6) {
+          sessionTitle += '...';
+        }
       } else if (imageUri && !trimmedText) {
         sessionTitle = 'Hình ảnh gửi kèm';
       }
@@ -238,17 +241,18 @@ export default function App() {
         previousSessionMessages
       );
 
-      // Bước B: Tự động cập nhật tiêu đề ngay khi AI trả lời xong
+      // Bước B: Đồng bộ luồng cập nhật tiêu đề hội thoại thông minh
       const aiSessionTitle = (aiResponse.session_title || aiResponse.sessionTitle || '').trim();
       const currentSess = nextSessions.find((s) => s.id === activeId);
       const currentTitle = currentSess?.title || 'Cuộc trò chuyện mới';
 
       let updatedTitle = currentTitle;
-      if (
-        aiSessionTitle.length > 3 &&
-        !isGreetingOrTooShort(aiSessionTitle) &&
-        (currentTitle === 'Cuộc trò chuyện mới' || isGreetingOrTooShort(currentTitle))
-      ) {
+      const isValidNewTitle = !isPlaceholderOrNoiseTitle(aiSessionTitle);
+      const shouldUpdate =
+        isValidNewTitle &&
+        (isPlaceholderOrNoiseTitle(currentTitle) || aiResponse.should_update_title === true);
+
+      if (shouldUpdate) {
         updatedTitle = aiSessionTitle;
         const currentSessionIndex = nextSessions.findIndex((s) => s.id === activeId);
         if (currentSessionIndex !== -1) {
@@ -433,7 +437,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v3.2</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v3.3</Text>
               </View>
             </View>
           </View>

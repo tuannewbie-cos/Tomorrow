@@ -24,30 +24,23 @@ export const DEFAULT_USER_MEMORY: UserMemoryProfile = {
 };
 
 /**
- * Kiểm tra xem một chuỗi có phải câu chào ngắn xã giao hoặc quá ngắn không
+ * Kiểm tra xem một tiêu đề có phải là placeholder hoặc từ rác không
+ */
+export const isPlaceholderOrNoiseTitle = (title?: string): boolean => {
+  if (!title) return true;
+  const clean = title.trim().toLowerCase();
+  const noiseWords = [
+    'cuộc trò chuyện mới', 'trò chuyện ngắn', 'hello', 'helo', 'hi', 'hí', 'halo',
+    'yo', 'ê', 'alo', 'ơi', 'ok', 'okk', 'oki', 'okii', 'uk', 'ừ', 'ừa', 'test', 'pp', 'bye'
+  ];
+  return noiseWords.includes(clean) || clean.length <= 5;
+};
+
+/**
+ * Kiểm tra xem một chuỗi có phải câu chào ngắn xã giao hoặc quá ngắn không (tương thích ngược)
  */
 export const isGreetingOrTooShort = (text: string): boolean => {
-  const clean = (text || '').trim().toLowerCase();
-  const greetings = [
-    'hi',
-    'hello',
-    'helo',
-    'hí',
-    'halo',
-    'yo',
-    'ê',
-    'alo',
-    'ơi',
-    'test',
-    'ok',
-    'ừ',
-    'hả',
-    'cuộc trò chuyện mới',
-    'tâm sự mới',
-    'hình ảnh gửi kèm',
-    'trò chuyện ngắn',
-  ];
-  return greetings.includes(clean) || clean.length < 8;
+  return isPlaceholderOrNoiseTitle(text);
 };
 
 /**

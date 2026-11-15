@@ -11,6 +11,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { ChatSession, UserMemoryProfile } from '../types/chat';
+import { isPlaceholderOrNoiseTitle } from '../storage/chatStorage';
 import {
   X,
   MessageSquare,
@@ -37,13 +38,10 @@ interface SidebarDrawerProps {
 }
 
 export const formatSessionTitle = (rawTitle?: string): string => {
-  if (!rawTitle) return 'Cuộc trò chuyện mới';
-  const clean = rawTitle.trim().toLowerCase();
-  const banned = ['hello', 'helo', 'hi', 'hí', 'halo', 'yo', 'ê', 'alo', 'ơi', 'test', 'ok', 'ừ'];
-  if (banned.includes(clean) || clean.length <= 4) {
+  if (isPlaceholderOrNoiseTitle(rawTitle)) {
     return 'Trò chuyện ngắn';
   }
-  return rawTitle;
+  return rawTitle!;
 };
 
 export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
