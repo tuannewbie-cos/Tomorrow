@@ -193,7 +193,12 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
           style={[
             styles.input,
             { color: theme.inputText },
-            Platform.OS === 'web' && ({ outlineStyle: 'none' } as any),
+            Platform.OS === 'web' &&
+              ({
+                outlineStyle: 'none',
+                boxSizing: 'border-box',
+                resize: 'none',
+              } as any),
           ]}
           placeholder="Nhắn cho Tomorrow..."
           placeholderTextColor={theme.placeholderText}
@@ -201,6 +206,7 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
           onChangeText={setInputText}
           onKeyPress={handleKeyPress}
           multiline
+          numberOfLines={1}
           maxLength={1000}
           editable={!isLoading && !disabled}
         />
@@ -241,8 +247,9 @@ const styles = StyleSheet.create({
   wrapper: {
     width: '100%',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+    paddingTop: 4,
     backgroundColor: 'transparent',
   },
   emojiRow: {
@@ -254,7 +261,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderWidth: 1,
     width: '100%',
-    maxWidth: 820,
+    maxWidth: 780,
     alignSelf: 'center',
   },
   emojiBtn: {
@@ -273,7 +280,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 8,
     width: '100%',
-    maxWidth: 820,
+    maxWidth: 780,
     alignSelf: 'center',
   },
   imagePreview: {
@@ -298,9 +305,11 @@ const styles = StyleSheet.create({
   pillContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 28,
-    paddingHorizontal: 12,
+    borderRadius: 26,
+    paddingLeft: 8,
+    paddingRight: 8,
     paddingVertical: 6,
+    minHeight: 52,
     borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -308,31 +317,35 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 4,
     width: '100%',
-    maxWidth: 820,
+    maxWidth: 780,
     alignSelf: 'center',
   },
   iconButton: {
-    padding: 7,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
     flexShrink: 0,
   },
   input: {
     flex: 1,
     minWidth: 0,
     fontSize: 15.5,
-    lineHeight: 21,
+    lineHeight: 22,
     maxHeight: 120,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingTop: Platform.OS === 'web' ? 6 : 4,
+    paddingBottom: Platform.OS === 'web' ? 6 : 4,
     fontFamily:
       Platform.OS === 'web'
         ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
         : undefined,
   },
   sendButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 6,

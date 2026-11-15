@@ -574,7 +574,7 @@ const styles = StyleSheet.create({
   },
   chatListContent: {
     width: '100%',
-    maxWidth: 820,
+    maxWidth: 780,
     alignSelf: 'center',
     paddingHorizontal: 16,
     paddingVertical: 16,
