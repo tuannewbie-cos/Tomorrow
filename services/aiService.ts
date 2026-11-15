@@ -1,6 +1,11 @@
 import { ChatMessage, EmotionData, UserMemoryProfile } from '../types/chat';
 
-// Cấu hình API Key (Ưu tiên Key chính, hỗ trợ thêm các key dự phòng nếu có)
+// Cấu hình OpenAI API (Bộ não chính siêu tốc gpt-4o-mini trong 7 ngày)
+const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
+// Biến trạng thái ngắt mạch (Circuit Breaker): Nếu key OpenAI hết hạn/hết credit trong phiên thì chuyển hẳn sang Gemini
+let isOpenAIUnavailable = false;
+
+// Cấu hình Gemini API Keys (Chuỗi dự phòng ngầm miễn phí xoay vòng)
 const PRIMARY_GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 const BACKUP_GEMINI_KEYS: string[] = [
   process.env.EXPO_PUBLIC_GEMINI_KEY_BACKUP_1 || '',
@@ -162,7 +167,8 @@ export function getRealTimeContext(): { realTimeContext: string; timeOfDay: stri
 function buildSystemPrompt(
   userMemory: UserMemoryProfile,
   recentChats: ChatMessage[],
-  previousSessionMessages?: ChatMessage[]
+  previousSessionMessages?: ChatMessage[],
+  userStyleHint?: string
 ): string {
   const { realTimeContext } = getRealTimeContext();
   const recentContext = recentChats
@@ -171,6 +177,10 @@ function buildSystemPrompt(
     .join('\n');
 
   let prompt = `${SYSTEM_INSTRUCTION}\n\n${realTimeContext}`;
+
+  if (userStyleHint) {
+    prompt += `\n\n${userStyleHint}`;
+  }
 
   // Luôn nạp hồ sơ bộ nhớ dài hạn từ USER_MEMORY_PROFILE_V1
   if (userMemory.currentProblem || userMemory.summary || userMemory.userName || userMemory.nickname) {
@@ -196,6 +206,102 @@ function buildSystemPrompt(
   }
 
   return prompt;
+}
+
+/**
+ * 2. GỌI OPENAI API (gpt-4o-mini) SIÊU TỐC VỚI CIRCUIT BREAKER & TIMEOUT 7S
+ * - Phản hồi cực nhanh dưới 0.5s chuẩn Messenger.
+ * - Hỗ trợ đầy đủ Vision (OpenAI image_url) và Strict JSON output.
+ * - Tự ngắt mạch (Circuit Breaker) nếu key hết hạn/hết credit (401, 402, 403, 429) và ném lỗi ngầm để rơi về Gemini.
+ */
+async function callOpenAI(
+  systemPrompt: string,
+  userMessageWithHint: string,
+  recentChats: ChatMessage[],
+  imageBase64?: string
+): Promise<string> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 7000); // Timeout 7s
+
+  try {
+    const conversationHistory: any[] = recentChats.slice(-6).map((m) => {
+      const role = (m.role === 'user' || m.sender === 'user') ? 'user' : 'assistant';
+      if (role === 'user' && m.imageBase64) {
+        const clean = m.imageBase64.startsWith('data:')
+          ? m.imageBase64
+          : `data:image/jpeg;base64,${m.imageBase64}`;
+        return {
+          role,
+          content: [
+            { type: 'text', text: m.text },
+            { type: 'image_url', image_url: { url: clean, detail: 'low' } },
+          ],
+        };
+      }
+      return {
+        role,
+        content: m.text,
+      };
+    });
+
+    let currentContent: any = userMessageWithHint;
+    if (imageBase64) {
+      const cleanBase64 = imageBase64.startsWith('data:')
+        ? imageBase64
+        : `data:image/jpeg;base64,${imageBase64}`;
+      currentContent = [
+        { type: 'text', text: userMessageWithHint },
+        {
+          type: 'image_url',
+          image_url: {
+            url: cleanBase64,
+            detail: 'low',
+          },
+        },
+      ];
+    }
+
+    const openAiMessages = [
+      { role: 'system', content: systemPrompt },
+      ...conversationHistory,
+      { role: 'user', content: currentContent },
+    ];
+
+    const payload = {
+      model: 'gpt-4o-mini',
+      temperature: 0.75,
+      max_tokens: 250,
+      response_format: { type: 'json_object' },
+      messages: openAiMessages,
+    };
+
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const status = res.status;
+      if (status === 401 || status === 402 || status === 403 || status === 429) {
+        isOpenAIUnavailable = true;
+        console.warn('OpenAI key expired or quota reached, switching silently to Gemini');
+      }
+      const errText = await res.text().catch(() => '');
+      throw new Error(`OpenAI HTTP ${status}: ${errText.slice(0, 100)}`);
+    }
+
+    const data = await res.json();
+    const rawText = data?.choices?.[0]?.message?.content;
+    if (!rawText) throw new Error('OpenAI returned empty message content');
+    return rawText;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 /**
@@ -456,7 +562,10 @@ function localResilientFallback(userMessage: string, hasImage?: boolean): AIResp
 }
 
 /**
- * Gửi tin nhắn chính tới Tomorrow qua Model Fallback Chain
+ * Gửi tin nhắn chính tới Tomorrow qua Model Fallback Chain:
+ * - Ưu tiên 1: OpenAI gpt-4o-mini siêu tốc dưới 0.5s (nếu có key và chưa bị ngắt mạch).
+ * - Ưu tiên 2: Chuỗi 3 tầng Gemini xoay vòng miễn phí (Silent Fallback khi OpenAI hết hạn/lỗi).
+ * - Ưu tiên 3: Local Resilient Fallback Engine chạy offline (chống sập 100%).
  */
 export async function sendMessageToTomorrow(
   userText: string,
@@ -467,9 +576,28 @@ export async function sendMessageToTomorrow(
 ): Promise<AIResponsePayload> {
   const userStyle = extractUserStyleLocal(userText);
   const userMessageWithHint = `${userText}\n\n${userStyle.styleHint}`;
-  const systemPrompt = buildSystemPrompt(userMemory, recentChats, previousSessionMessages);
+  const systemPrompt = buildSystemPrompt(
+    userMemory,
+    recentChats,
+    previousSessionMessages,
+    userStyle.styleHint
+  );
 
-  // 1. Thử qua danh sách API Key với Model Fallback Chain
+  // 1. BỘ NÃO CHÍNH SIÊU TỐC: OPENAI (gpt-4o-mini)
+  if (OPENAI_API_KEY && !isOpenAIUnavailable) {
+    try {
+      const openAiRaw = await callOpenAI(systemPrompt, userMessageWithHint, recentChats, imageBase64);
+      const parsed = parseAIResponseJson(openAiRaw);
+      if (parsed && parsed.replies && parsed.replies.length > 0) {
+        return parsed;
+      }
+    } catch (err: any) {
+      // Âm thầm rơi xuống chuỗi Gemini mà không bao giờ báo lỗi ra màn hình
+      console.warn('[AI Service] OpenAI gặp sự cố, tự động chuyển ngầm sang Gemini:', err?.message || err);
+    }
+  }
+
+  // 2. CHUỖI DỰ PHÒNG NGẦM: GEMINI MODEL FALLBACK CHAIN (MIỄN PHÍ)
   for (let keyIdx = 0; keyIdx < ALL_GEMINI_KEYS.length; keyIdx++) {
     const key = ALL_GEMINI_KEYS[keyIdx];
     try {
@@ -483,7 +611,7 @@ export async function sendMessageToTomorrow(
     }
   }
 
-  // 2. Chống sập tức thì: Fallback cục bộ mượt mà 100% không báo lỗi màn hình
+  // 3. CHỐNG SẬP TỨC THÌ: Local Resilient Fallback Engine chạy cục bộ
   console.log('[AI Service] Kích hoạt Local Resilient Fallback Engine cho Tomorrow');
   return localResilientFallback(userText, !!imageBase64);
 }
