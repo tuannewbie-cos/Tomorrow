@@ -1,12 +1,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Animated } from 'react-native';
+import { ThemeColors, DARK_THEME } from '../constants/theme';
 
 interface TypingIndicatorProps {
   visible: boolean;
   isDesktop?: boolean;
+  theme?: ThemeColors;
 }
 
-export const TypingIndicator: React.FC<TypingIndicatorProps> = ({ visible, isDesktop }) => {
+export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
+  visible,
+  isDesktop,
+  theme = DARK_THEME,
+}) => {
   const [shouldRender, setShouldRender] = useState<boolean>(visible);
 
   const fadeAnim = useRef(new Animated.Value(visible ? 1 : 0)).current;
@@ -127,14 +133,22 @@ export const TypingIndicator: React.FC<TypingIndicatorProps> = ({ visible, isDes
         style={[
           styles.bubble,
           {
+            backgroundColor: theme.bubbleAI,
+            borderColor: theme.borderAI,
             opacity: fadeAnim,
             transform: [{ scale: scaleAnim }],
           },
         ]}
       >
-        <Animated.View style={[styles.dot, getDotStyle(dot1Anim)]} />
-        <Animated.View style={[styles.dot, getDotStyle(dot2Anim)]} />
-        <Animated.View style={[styles.dot, getDotStyle(dot3Anim)]} />
+        <Animated.View
+          style={[styles.dot, { backgroundColor: theme.textSecondary }, getDotStyle(dot1Anim)]}
+        />
+        <Animated.View
+          style={[styles.dot, { backgroundColor: theme.textSecondary }, getDotStyle(dot2Anim)]}
+        />
+        <Animated.View
+          style={[styles.dot, { backgroundColor: theme.textSecondary }, getDotStyle(dot3Anim)]}
+        />
       </Animated.View>
     </View>
   );

@@ -13,12 +13,40 @@ export const STORAGE_KEYS = {
 export const DEFAULT_USER_MEMORY: UserMemoryProfile = {
   userName: 'Bạn iu',
   nickname: 'bro',
-  currentProblem: 'Áp lực deadline học tập và đang bị overthinking về các mối quan hệ',
-  moodTrend: 'Hay bồn chồn vào đêm muộn, thích phong cách nói chuyện ấm áp nhưng hài hước',
+  currentProblem: 'Áp lực học tập/công việc và cần không gian xả stress',
+  moodTrend: 'Thích phong cách nói chuyện ấm áp, chân thành nhưng hài hước',
   interests: ['Lướt TikTok/Reels', 'Nghe nhạc Chill', 'Meme mèo'],
   lastActiveDate: new Date().toISOString(),
-  summary: 'Sinh viên/Gen Z đang gánh nhiều deadline và cần không gian xả stress không phán xét.',
+  summary: 'Người dùng cần không gian trò chuyện tâm sự nhẹ nhàng, không phán xét.',
 };
+
+/**
+ * Hàm dọn sạch các ghi chú nhầm về đêm muộn / thức khuya nếu trước đó lỡ lưu
+ */
+export function cleanNightNotesFromMemory(memory: UserMemoryProfile): UserMemoryProfile {
+  let changed = false;
+  let cleaned = { ...memory };
+
+  const purgeNightWords = (str?: string) => {
+    if (!str) return str;
+    return str
+      .replace(/hay bồn chồn vào đêm muộn/gi, 'Thích trò chuyện thư giãn')
+      .replace(/đêm muộn/gi, 'khi rảnh')
+      .replace(/thức khuya/gi, 'nghỉ ngơi')
+      .trim();
+  };
+
+  if (cleaned.moodTrend && cleaned.moodTrend.toLowerCase().includes('đêm muộn')) {
+    cleaned.moodTrend = purgeNightWords(cleaned.moodTrend) || 'Thích phong cách ấm áp, hài hước';
+    changed = true;
+  }
+  if (cleaned.currentProblem && cleaned.currentProblem.toLowerCase().includes('đêm muộn')) {
+    cleaned.currentProblem = purgeNightWords(cleaned.currentProblem) || 'Áp lực công việc, học tập';
+    changed = true;
+  }
+
+  return cleaned;
+}
 
 /**
  * 1. Tải danh sách toàn bộ phiên trò chuyện từ CHAT_SESSIONS_V2
@@ -120,7 +148,13 @@ export async function loadUserMemoryProfile(): Promise<UserMemoryProfile> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.USER_MEMORY_PROFILE);
     if (!raw) return DEFAULT_USER_MEMORY;
-    return { ...DEFAULT_USER_MEMORY, ...JSON.parse(raw) };
+    const parsed = { ...DEFAULT_USER_MEMORY, ...JSON.parse(raw) };
+    const cleaned = cleanNightNotesFromMemory(parsed);
+    // Nếu có sự thay đổi do dọn dẹp ghi chú đêm muộn sai, lưu lại
+    if (JSON.stringify(parsed) !== JSON.stringify(cleaned)) {
+      await saveUserMemoryProfile(cleaned);
+    }
+    return cleaned;
   } catch (error) {
     console.error('[Storage] Lỗi khi load User Memory Profile:', error);
     return DEFAULT_USER_MEMORY;

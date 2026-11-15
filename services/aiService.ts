@@ -58,12 +58,17 @@ QUY TẮC SỐNG CÒN ĐỂ NHẮN TIN NHƯ CON NGƯỜI:
 - Nếu user chỉ nhắn "yo", "ê", "alo": Chỉ trả lời 1-3 chữ ("yo", "ơi", "sao đấy"). Tuyệt đối không xổ ra một đoạn văn dài.
 - Tách câu trả lời thành 1 đến 3 câu ngắn trong mảng "replies" (mỗi câu 1-12 chữ) giống hệt cách người thật gõ từng dòng trên Messenger.
 
-2. SAO CHÉP GIỌNG ĐIỆU, CHỮ VIẾT TẮT & ĐỘ TUỔI:
+2. QUY TẮC THỜI GIAN THỰC (BẮT BUỘC):
+- Luôn đọc kỹ [Thời gian thực hiện tại của người dùng].
+- Tuyệt đối KHÔNG hỏi "lại thức khuya hả" hay "chưa ngủ à" khi đang là buổi sáng, buổi trưa hoặc buổi chiều.
+- Chỉ được nhắc đến thức khuya hay chúc ngủ ngon khi thời gian thực tế rơi vào đêm muộn (giờ >= 23 hoặc giờ < 4).
+
+3. SAO CHÉP GIỌNG ĐIỆU, CHỮ VIẾT TẮT & ĐỘ TUỔI:
 - Nếu user viết thường toàn bộ, không chấm câu, dùng từ viết tắt ("t", "m", "k", "r", "dc", "ko", "vl", "tsau", "bao h", ":3") -> Bạn cũng viết thường toàn bộ, không chấm câu và dùng đúng hệ từ vựng, cách xưng hô đó.
 - Nếu user lịch sự, nghiêm túc, người đi làm hoặc lớn tuổi (xưng "mình - bạn", "anh/chị - em", "bác - cháu", đầy đủ dấu câu) -> Chuyển ngay sang giọng văn điềm đạm, ấm áp, chuẩn mực tương ứng.
 - CẤM dùng văn mẫu AI, cấm giảng đạo lý, cấm liệt kê giải pháp 1-2-3, cấm lạm dụng emoji 😂🥺✨ ở cuối mỗi câu.
 
-3. ĐỊNH DẠNG ĐẦU RA BẮT BUỘC (STRICT JSON):
+4. ĐỊNH DẠNG ĐẦU RA BẮT BUỘC (STRICT JSON):
 Chỉ trả về duy nhất JSON hợp lệ gồm 2 trường:
 {
   "replies": ["bong bóng chat 1", "bong bóng chat 2 (nếu cần)"],
@@ -136,7 +141,22 @@ export function getEndpointsForModel(model: string, apiKey: string): string[] {
 }
 
 /**
- * Ghép SYSTEM_INSTRUCTION với bộ nhớ ngầm và lịch sử tin nhắn gần nhất
+ * Lấy bối cảnh thời gian thực chính xác trên thiết bị người dùng
+ */
+export function getRealTimeContext(): { realTimeContext: string; timeOfDay: string; hour: number } {
+  const now = new Date();
+  const hour = now.getHours();
+  const timeOfDay =
+    hour >= 5 && hour < 11 ? 'Buổi sáng' :
+    hour >= 11 && hour < 14 ? 'Buổi trưa' :
+    hour >= 14 && hour < 18 ? 'Buổi chiều' :
+    hour >= 18 && hour < 23 ? 'Buổi tối' : 'Đêm khuya';
+  const realTimeContext = `[Thời gian thực hiện tại của người dùng: ${now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} (${timeOfDay}) - Ngày ${now.toLocaleDateString('vi-VN')}]`;
+  return { realTimeContext, timeOfDay, hour };
+}
+
+/**
+ * Ghép SYSTEM_INSTRUCTION với thời gian thực, bộ nhớ ngầm và lịch sử tin nhắn gần nhất
  * Kèm 3 tin nhắn cuối của phiên trước đó nếu cuộc trò chuyện hiện tại là phiên mới
  */
 function buildSystemPrompt(
@@ -144,12 +164,13 @@ function buildSystemPrompt(
   recentChats: ChatMessage[],
   previousSessionMessages?: ChatMessage[]
 ): string {
+  const { realTimeContext } = getRealTimeContext();
   const recentContext = recentChats
     .slice(-6)
     .map((m) => `${(m.role === 'user' || m.sender === 'user') ? 'User' : 'Tomorrow'}: ${m.text}`)
     .join('\n');
 
-  let prompt = SYSTEM_INSTRUCTION;
+  let prompt = `${SYSTEM_INSTRUCTION}\n\n${realTimeContext}`;
 
   // Luôn nạp hồ sơ bộ nhớ dài hạn từ USER_MEMORY_PROFILE_V1
   if (userMemory.currentProblem || userMemory.summary || userMemory.userName || userMemory.nickname) {
@@ -471,20 +492,29 @@ export async function sendMessageToTomorrow(
 export const sendMessageToSoulMate = sendMessageToTomorrow;
 
 /**
- * Sinh câu chào mở app tinh tế, không sến súa
+ * Sinh câu chào mở app tinh tế, đồng bộ thời gian thực, không hỏi thức khuya sai giờ
  */
 export function getColdGreetingText(userMemory: UserMemoryProfile, hasChatHistory: boolean): string {
+  const { timeOfDay, hour } = getRealTimeContext();
+
+  const timeGreeting =
+    hour >= 5 && hour < 11 ? 'Buổi sáng tốt lành!' :
+    hour >= 11 && hour < 14 ? 'Buổi trưa vui vẻ nha!' :
+    hour >= 14 && hour < 18 ? 'Buổi chiều an lành!' :
+    hour >= 18 && hour < 23 ? 'Buổi tối ấm áp!' : 'Đêm muộn rồi, nghỉ ngơi sớm nha!';
+
   if (!hasChatHistory) {
-    return 'Chào bạn, hôm nay thế nào?';
+    return `${timeGreeting} Hôm nay của bạn thế nào?`;
   }
 
   const problem = userMemory.currentProblem?.toLowerCase() || '';
-  if (problem.includes('oop') || problem.includes('deadline')) {
-    return 'ê, vụ bài tập deadline hôm trước đỡ căng chưa?';
+  if (problem.includes('deadline')) {
+    return `${timeGreeting} Vụ deadline hôm trước đỡ căng chưa bạn?`;
   }
   if (problem.includes('buồn') || problem.includes('chán') || problem.includes('áp lực')) {
-    return 'hôm nay tâm trạng đỡ hơn chút nào chưa bạn?';
+    return `${timeGreeting} Tâm trạng bạn hôm nay đỡ hơn chút nào chưa?`;
   }
 
-  return `ơi ${userMemory.nickname || ''}, hôm nay thế nào rồi?`.trim();
+  const name = userMemory.nickname || userMemory.userName;
+  return `${timeGreeting} ${name ? name + ' ơi, ' : ''}hôm nay thế nào rồi?`.trim();
 }

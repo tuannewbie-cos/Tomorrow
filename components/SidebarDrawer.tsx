@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   Clock,
 } from 'lucide-react-native';
+import { ThemeColors, DARK_THEME } from '../constants/theme';
 
 interface SidebarDrawerProps {
   visible: boolean;
@@ -32,6 +33,7 @@ interface SidebarDrawerProps {
   onDeleteSession: (id: string) => void;
   onClearAll: () => void;
   userMemory: UserMemoryProfile;
+  theme?: ThemeColors;
 }
 
 export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
@@ -44,9 +46,10 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   onDeleteSession,
   onClearAll,
   userMemory,
+  theme = DARK_THEME,
 }) => {
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 768;
+  const isDesktopSplitView = width >= 900;
 
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
   const [isNewChatHovered, setIsNewChatHovered] = useState<boolean>(false);
@@ -60,7 +63,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
       );
       if (confirmed) {
         onClearAll();
-        onClose();
+        if (!isDesktopSplitView) onClose();
       }
       return;
     }
@@ -75,7 +78,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           style: 'destructive',
           onPress: () => {
             onClearAll();
-            onClose();
+            if (!isDesktopSplitView) onClose();
           },
         },
       ]
@@ -110,6 +113,213 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
     );
   };
 
+  // Nội dung chính của Sidebar (dùng chung cho cả Split-View và Modal)
+  const renderSidebarContent = (showCloseBtn: boolean = true) => (
+    <View
+      style={[
+        styles.drawerInner,
+        {
+          backgroundColor: theme.bgSidebar,
+          borderRightColor: theme.borderSubtle,
+        },
+      ]}
+    >
+      {/* Header */}
+      <View style={[styles.drawerHeader, { borderBottomColor: theme.borderSubtle }]}>
+        <View style={styles.brandRow}>
+          <Sparkles size={20} color="#8B5CF6" />
+          <Text style={[styles.brandTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
+        </View>
+        {showCloseBtn && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.closeBtn,
+              pressed && { backgroundColor: theme.btnHover },
+              Platform.OS === 'web' && { cursor: 'pointer' as any },
+            ]}
+            onPress={onClose}
+            hitSlop={8}
+          >
+            <X size={20} color={theme.textSecondary} />
+          </Pressable>
+        )}
+      </View>
+
+      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Nút Tạo Phiên Mới (+ Cuộc trò chuyện mới) */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.newChatBtn,
+            {
+              backgroundColor: theme.btnBg,
+              borderColor: theme.bubbleUser,
+            },
+            isNewChatHovered && { backgroundColor: theme.btnHover },
+            pressed && styles.btnPressed,
+            Platform.OS === 'web' && { cursor: 'pointer' as any },
+          ]}
+          onPress={() => {
+            onCreateNewSession();
+            if (!isDesktopSplitView) onClose();
+          }}
+          onHoverIn={() => setIsNewChatHovered(true)}
+          onHoverOut={() => setIsNewChatHovered(false)}
+        >
+          <Plus size={18} color={theme.textPrimary} />
+          <Text style={[styles.newChatText, { color: theme.textPrimary }]}>+ Cuộc trò chuyện mới</Text>
+        </Pressable>
+
+        {/* Danh sách Gần đây (Recent Sessions) */}
+        <View style={styles.sessionSection}>
+          <View style={styles.recentSectionHeader}>
+            <Clock size={14} color={theme.textMuted} />
+            <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>Gần đây</Text>
+          </View>
+
+          {sessions.length === 0 ? (
+            <View style={styles.emptySessionBox}>
+              <Text style={[styles.emptySessionText, { color: theme.textMuted }]}>
+                Chưa có cuộc trò chuyện nào trước đó
+              </Text>
+            </View>
+          ) : (
+            sessions.map((sess) => {
+              const isActive = sess.id === activeSessionId;
+              const isHovered = hoveredSessionId === sess.id;
+              return (
+                <View
+                  key={sess.id}
+                  style={[
+                    styles.sessionItemContainer,
+                    {
+                      backgroundColor: theme.btnBg,
+                      borderColor: theme.borderSubtle,
+                    },
+                    isActive && {
+                      backgroundColor:
+                        theme.mode === 'dark' ? 'rgba(37, 99, 235, 0.18)' : 'rgba(37, 99, 235, 0.1)',
+                      borderColor: theme.bubbleUser,
+                    },
+                    isHovered && !isActive && { backgroundColor: theme.btnHover },
+                  ]}
+                  onPointerEnter={() => setHoveredSessionId(sess.id)}
+                  onPointerLeave={() => setHoveredSessionId(null)}
+                >
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.sessionMainClickArea,
+                      pressed && styles.btnPressed,
+                      Platform.OS === 'web' && { cursor: 'pointer' as any },
+                    ]}
+                    onPress={() => {
+                      onSelectSession(sess.id);
+                      if (!isDesktopSplitView) onClose();
+                    }}
+                  >
+                    <MessageSquare
+                      size={16}
+                      color={isActive ? theme.bubbleUser : theme.textSecondary}
+                    />
+                    <Text
+                      style={[
+                        styles.sessionItemTitle,
+                        { color: theme.textPrimary },
+                        isActive && { color: theme.bubbleUser, fontWeight: '700' },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {sess.title || 'Cuộc trò chuyện'}
+                    </Text>
+                  </Pressable>
+
+                  {/* Nút xóa session (icon thùng rác nhỏ) */}
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.sessionDeleteBtn,
+                      pressed && styles.btnPressed,
+                      Platform.OS === 'web' && { cursor: 'pointer' as any },
+                    ]}
+                    onPress={() => handleConfirmDeleteSession(sess)}
+                    hitSlop={8}
+                  >
+                    <Trash2 size={15} color={theme.textMuted} />
+                  </Pressable>
+                </View>
+              );
+            })
+          )}
+        </View>
+
+        {/* Mục Thẻ Bộ Nhớ Dài Hạn */}
+        <View style={styles.memorySection}>
+          <View style={styles.sectionHeader}>
+            <Brain size={15} color="#8B5CF6" />
+            <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>Bộ nhớ tâm lý dài hạn</Text>
+          </View>
+
+          <View
+            style={[
+              styles.memoryBox,
+              { backgroundColor: theme.bgMain, borderColor: theme.borderSubtle },
+            ]}
+          >
+            <Text style={styles.memoryFieldTitle}>Đang xưng hô:</Text>
+            <Text style={[styles.memoryFieldValue, { color: theme.textPrimary }]}>
+              {userMemory.userName || userMemory.nickname} ({userMemory.nickname})
+            </Text>
+
+            <Text style={styles.memoryFieldTitle}>Vấn đề AI đang theo dõi:</Text>
+            <Text style={[styles.memoryFieldValue, { color: theme.textPrimary }]}>
+              {userMemory.currentProblem}
+            </Text>
+
+            <Text style={styles.memoryFieldTitle}>Khí chất & Thói quen:</Text>
+            <Text style={[styles.memoryFieldValue, { color: theme.textPrimary }]}>
+              {userMemory.moodTrend}
+            </Text>
+
+            <View style={[styles.storageStatus, { borderTopColor: theme.borderSubtle }]}>
+              <ShieldCheck size={14} color="#10B981" />
+              <Text style={styles.storageStatusText}>
+                Đã lưu bền vững trong AsyncStorage
+              </Text>
+            </View>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Footer nút xóa toàn bộ lịch sử */}
+      <View style={[styles.drawerFooter, { borderTopColor: theme.borderSubtle }]}>
+        <Pressable
+          style={({ pressed }) => [
+            styles.clearBtn,
+            pressed && styles.btnPressed,
+            isClearHovered && styles.clearBtnHovered,
+            Platform.OS === 'web' && { cursor: 'pointer' as any },
+          ]}
+          onPress={handleConfirmClearAll}
+          onHoverIn={() => setIsClearHovered(true)}
+          onHoverOut={() => setIsClearHovered(false)}
+        >
+          <Trash2 size={16} color="#EF4444" />
+          <Text style={styles.clearBtnText}>Xóa toàn bộ lịch sử & Reset</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+
+  // 1. CHẾ ĐỘ SPLIT-VIEW (Desktop width >= 900px):
+  // Hiển thị trực tiếp trong flex layout, không dùng Modal overlay
+  if (isDesktopSplitView) {
+    if (!visible) return null;
+    return (
+      <View style={styles.splitViewContainer}>
+        {renderSidebarContent(true)}
+      </View>
+    );
+  }
+
+  // 2. CHẾ ĐỘ MODAL DRAWER (Mobile / Narrow Desktop):
   return (
     <Modal
       visible={visible}
@@ -118,171 +328,9 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        {/* Khung nội dung Sidebar trái: trên Desktop cố định 280px */}
-        <View
-          style={[
-            styles.drawerContainer,
-            isDesktop && styles.desktopDrawerContainer,
-          ]}
-        >
-          {/* Header */}
-          <View style={styles.drawerHeader}>
-            <View style={styles.brandRow}>
-              <Sparkles size={20} color="#0084FF" />
-              <Text style={styles.brandTitle}>Tomorrow</Text>
-            </View>
-            <Pressable
-              style={({ pressed }) => [
-                styles.closeBtn,
-                pressed && styles.btnPressed,
-                Platform.OS === 'web' && { cursor: 'pointer' as any },
-              ]}
-              onPress={onClose}
-              hitSlop={8}
-            >
-              <X size={20} color="#9CA3AF" />
-            </Pressable>
-          </View>
-
-          <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-            {/* Nút Tạo Phiên Mới phong cách Gemini (+ Cuộc trò chuyện mới) */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.newChatBtn,
-                pressed && styles.btnPressed,
-                isNewChatHovered && styles.newChatBtnHovered,
-                Platform.OS === 'web' && { cursor: 'pointer' as any },
-              ]}
-              onPress={() => {
-                onCreateNewSession();
-                onClose();
-              }}
-              onHoverIn={() => setIsNewChatHovered(true)}
-              onHoverOut={() => setIsNewChatHovered(false)}
-            >
-              <Plus size={18} color="#FFFFFF" />
-              <Text style={styles.newChatText}>+ Cuộc trò chuyện mới</Text>
-            </Pressable>
-
-            {/* Danh sách Gần đây (Recent Sessions) */}
-            <View style={styles.sessionSection}>
-              <View style={styles.recentSectionHeader}>
-                <Clock size={14} color="#9CA3AF" />
-                <Text style={styles.sectionTitle}>Gần đây</Text>
-              </View>
-
-              {sessions.length === 0 ? (
-                <View style={styles.emptySessionBox}>
-                  <Text style={styles.emptySessionText}>Chưa có cuộc trò chuyện nào trước đó</Text>
-                </View>
-              ) : (
-                sessions.map((sess) => {
-                  const isActive = sess.id === activeSessionId;
-                  const isHovered = hoveredSessionId === sess.id;
-                  return (
-                    <View
-                      key={sess.id}
-                      style={[
-                        styles.sessionItemContainer,
-                        isActive && styles.sessionItemContainerActive,
-                        isHovered && !isActive && styles.sessionItemContainerHovered,
-                      ]}
-                      onPointerEnter={() => setHoveredSessionId(sess.id)}
-                      onPointerLeave={() => setHoveredSessionId(null)}
-                    >
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.sessionMainClickArea,
-                          pressed && styles.btnPressed,
-                          Platform.OS === 'web' && { cursor: 'pointer' as any },
-                        ]}
-                        onPress={() => {
-                          onSelectSession(sess.id);
-                          onClose();
-                        }}
-                      >
-                        <MessageSquare
-                          size={16}
-                          color={isActive ? '#3B82F6' : '#9CA3AF'}
-                        />
-                        <Text
-                          style={[
-                            styles.sessionItemTitle,
-                            isActive && styles.sessionItemTitleActive,
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {sess.title || 'Cuộc trò chuyện'}
-                        </Text>
-                      </Pressable>
-
-                      {/* Nút xóa session (icon thùng rác nhỏ) */}
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.sessionDeleteBtn,
-                          pressed && styles.btnPressed,
-                          Platform.OS === 'web' && { cursor: 'pointer' as any },
-                        ]}
-                        onPress={() => handleConfirmDeleteSession(sess)}
-                        hitSlop={8}
-                      >
-                        <Trash2 size={15} color="#6B7280" />
-                      </Pressable>
-                    </View>
-                  );
-                })
-              )}
-            </View>
-
-            {/* Mục Thẻ Bộ Nhớ Dài Hạn (Minh chứng AI luôn nhớ) */}
-            <View style={styles.memorySection}>
-              <View style={styles.sectionHeader}>
-                <Brain size={15} color="#8B5CF6" />
-                <Text style={styles.sectionTitle}>Bộ nhớ tâm lý dài hạn</Text>
-              </View>
-
-              <View style={styles.memoryBox}>
-                <Text style={styles.memoryFieldTitle}>Đang xưng hô:</Text>
-                <Text style={styles.memoryFieldValue}>
-                  {userMemory.userName || userMemory.nickname} ({userMemory.nickname})
-                </Text>
-
-                <Text style={styles.memoryFieldTitle}>Vấn đề AI đang theo dõi:</Text>
-                <Text style={styles.memoryFieldValue}>{userMemory.currentProblem}</Text>
-
-                <Text style={styles.memoryFieldTitle}>Khí chất & Thói quen:</Text>
-                <Text style={styles.memoryFieldValue}>{userMemory.moodTrend}</Text>
-
-                <View style={styles.storageStatus}>
-                  <ShieldCheck size={14} color="#10B981" />
-                  <Text style={styles.storageStatusText}>
-                    USER_MEMORY_PROFILE_V1 đã lưu vào AsyncStorage
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </ScrollView>
-
-          {/* Footer nút xóa toàn bộ lịch sử */}
-          <View style={styles.drawerFooter}>
-            <Pressable
-              style={({ pressed }) => [
-                styles.clearBtn,
-                pressed && styles.btnPressed,
-                isClearHovered && styles.clearBtnHovered,
-                Platform.OS === 'web' && { cursor: 'pointer' as any },
-              ]}
-              onPress={handleConfirmClearAll}
-              onHoverIn={() => setIsClearHovered(true)}
-              onHoverOut={() => setIsClearHovered(false)}
-            >
-              <Trash2 size={16} color="#EF4444" />
-              <Text style={styles.clearBtnText}>Xóa toàn bộ lịch sử & Reset</Text>
-            </Pressable>
-          </View>
+        <View style={styles.modalDrawerWrapper}>
+          {renderSidebarContent(true)}
         </View>
-
-        {/* Vùng bấm ra ngoài để đóng sidebar */}
         <Pressable
           style={[styles.backdrop, Platform.OS === 'web' && { cursor: 'pointer' as any }]}
           onPress={onClose}
@@ -293,37 +341,38 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
 };
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    flexDirection: 'row',
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+  splitViewContainer: {
+    width: 280,
+    height: '100%',
+    zIndex: 10,
   },
-  backdrop: {
-    flex: 1,
-  },
-  drawerContainer: {
-    width: '82%',
-    maxWidth: 340,
-    backgroundColor: '#131314',
+  drawerInner: {
+    width: 280,
     height: '100%',
     borderRightWidth: 1,
-    borderRightColor: '#252628',
-    paddingTop: 48,
     display: 'flex',
     flexDirection: 'column',
   },
-  desktopDrawerContainer: {
-    width: 280,
-    maxWidth: 280,
+  modalDrawerWrapper: {
+    width: '82%',
+    maxWidth: 320,
+    height: '100%',
+  },
+  overlay: {
+    flex: 1,
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  backdrop: {
+    flex: 1,
   },
   drawerHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingBottom: 16,
+    height: 58,
     borderBottomWidth: 1,
-    borderBottomColor: '#202124',
   },
   brandRow: {
     flexDirection: 'row',
@@ -331,9 +380,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   brandTitle: {
-    color: '#F3F4F6',
     fontSize: 17,
     fontWeight: '700',
+    letterSpacing: -0.2,
   },
   closeBtn: {
     padding: 6,
@@ -348,25 +397,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#1E1F20',
     borderWidth: 1,
-    borderColor: '#3B82F6',
     borderRadius: 24,
-    paddingVertical: 12,
+    paddingVertical: 11,
     gap: 8,
     marginBottom: 20,
-    shadowColor: '#3B82F6',
+    shadowColor: '#2563EB',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.12,
     shadowRadius: 6,
-    elevation: 3,
-  },
-  newChatBtnHovered: {
-    backgroundColor: '#26282B',
-    borderColor: '#60A5FA',
+    elevation: 2,
   },
   newChatText: {
-    color: '#F3F4F6',
     fontWeight: '700',
     fontSize: 14,
   },
@@ -381,57 +423,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   sectionTitle: {
-    color: '#9CA3AF',
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.6,
   },
   emptySessionBox: {
     paddingVertical: 14,
     paddingHorizontal: 8,
   },
   emptySessionText: {
-    color: '#6B7280',
     fontSize: 12,
     fontStyle: 'italic',
   },
   sessionItemContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1A1B1C',
     borderRadius: 12,
     marginTop: 6,
     borderWidth: 1,
-    borderColor: '#242527',
     paddingRight: 6,
-  },
-  sessionItemContainerActive: {
-    backgroundColor: 'rgba(59, 130, 246, 0.12)',
-    borderColor: '#3B82F6',
-  },
-  sessionItemContainerHovered: {
-    backgroundColor: '#242528',
-    borderColor: '#3A3B3E',
   },
   sessionMainClickArea: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: 11,
     paddingLeft: 12,
     paddingRight: 6,
     gap: 10,
   },
   sessionItemTitle: {
-    color: '#D1D5DB',
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: '500',
     flex: 1,
-  },
-  sessionItemTitleActive: {
-    color: '#60A5FA',
-    fontWeight: '700',
   },
   sessionDeleteBtn: {
     padding: 8,
@@ -450,11 +475,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   memoryBox: {
-    backgroundColor: '#1E1F20',
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#2D2E30',
   },
   memoryFieldTitle: {
     color: '#8B5CF6',
@@ -463,8 +486,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   memoryFieldValue: {
-    color: '#E5E7EB',
-    fontSize: 12,
+    fontSize: 12.5,
     lineHeight: 18,
     marginTop: 2,
   },
@@ -475,11 +497,10 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#2B2C2E',
   },
   storageStatusText: {
     color: '#10B981',
-    fontSize: 10,
+    fontSize: 10.5,
     fontWeight: '500',
     flex: 1,
   },
@@ -487,15 +508,14 @@ const styles = StyleSheet.create({
     opacity: 0.75,
   },
   drawerFooter: {
-    padding: 16,
+    padding: 14,
     borderTopWidth: 1,
-    borderTopColor: '#202124',
   },
   clearBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
     paddingVertical: 10,
     borderRadius: 12,
     gap: 6,
@@ -503,7 +523,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(239, 68, 68, 0.25)',
   },
   clearBtnHovered: {
-    backgroundColor: 'rgba(239, 68, 68, 0.22)',
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
   },
   clearBtnText: {
     color: '#EF4444',

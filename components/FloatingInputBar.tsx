@@ -13,12 +13,14 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Image as ImageIcon, Send, X, Smile } from 'lucide-react-native';
+import { ThemeColors, DARK_THEME } from '../constants/theme';
 
 interface FloatingInputBarProps {
   onSendMessage: (text: string, imageBase64?: string, imageUri?: string) => void;
   isLoading: boolean;
   disabled?: boolean;
   isTomorrowTyping?: boolean;
+  theme?: ThemeColors;
 }
 
 const QUICK_EMOJIS = ['😟', '😭', '💔', '🫠', '😂', '🥰', '✨', '☕'];
@@ -28,6 +30,7 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
   isLoading,
   disabled,
   isTomorrowTyping = false,
+  theme = DARK_THEME,
 }) => {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
@@ -101,17 +104,25 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
     setInputText((prev) => prev + emoji);
   };
 
+  // Bố cục fluid linh hoạt theo chiều rộng cửa sổ
+  const fluidPaddingHorizontal = width > 1200 ? '16%' : width > 900 ? '8%' : 16;
+
   return (
-    <View style={[styles.wrapper, isDesktop && styles.desktopWrapper]}>
+    <View style={[styles.wrapper, { paddingHorizontal: fluidPaddingHorizontal as any }]}>
       {/* Thanh Quick Emoji Popover */}
       {showEmojiPicker && (
-        <View style={styles.emojiRow}>
+        <View
+          style={[
+            styles.emojiRow,
+            { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
+          ]}
+        >
           {QUICK_EMOJIS.map((emoji, idx) => (
             <Pressable
               key={idx}
               style={({ pressed }) => [
                 styles.emojiBtn,
-                pressed && styles.emojiBtnPressed,
+                pressed && { backgroundColor: theme.btnHover },
                 Platform.OS === 'web' && { cursor: 'pointer' as any },
               ]}
               onPress={() => handleAddEmoji(emoji)}
@@ -124,7 +135,12 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
 
       {/* Preview ảnh đã chọn trước khi gửi */}
       {selectedImage && (
-        <View style={styles.imagePreviewContainer}>
+        <View
+          style={[
+            styles.imagePreviewContainer,
+            { backgroundColor: theme.inputBg, borderColor: theme.bubbleUser },
+          ]}
+        >
           <Image source={{ uri: selectedImage.uri }} style={styles.imagePreview} />
           <Pressable
             style={[
@@ -135,46 +151,55 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
           >
             <X size={14} color="#FFF" />
           </Pressable>
-          <Text style={styles.imagePreviewLabel}>Ảnh gửi kèm</Text>
+          <Text style={[styles.imagePreviewLabel, { color: theme.bubbleUser }]}>Ảnh gửi kèm</Text>
         </View>
       )}
 
-      {/* Floating Pill Input Bar phong cách Messenger */}
-      <View style={styles.pillContainer}>
+      {/* Floating Pill Input Bar phong cách Messenger & Fluid Desktop */}
+      <View
+        style={[
+          styles.pillContainer,
+          {
+            backgroundColor: theme.inputBg,
+            borderColor: theme.inputBorder,
+          },
+        ]}
+      >
         {/* Nút đính kèm ảnh */}
         <Pressable
           style={({ pressed }) => [
             styles.iconButton,
-            pressed && styles.iconButtonPressed,
+            pressed && { backgroundColor: theme.btnHover },
             Platform.OS === 'web' && { cursor: 'pointer' as any },
           ]}
           onPress={handlePickImage}
           disabled={isLoading || isTomorrowTyping}
         >
-          <ImageIcon size={22} color={selectedImage ? '#0084FF' : '#9CA3AF'} />
+          <ImageIcon size={22} color={selectedImage ? theme.bubbleUser : theme.textSecondary} />
         </Pressable>
 
         {/* Nút chọn nhanh Emoji */}
         <Pressable
           style={({ pressed }) => [
             styles.iconButton,
-            pressed && styles.iconButtonPressed,
+            pressed && { backgroundColor: theme.btnHover },
             Platform.OS === 'web' && { cursor: 'pointer' as any },
           ]}
           onPress={() => setShowEmojiPicker((prev) => !prev)}
           disabled={isLoading || isTomorrowTyping}
         >
-          <Smile size={22} color={showEmojiPicker ? '#0084FF' : '#9CA3AF'} />
+          <Smile size={22} color={showEmojiPicker ? theme.bubbleUser : theme.textSecondary} />
         </Pressable>
 
         {/* TextInput đa dòng hỗ trợ phím tắt macOS & xóa viền outline xanh mặc định */}
         <TextInput
           style={[
             styles.input,
+            { color: theme.inputText },
             Platform.OS === 'web' && ({ outlineStyle: 'none' } as any),
           ]}
           placeholder="Nhắn cho Tomorrow..."
-          placeholderTextColor="#6B7280"
+          placeholderTextColor={theme.placeholderText}
           value={inputText}
           onChangeText={setInputText}
           onKeyPress={handleKeyPress}
@@ -187,10 +212,12 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
         <Pressable
           style={({ pressed }) => [
             styles.sendButton,
+            { backgroundColor: theme.btnBg },
             (inputText.trim().length > 0 || selectedImage) &&
               !isLoading &&
-              !isTomorrowTyping &&
-              styles.sendButtonActive,
+              !isTomorrowTyping && {
+                backgroundColor: theme.bubbleUser,
+              },
             pressed && styles.sendButtonPressed,
             Platform.OS === 'web' && { cursor: 'pointer' as any },
           ]}
@@ -203,7 +230,7 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
             <Send
               size={18}
               color={
-                inputText.trim().length > 0 || selectedImage ? '#FFFFFF' : '#6B7280'
+                inputText.trim().length > 0 || selectedImage ? '#FFFFFF' : theme.textMuted
               }
             />
           )}
@@ -215,35 +242,22 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
 
 const styles = StyleSheet.create({
   wrapper: {
-    paddingHorizontal: 14,
-    paddingBottom: 10,
+    paddingBottom: 14,
     backgroundColor: 'transparent',
     width: '100%',
-  },
-  desktopWrapper: {
-    maxWidth: 780,
-    width: '100%',
-    alignSelf: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 16,
   },
   emojiRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    backgroundColor: '#1E1F20',
     borderRadius: 20,
     paddingVertical: 8,
     paddingHorizontal: 12,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#2F3033',
   },
   emojiBtn: {
     padding: 6,
     borderRadius: 12,
-  },
-  emojiBtnPressed: {
-    backgroundColor: '#2D2E30',
   },
   emojiText: {
     fontSize: 22,
@@ -251,12 +265,10 @@ const styles = StyleSheet.create({
   imagePreviewContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1E1F20',
     padding: 6,
     borderRadius: 14,
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#3B82F6',
     gap: 8,
   },
   imagePreview: {
@@ -265,9 +277,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   imagePreviewLabel: {
-    color: '#93C5FD',
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '600',
     flex: 1,
   },
   removeImageBtn: {
@@ -282,44 +293,40 @@ const styles = StyleSheet.create({
   pillContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1E1F20',
     borderRadius: 28,
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: '#2D2E30',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 4,
+    width: '100%',
   },
   iconButton: {
     padding: 8,
     borderRadius: 20,
   },
-  iconButtonPressed: {
-    backgroundColor: '#2A2B2D',
-  },
   input: {
     flex: 1,
-    color: '#F3F4F6',
-    fontSize: 15,
-    maxHeight: 100,
+    fontSize: 15.5,
+    lineHeight: 21,
+    maxHeight: 120,
     paddingHorizontal: 10,
     paddingVertical: 6,
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
+        : undefined,
   },
   sendButton: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#2A2B2D',
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 4,
-  },
-  sendButtonActive: {
-    backgroundColor: '#0084FF',
   },
   sendButtonPressed: {
     opacity: 0.8,
