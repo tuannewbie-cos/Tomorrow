@@ -323,9 +323,6 @@ export default function App() {
   const hasHistory = messages.length > 0;
   const greetingText = getColdGreetingText(userMemory, hasHistory);
 
-  // Tính toán padding ngang linh hoạt theo kích thước cửa sổ
-  const fluidChatPadding = width > 1200 ? '16%' : width > 900 ? '8%' : 16;
-
   return (
     <SafeAreaProvider>
       <SafeAreaView
@@ -449,10 +446,7 @@ export default function App() {
                     />
                   )}
                   style={styles.flatListStyle}
-                  contentContainerStyle={[
-                    styles.chatListContent,
-                    { paddingHorizontal: fluidChatPadding as any },
-                  ]}
+                  contentContainerStyle={styles.chatListContent}
                   showsVerticalScrollIndicator={false}
                   ListFooterComponent={
                     <TypingIndicator
@@ -579,6 +573,10 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   chatListContent: {
+    width: '100%',
+    maxWidth: 820,
+    alignSelf: 'center',
+    paddingHorizontal: 16,
     paddingVertical: 16,
     paddingBottom: 24,
   },

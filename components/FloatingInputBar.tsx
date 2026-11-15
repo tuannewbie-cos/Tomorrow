@@ -104,11 +104,8 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
     setInputText((prev) => prev + emoji);
   };
 
-  // Bố cục fluid linh hoạt theo chiều rộng cửa sổ
-  const fluidPaddingHorizontal = width > 1200 ? '16%' : width > 900 ? '8%' : 16;
-
   return (
-    <View style={[styles.wrapper, { paddingHorizontal: fluidPaddingHorizontal as any }]}>
+    <View style={styles.wrapper}>
       {/* Thanh Quick Emoji Popover */}
       {showEmojiPicker && (
         <View
@@ -155,7 +152,7 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
         </View>
       )}
 
-      {/* Floating Pill Input Bar phong cách Messenger & Fluid Desktop */}
+      {/* Floating Pill Input Bar căn giữa đối xứng hoàn hảo, không bị tràn lề */}
       <View
         style={[
           styles.pillContainer,
@@ -175,7 +172,7 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
           onPress={handlePickImage}
           disabled={isLoading || isTomorrowTyping}
         >
-          <ImageIcon size={22} color={selectedImage ? theme.bubbleUser : theme.textSecondary} />
+          <ImageIcon size={21} color={selectedImage ? theme.bubbleUser : theme.textSecondary} />
         </Pressable>
 
         {/* Nút chọn nhanh Emoji */}
@@ -188,7 +185,7 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
           onPress={() => setShowEmojiPicker((prev) => !prev)}
           disabled={isLoading || isTomorrowTyping}
         >
-          <Smile size={22} color={showEmojiPicker ? theme.bubbleUser : theme.textSecondary} />
+          <Smile size={21} color={showEmojiPicker ? theme.bubbleUser : theme.textSecondary} />
         </Pressable>
 
         {/* TextInput đa dòng hỗ trợ phím tắt macOS & xóa viền outline xanh mặc định */}
@@ -242,9 +239,11 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
 
 const styles = StyleSheet.create({
   wrapper: {
-    paddingBottom: 14,
-    backgroundColor: 'transparent',
     width: '100%',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+    backgroundColor: 'transparent',
   },
   emojiRow: {
     flexDirection: 'row',
@@ -254,6 +253,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginBottom: 8,
     borderWidth: 1,
+    width: '100%',
+    maxWidth: 820,
+    alignSelf: 'center',
   },
   emojiBtn: {
     padding: 6,
@@ -270,6 +272,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderWidth: 1,
     gap: 8,
+    width: '100%',
+    maxWidth: 820,
+    alignSelf: 'center',
   },
   imagePreview: {
     width: 44,
@@ -303,13 +308,17 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 4,
     width: '100%',
+    maxWidth: 820,
+    alignSelf: 'center',
   },
   iconButton: {
-    padding: 8,
+    padding: 7,
     borderRadius: 20,
+    flexShrink: 0,
   },
   input: {
     flex: 1,
+    minWidth: 0,
     fontSize: 15.5,
     lineHeight: 21,
     maxHeight: 120,
@@ -326,7 +335,8 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 4,
+    marginLeft: 6,
+    flexShrink: 0,
   },
   sendButtonPressed: {
     opacity: 0.8,

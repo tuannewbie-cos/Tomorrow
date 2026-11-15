@@ -249,43 +249,6 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
             })
           )}
         </View>
-
-        {/* Mục Thẻ Bộ Nhớ Dài Hạn */}
-        <View style={styles.memorySection}>
-          <View style={styles.sectionHeader}>
-            <Brain size={15} color="#8B5CF6" />
-            <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>Bộ nhớ tâm lý dài hạn</Text>
-          </View>
-
-          <View
-            style={[
-              styles.memoryBox,
-              { backgroundColor: theme.bgMain, borderColor: theme.borderSubtle },
-            ]}
-          >
-            <Text style={styles.memoryFieldTitle}>Đang xưng hô:</Text>
-            <Text style={[styles.memoryFieldValue, { color: theme.textPrimary }]}>
-              {userMemory.userName || userMemory.nickname} ({userMemory.nickname})
-            </Text>
-
-            <Text style={styles.memoryFieldTitle}>Vấn đề AI đang theo dõi:</Text>
-            <Text style={[styles.memoryFieldValue, { color: theme.textPrimary }]}>
-              {userMemory.currentProblem}
-            </Text>
-
-            <Text style={styles.memoryFieldTitle}>Khí chất & Thói quen:</Text>
-            <Text style={[styles.memoryFieldValue, { color: theme.textPrimary }]}>
-              {userMemory.moodTrend}
-            </Text>
-
-            <View style={[styles.storageStatus, { borderTopColor: theme.borderSubtle }]}>
-              <ShieldCheck size={14} color="#10B981" />
-              <Text style={styles.storageStatusText}>
-                Đã lưu bền vững trong AsyncStorage
-              </Text>
-            </View>
-          </View>
-        </View>
       </ScrollView>
 
       {/* Footer nút xóa toàn bộ lịch sử */}
