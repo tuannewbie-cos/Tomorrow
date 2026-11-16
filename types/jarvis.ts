@@ -9,7 +9,16 @@ import { UserMemoryProfile, ChatMessage } from './chat';
  */
 export type JarvisIntent = 'chat' | 'work_assist' | 'emotional_support' | 'system_command';
 
-export type ConversationState = 'ping' | 'active_chat' | 'deep_work' | 'emotional_support' | 'soft_close' | 'hard_close';
+export type ConversationState =
+  | 'ping'
+  | 'active_chat'
+  | 'casual_friend'
+  | 'gemini_expert'
+  | 'deep_work'
+  | 'emotional_support'
+  | 'soft_close'
+  | 'hard_close'
+  | 'closing_stop';
 
 export interface JarvisAction {
   type: string;
