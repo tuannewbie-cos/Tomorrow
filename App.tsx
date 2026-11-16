@@ -30,6 +30,7 @@ import {
 import {
   sendMessageToTomorrow,
   getColdGreetingText,
+  localResilientFallback,
 } from './services/aiService';
 import { ChatBubble } from './components/ChatBubble';
 import { ColdGreeting } from './components/ColdGreeting';
@@ -280,19 +281,23 @@ export default function App() {
       );
 
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('WATCHDOG_TIMEOUT')), 9500)
+        setTimeout(() => reject(new Error('WATCHDOG_TIMEOUT')), 12000)
       );
 
       let aiResponse: any;
       try {
         aiResponse = await Promise.race([aiResponsePromise, timeoutPromise]);
       } catch (err: any) {
-        console.warn('[App] Watchdog kích hoạt hoặc lỗi mạng:', err?.message || err);
-        aiResponse = {
-          replies: ['Mình vừa thử quét nhanh nhưng kết nối tới nguồn web đang phản hồi chậm, hiện mình chưa kiểm chứng chắc chắn được thông tin này.'],
-          conversation_state: 'casual_friend',
-          should_update_title: false,
-        };
+        console.error('[AI Error Detail]:', err?.message || err);
+        aiResponse = localResilientFallback(text, false, userMemory);
+        if (!aiResponse || !aiResponse.replies || aiResponse.replies.length === 0) {
+          const isTM = userMemory.nickname === 'm' || /^(t|m|tao|mày)\b/i.test(text);
+          aiResponse = {
+            replies: [isTM ? 'mạng bên t đang hơi lag chút, m nhắn lại câu vừa rồi giúp t nhé' : 'mạng bên mình đang hơi lag chút, bạn nhắn lại câu vừa rồi giúp mình nhé'],
+            conversation_state: 'casual_friend',
+            should_update_title: false,
+          };
+        }
       } finally {
         clearTimeout(deepThinkingTimer);
         setTypingStatusText(undefined);
@@ -506,7 +511,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v3.8</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v3.9</Text>
               </View>
             </View>
           </View>

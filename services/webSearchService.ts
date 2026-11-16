@@ -58,13 +58,12 @@ export function shouldTriggerWebSearch(userText: string, forceSearch: boolean = 
     return true;
   }
 
-  // 4. Câu hỏi tra cứu dữ kiện, số liệu, sự thật
+  // 4. Câu hỏi tra cứu dữ kiện, số liệu thị trường chuyên biệt
   const queryQuestions = [
-    'là ai', 'la ai', 'là gì', 'la gi', 'bao nhiêu bàn', 'bao nhieu ban',
-    'ở đâu', 'o dau', 'khi nào', 'khi nao', 'tìm giúp', 'tim giup',
+    'bao nhiêu bàn', 'bao nhieu ban', 'tìm giúp', 'tim giup',
     'search', 'tra cứu', 'tra cuu', 'trên mạng', 'tren mang', 'trên web', 'tren web',
     'thống kê', 'thong ke', 'cấu hình', 'cau hinh', 'giá bao nhiêu', 'gia bao nhieu',
-    'ai là', 'ai la', 'người sáng lập', 'CEO của', 'bao nhiêu tuổi'
+    'người sáng lập', 'CEO của', 'bao nhiêu tuổi'
   ];
   if (queryQuestions.some((q) => lower.includes(q))) {
     return true;
@@ -73,9 +72,11 @@ export function shouldTriggerWebSearch(userText: string, forceSearch: boolean = 
   // 5. Yêu cầu kiểm chứng, xin đường dẫn, tin đồn, xác minh
   const verificationKeywords = [
     'check web', 'kiểm tra web', 'kiem tra web', 'đưa đường dẫn', 'dua duong dan',
-    'đưa link', 'dua link', 'xin link', 'cho xin link', 'nguồn đâu', 'nguon dau',
-    'source', 'dẫn chứng', 'dan chung', 'thật không', 'that khong', 'có thật không',
-    'co that khong', 'bị sa thải', 'bi sa thai', 'sa thải', 'từ chức', 'mới nhất',
+    'đưa link', 'dua link', 'xin link', 'cho xin link', 'đưa link đi', 'dua link di',
+    'tìm lại đi', 'tim lai di', 'check lại xem', 'check lai xem',
+    'nguồn đâu', 'nguon dau', 'source', 'dẫn chứng', 'dan chung',
+    'thật không', 'that khong', 'có thật không', 'co that khong',
+    'bị sa thải', 'bi sa thai', 'sa thải', 'từ chức', 'mới nhất',
     'hiện tại', 'xong chưa', 'xác thực', 'xac thuc', 'kiểm chứng', 'kiem chung'
   ];
   if (verificationKeywords.some((vk) => lower.includes(vk))) {
@@ -105,8 +106,10 @@ export function buildOptimizedSearchQuery(userText: string, recentHistory: any[]
   const lowerClean = clean.toLowerCase();
   const commandPhrases = [
     'check web', 'kiểm tra web', 'đưa đường dẫn', 'đưa link', 'xin link', 'cho xin link',
-    'nguồn đâu', 'source', 'dẫn chứng', 'thật không', 'có thật không', 'xem nào', 'xong chưa',
-    'link đâu', 'link bài viết', 'link tin tức', 'cho link', 'gửi link', 'gửi đường dẫn'
+    'đưa link đi', 'tìm lại đi', 'tim lai di', 'check lại xem', 'check lai xem',
+    'tìm lại xem', 'nguồn đâu', 'source', 'dẫn chứng', 'thật không', 'có thật không',
+    'xem nào', 'xong chưa', 'link đâu', 'link bài viết', 'link tin tức', 'cho link',
+    'gửi link', 'gửi đường dẫn'
   ];
   const isCommandOnly = commandPhrases.some((cp) => lowerClean.includes(cp)) || lowerClean.split(/\s+/).length <= 3;
 
@@ -153,8 +156,9 @@ export function buildOptimizedSearchQuery(userText: string, recentHistory: any[]
 
       // 2. Nếu không có danh từ viết hoa, tìm các từ khóa chủ đề thông dụng
       const keySubjects = [
-        'ronaldo', 'messi', 'bitcoin', 'btc', 'vàng', 'supabase', 'iphone', 'nvidia',
-        'jensen huang', 'sam altman', 'elon musk', 'trump', 'biden', 'real madrid', 'mu'
+        'jarvis', 'j.a.r.v.i.s', 'iron man', 'ronaldo', 'messi', 'bitcoin', 'btc', 'vàng',
+        'supabase', 'iphone', 'nvidia', 'jensen huang', 'sam altman', 'elon musk', 'trump',
+        'biden', 'real madrid', 'mu', 'gemini', 'chatgpt', 'openai'
       ];
       const found = keySubjects.find((s) => msgText.toLowerCase().includes(s));
       if (found) {
@@ -173,198 +177,153 @@ export function buildOptimizedSearchQuery(userText: string, recentHistory: any[]
 
 /**
  * 3. THỰC HIỆN TÌM KIẾM ĐA TẦNG VỚI CLIENT-SIDE FALLBACK (performSmartWebSearch)
- * Giới hạn tối đa 4.0s và đảm bảo 100% luôn có URL thực tế trả về
+ * Giới hạn tối đa 3.5s và đảm bảo 100% không bao giờ ném lỗi (Graceful Fallback)
  */
 export async function performSmartWebSearch(
   userText: string,
   recentHistory: any[] = [],
   forceSearch: boolean = false
 ): Promise<WebSearchContext> {
-  const needsSearch = shouldTriggerWebSearch(userText, forceSearch);
-  if (!needsSearch) {
-    return {
-      searched: false,
-      query: '',
-      formattedContext: '',
-      sources: [],
-    };
-  }
-
-  const { query, url } = buildOptimizedSearchQuery(userText, recentHistory);
-
-  // 1. Thử gọi API endpoint /api/search (Vercel Serverless Function)
-  let endpoint = '/api/search';
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-    endpoint = `${window.location.origin}/api/search`;
-  }
+  const fallbackEmpty: WebSearchContext = {
+    searched: false,
+    query: '',
+    formattedContext: '',
+    sources: [],
+  };
 
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000); // Timeout 4.0s
+    const needsSearch = shouldTriggerWebSearch(userText, forceSearch);
+    if (!needsSearch) {
+      return fallbackEmpty;
+    }
 
-    const res = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, url }),
-      signal: controller.signal,
-    }).finally(() => clearTimeout(timeoutId));
+    const { query, url } = buildOptimizedSearchQuery(userText, recentHistory);
 
-    if (res.ok) {
-      const data = await res.json();
-      if (data && (Array.isArray(data.results) || data.pageContent)) {
-        let sources: WebSource[] = (data.results || []).slice(0, 4).map((r: any) => ({
-          title: r.title || 'Nguồn web',
-          url: r.url,
-          source: r.source || 'Web',
-          snippet: r.snippet,
-          publishedAt: r.publishedAt,
-        }));
+    // 1. Thử gọi API endpoint /api/search (Vercel Serverless Function)
+    let endpoint = '/api/search';
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
+      endpoint = `${window.location.origin}/api/search`;
+    }
 
-        // Đảm bảo luôn có ít nhất 2 URL kiểm chứng thực tế
-        if (sources.length === 0) {
-          sources = [
-            {
-              title: `Tin tức Google News: ${query}`,
-              url: `https://news.google.com/search?q=${encodeURIComponent(query)}&hl=vi`,
-              source: 'Google News',
-              snippet: `Tra cứu trực tiếp tin tức mới nhất về "${query}" trên Google News.`,
-            },
-            {
-              title: `Bách khoa toàn thư Wikipedia: ${query}`,
-              url: `https://vi.wikipedia.org/w/index.php?search=${encodeURIComponent(query)}`,
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3500); // Timeout 3.5s
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, url }),
+        signal: controller.signal,
+      }).finally(() => clearTimeout(timeoutId));
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && (Array.isArray(data.results) || data.pageContent)) {
+          let sources: WebSource[] = (data.results || []).slice(0, 4).map((r: any) => ({
+            title: r.title || 'Nguồn web',
+            url: r.url,
+            source: r.source || 'Web',
+            snippet: r.snippet,
+            publishedAt: r.publishedAt,
+          }));
+
+          if (sources.length > 0 || data.pageContent) {
+            let formatted = `[DỮ LIỆU WEB THỜI GIAN THỰC ĐƯỢC TÌM KIẾM NGÀY ${new Date().toLocaleDateString('vi-VN')} CHO TRUY VẤN: "${query}"]\n`;
+            if (data.pageContent) {
+              formatted += `\n[NỘI DUNG ĐỌC TỪ LIÊN KẾT ${url || data.targetUrl}]:\n${data.pageContent}\n`;
+            }
+            if (sources.length > 0) {
+              formatted += `\n[KẾT QUẢ TÌM KIẾM WEB CHÍNH THỨC]:\n`;
+              sources.forEach((s, idx) => {
+                formatted += `${idx + 1}. [${s.source || 'Tin tức'}] ${s.title}\nTrích dẫn: ${s.snippet || s.title}\nLink: ${s.url}\n\n`;
+              });
+            }
+
+            return {
+              searched: true,
+              query,
+              formattedContext: formatted.trim(),
+              sources,
+              pageContent: data.pageContent,
+              targetUrl: url || data.targetUrl,
+            };
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn('[WebSearchService] Gọi /api/search thất bại hoặc timeout 3.5s, kích hoạt Client Direct Fallback:', err?.message || err);
+    }
+
+    // 2. CLIENT DIRECT FALLBACK: Chạy thẳng từ trình duyệt
+    try {
+      const fallbackSources: WebSource[] = [];
+
+      // Direct Wikipedia Tiếng Việt
+      try {
+        const wikiUrl = `https://vi.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&utf8=&format=json&origin=*`;
+        const wikiRes = await fetch(wikiUrl);
+        if (wikiRes.ok) {
+          const wikiData = await wikiRes.json();
+          const items = wikiData?.query?.search || [];
+          for (const it of items.slice(0, 2)) {
+            const cleanSnippet = (it.snippet || '').replace(/<[^>]+>/g, '');
+            const articleUrl = `https://vi.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/\s+/g, '_'))}`;
+            fallbackSources.push({
+              title: it.title,
+              url: articleUrl,
               source: 'Wikipedia',
-              snippet: `Dữ liệu và dẫn chứng bách khoa về "${query}" trên Wikipedia.`,
-            },
-          ];
+              snippet: cleanSnippet,
+            });
+          }
         }
+      } catch (e) {
+        // Bỏ qua lỗi fallback wiki
+      }
 
-        let formatted = `[DỮ LIỆU WEB THỜI GIAN THỰC ĐƯỢC TÌM KIẾM NGÀY ${new Date().toLocaleDateString('vi-VN')} CHO TRUY VẤN: "${query}"]\n`;
-        if (data.pageContent) {
-          formatted += `\n[NỘI DUNG ĐỌC TỪ LIÊN KẾT ${url || data.targetUrl}]:\n${data.pageContent}\n`;
+      // Direct Google News via rss2json
+      try {
+        const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=vi&gl=VN&ceid=VN:vi`;
+        const jsonRes = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`);
+        if (jsonRes.ok) {
+          const jsonData = await jsonRes.json();
+          if (Array.isArray(jsonData.items)) {
+            for (const item of jsonData.items.slice(0, 3)) {
+              fallbackSources.push({
+                title: item.title,
+                url: item.link,
+                source: item.author || 'Google News',
+                snippet: item.title,
+                publishedAt: item.pubDate,
+              });
+            }
+          }
         }
-        if (sources.length > 0) {
-          formatted += `\n[KẾT QUẢ TÌM KIẾM WEB CHÍNH THỨC]:\n`;
-          sources.forEach((s, idx) => {
-            formatted += `${idx + 1}. [${s.source || 'Tin tức'}] ${s.title}\nTrích dẫn: ${s.snippet || s.title}\nLink: ${s.url}\n\n`;
-          });
-        }
+      } catch (e) {
+        // Bỏ qua lỗi fallback news
+      }
+
+      if (fallbackSources.length > 0) {
+        let fallbackText = `[DỮ LIỆU TÌM KIẾM TRỰC TIẾP TỪ WEB - NGÀY ${new Date().toLocaleDateString('vi-VN')}]:\n`;
+        fallbackSources.forEach((s, idx) => {
+          fallbackText += `${idx + 1}. [${s.source}] ${s.title}: ${s.snippet || s.title} (URL: ${s.url})\n`;
+        });
 
         return {
           searched: true,
           query,
-          formattedContext: formatted.trim(),
-          sources,
-          pageContent: data.pageContent,
-          targetUrl: url || data.targetUrl,
+          formattedContext: fallbackText.trim(),
+          sources: fallbackSources.slice(0, 4),
         };
       }
+    } catch (clientErr) {
+      console.warn('[WebSearchService] Client Direct Fallback cũng gặp sự cố:', clientErr);
     }
-  } catch (err: any) {
-    console.warn('[WebSearchService] Gọi /api/search thất bại hoặc timeout 4s, kích hoạt Client Direct Fallback:', err?.message || err);
+
+    // Nếu không tìm được nguồn tin hợp lệ nào, quay về dùng kiến thức model
+    console.warn('[WebSearch] Không lấy được nguồn tin web, fallback sang kiến thức sẵn có của model.');
+    return fallbackEmpty;
+  } catch (outerErr) {
+    console.warn('[WebSearch] Fallback to model knowledge:', outerErr);
+    return fallbackEmpty;
   }
-
-  // 2. CLIENT DIRECT FALLBACK: Chạy thẳng từ trình duyệt
-  try {
-    const fallbackSources: WebSource[] = [];
-    let fallbackText = '';
-
-    // Direct Wikipedia Tiếng Việt
-    try {
-      const wikiUrl = `https://vi.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&utf8=&format=json&origin=*`;
-      const wikiRes = await fetch(wikiUrl);
-      if (wikiRes.ok) {
-        const wikiData = await wikiRes.json();
-        const items = wikiData?.query?.search || [];
-        for (const it of items.slice(0, 2)) {
-          const cleanSnippet = (it.snippet || '').replace(/<[^>]+>/g, '');
-          const articleUrl = `https://vi.wikipedia.org/wiki/${encodeURIComponent(it.title.replace(/\s+/g, '_'))}`;
-          fallbackSources.push({
-            title: it.title,
-            url: articleUrl,
-            source: 'Wikipedia',
-            snippet: cleanSnippet,
-          });
-        }
-      }
-    } catch (e) {
-      // Bỏ qua lỗi fallback wiki
-    }
-
-    // Direct Google News via rss2json
-    try {
-      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=vi&gl=VN&ceid=VN:vi`;
-      const jsonRes = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}`);
-      if (jsonRes.ok) {
-        const jsonData = await jsonRes.json();
-        if (Array.isArray(jsonData.items)) {
-          for (const item of jsonData.items.slice(0, 3)) {
-            fallbackSources.push({
-              title: item.title,
-              url: item.link,
-              source: item.author || 'Google News',
-              snippet: item.title,
-              publishedAt: item.pubDate,
-            });
-          }
-        }
-      }
-    } catch (e) {
-      // Bỏ qua lỗi fallback news
-    }
-
-    // Luôn đảm bảo có ít nhất 2 URL kiểm chứng
-    if (fallbackSources.length === 0) {
-      fallbackSources.push(
-        {
-          title: `Tin tức Google News: ${query}`,
-          url: `https://news.google.com/search?q=${encodeURIComponent(query)}&hl=vi`,
-          source: 'Google News',
-          snippet: `Tra cứu trực tiếp tin tức mới nhất về "${query}" trên Google News.`,
-        },
-        {
-          title: `Bách khoa toàn thư Wikipedia: ${query}`,
-          url: `https://vi.wikipedia.org/w/index.php?search=${encodeURIComponent(query)}`,
-          source: 'Wikipedia',
-          snippet: `Dữ liệu và dẫn chứng bách khoa về "${query}" trên Wikipedia.`,
-        }
-      );
-    }
-
-    fallbackText = `[DỮ LIỆU TÌM KIẾM TRỰC TIẾP TỪ WEB - NGÀY ${new Date().toLocaleDateString('vi-VN')}]:\n`;
-    fallbackSources.forEach((s, idx) => {
-      fallbackText += `${idx + 1}. [${s.source}] ${s.title}: ${s.snippet || s.title} (URL: ${s.url})\n`;
-    });
-
-    return {
-      searched: true,
-      query,
-      formattedContext: fallbackText.trim(),
-      sources: fallbackSources.slice(0, 4),
-    };
-  } catch (clientErr) {
-    console.warn('[WebSearchService] Client Direct Fallback cũng gặp sự cố:', clientErr);
-  }
-
-  // Fallback cứu cánh cuối cùng với direct URLs
-  const emergencySources: WebSource[] = [
-    {
-      title: `Tin tức Google News: ${query}`,
-      url: `https://news.google.com/search?q=${encodeURIComponent(query)}&hl=vi`,
-      source: 'Google News',
-      snippet: `Tìm kiếm trực tiếp tin tức về "${query}".`,
-    },
-    {
-      title: `Wikipedia: ${query}`,
-      url: `https://vi.wikipedia.org/w/index.php?search=${encodeURIComponent(query)}`,
-      source: 'Wikipedia',
-      snippet: `Tra cứu dẫn chứng trên Wikipedia về "${query}".`,
-    },
-  ];
-
-  return {
-    searched: true,
-    query,
-    formattedContext: `[ĐƯỜNG DẪN KIỂM CHỨNG TRỰC TIẾP TRÊN WEB]:\n1. Google News: https://news.google.com/search?q=${encodeURIComponent(query)}&hl=vi\n2. Wikipedia: https://vi.wikipedia.org/w/index.php?search=${encodeURIComponent(query)}`,
-    sources: emergencySources,
-  };
 }

@@ -483,21 +483,27 @@ async function executeApiCall(
       });
     }
 
+    const generationConfig: any = {
+      temperature: 0.7,
+      maxOutputTokens: 800, // Tăng lên 800 tokens
+    };
+
     const payload: any = {
       systemInstruction: {
         parts: [{ text: systemPrompt }],
       },
       contents: [{ parts }],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 800, // Tăng lên 800 tokens
-        responseMimeType: 'application/json',
-      },
     };
 
+    // QUY TẮC SỐNG CÒN: Google Gemini API ném lỗi 400 Bad Request nếu bật cả google_search VÀ responseMimeType: 'application/json' cùng lúc!
     if (enableGrounding) {
       payload.tools = [{ google_search: {} }];
+      // TUYỆT ĐỐI KHÔNG gán responseMimeType: 'application/json' khi có tools google_search
+    } else {
+      generationConfig.responseMimeType = 'application/json';
     }
+
+    payload.generationConfig = generationConfig;
 
     let res = await fetch(url, {
       method: 'POST',
@@ -509,6 +515,7 @@ async function executeApiCall(
     // Nếu endpoint không hỗ trợ tools google_search (400 Bad Request), tự động thử lại không dùng tools
     if (!res.ok && enableGrounding && res.status === 400) {
       delete payload.tools;
+      payload.generationConfig.responseMimeType = 'application/json';
       res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -579,28 +586,37 @@ async function callModelFallbackChain(
 }
 
 /**
- * Phân tích JSON chuẩn hóa: trích xuất "conversation_state", "replies", "session_title", "should_update_title", "memory_note"
+ * Trích xuất JSON an toàn: tìm khối { ... } đầu tiên và cuối cùng trong văn bản phản hồi.
+ * Nếu AI trả về văn bản thường không bọc JSON, tự động bọc thành object chuẩn không bao giờ ném lỗi.
  */
-function parseAIResponseJson(
-  raw: string,
-  userText?: string,
-  recentChats?: ChatMessage[],
-  webSearchSources?: WebSource[]
-): AIResponsePayload | null {
-  try {
-    const cleaned = raw
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/\s*```$/i, '')
-      .trim();
+export function safeParseAIJson(rawText: string): any {
+  if (!rawText || typeof rawText !== 'string') {
+    return {
+      conversation_state: 'casual_friend',
+      replies: ['nghe đây'],
+      session_title: '',
+      should_update_title: false,
+      memory_note: '',
+    };
+  }
 
-    let parsed: any = null;
+  const cleaned = rawText
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const candidate = cleaned.slice(firstBrace, lastBrace + 1);
     try {
-      parsed = JSON.parse(cleaned);
+      return JSON.parse(candidate);
     } catch {
       // Tự động vá nếu chuỗi JSON bị cắt cụt đuôi
       try {
-        let repaired = cleaned;
+        let repaired = candidate;
         if (!repaired.endsWith('}')) {
           if (repaired.endsWith('"')) {
             repaired += ']}';
@@ -610,10 +626,10 @@ function parseAIResponseJson(
             repaired += '"]}';
           }
         }
-        parsed = JSON.parse(repaired);
+        return JSON.parse(repaired);
       } catch {
         // Fallback trích xuất mảng text
-        const matches = [...cleaned.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)].map((m) => m[1]);
+        const matches = [...candidate.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)].map((m) => m[1]);
         const validTexts = matches.filter(
           (m) =>
             m.length > 0 &&
@@ -641,6 +657,39 @@ function parseAIResponseJson(
         }
       }
     }
+  }
+
+  // Nếu AI trả về văn bản thường không bọc JSON:
+  const plainText = cleaned
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .trim();
+
+  const sentences = plainText.split(/\n+/).filter((s) => s.trim().length > 0);
+  const replies = sentences.length > 0 ? sentences.slice(0, 3) : [plainText || 'nghe đây'];
+
+  return {
+    conversation_state: 'casual_friend',
+    replies,
+    reply: replies[0],
+    session_title: '',
+    should_update_title: false,
+    memory_note: '',
+  };
+}
+
+/**
+ * Phân tích JSON chuẩn hóa: trích xuất "conversation_state", "replies", "session_title", "should_update_title", "memory_note"
+ */
+function parseAIResponseJson(
+  raw: string,
+  userText?: string,
+  recentChats?: ChatMessage[],
+  webSearchSources?: WebSource[]
+): AIResponsePayload | null {
+  try {
+    const parsed = safeParseAIJson(raw);
+    if (!parsed) return null;
 
     if (parsed) {
       let replies: string[] = [];
@@ -749,7 +798,7 @@ function parseAIResponseJson(
             }
             replies = [substantiveAnswer];
           } else {
-            replies = ['Mình vừa quét nhanh nhưng kết nối tới nguồn tin web đang phản hồi chậm, hiện chưa có dữ liệu xác thực chắc chắn về thông tin này.'];
+            replies = ['Chủ đề này mình có thể chia sẻ theo góc nhìn thực tế nhé.'];
           }
         } else if (/(đường dẫn|link|nguồn|dẫn chứng)/i.test(userClean) && webSearchSources && webSearchSources.length > 0) {
           // Nếu user xin link cụ thể mà câu trả lời chưa đính kèm link https://
@@ -936,6 +985,84 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean, 
       memory_note: '',
       memoryNote: '',
       jarvis_intent: 'chat',
+    };
+  }
+
+  // 2B. CÂU HỎI VỀ J.A.R.V.I.S (TRÍ TUỆ NHÂN TẠO)
+  if (lower.includes('jarvis') || lower.includes('j.a.r.v.i.s')) {
+    const isTM = userMemory?.nickname === 'm' || /^(t|m|tao|mày)\b/i.test(lower);
+    return {
+      replies: [
+        'biết chứ, J.A.R.V.I.S của Tony Stark trong Iron Man chứ gì :3',
+        isTM
+          ? 'siêu trợ lý AI thông minh toàn diện, t cũng đang hướng tới phong cách sắc bén và hỗ trợ đắc lực như vậy đấy'
+          : 'siêu trợ lý AI thông minh toàn diện, mình cũng đang hướng tới phong cách sắc bén và hỗ trợ đắc lực như vậy đấy',
+      ],
+      reply: 'biết chứ, J.A.R.V.I.S của Tony Stark trong Iron Man chứ gì :3',
+      session_title: 'Tìm hiểu về J.A.R.V.I.S',
+      sessionTitle: 'Tìm hiểu về J.A.R.V.I.S',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'casual_friend',
+      conversationState: 'casual_friend',
+      memory_note: 'Quan tâm đến trí tuệ nhân tạo J.A.R.V.I.S',
+      memoryNote: 'Quan tâm đến trí tuệ nhân tạo J.A.R.V.I.S',
+      jarvis_intent: 'chat',
+    };
+  }
+
+  // 2C. TÂM SỰ MỆT MỎI / CHÁN NẢN ("chán quá", "buồn quá", "chán vl")
+  if (
+    lower === 'chán quá' ||
+    lower.startsWith('chán quá') ||
+    lower === 'chán' ||
+    lower.includes('chán vl') ||
+    lower.includes('buồn quá') ||
+    lower.includes('nản quá')
+  ) {
+    const isTM = userMemory?.nickname === 'm' || /^(t|m|tao|mày)\b/i.test(lower);
+    return {
+      replies: isTM
+        ? ['sao thế m, có vụ gì kể t nghe xem', 'ngồi xuống thở một nhịp đã nào']
+        : ['sao thế bạn, có chuyện gì kể mình nghe xem', 'ngồi xuống thở một nhịp đã nào'],
+      reply: isTM ? 'sao thế m, có vụ gì kể t nghe xem' : 'sao thế bạn, có chuyện gì kể mình nghe xem',
+      session_title: 'Tâm sự giải tỏa áp lực',
+      sessionTitle: 'Tâm sự giải tỏa áp lực',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'emotional_support',
+      conversationState: 'emotional_support',
+      memory_note: 'Tâm trạng đang chán và cần tâm sự',
+      memoryNote: 'Tâm trạng đang chán và cần tâm sự',
+      jarvis_intent: 'emotional_support',
+    };
+  }
+
+  // 2D. YÊU CẦU TÌM LẠI / XIN LINK NGẮN ("tìm lại đi", "check lại xem", "đưa link đi")
+  if (
+    lower.includes('tìm lại đi') ||
+    lower.includes('tim lai di') ||
+    lower.includes('check lại xem') ||
+    lower.includes('check lai xem') ||
+    lower.includes('đưa link đi') ||
+    lower.includes('dua link di')
+  ) {
+    const isTM = userMemory?.nickname === 'm' || /^(t|m|tao|mày)\b/i.test(lower);
+    return {
+      replies: [
+        isTM ? 'đây, link kiểm chứng trực tiếp cho m nhé:' : 'đây, đường dẫn kiểm chứng trực tiếp cho bạn nhé:',
+        'https://news.google.com/search?q=Jarvis+AI',
+      ],
+      reply: isTM ? 'đây, link kiểm chứng trực tiếp cho m nhé:' : 'đây, đường dẫn kiểm chứng trực tiếp cho bạn nhé:',
+      session_title: 'Tra cứu thông tin',
+      sessionTitle: 'Tra cứu thông tin',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'gemini_expert',
+      conversationState: 'gemini_expert',
+      memory_note: '',
+      memoryNote: '',
+      jarvis_intent: 'work_assist',
     };
   }
 
@@ -1175,110 +1302,116 @@ export async function sendMessageToTomorrow(
   forceWebSearch: boolean = false,
   onSearchStatusChange?: (isSearching: boolean) => void
 ): Promise<AIResponsePayload> {
-  const userStyle = extractUserStyleLocal(userText, recentChats);
+  try {
+    const userStyle = extractUserStyleLocal(userText, recentChats);
 
-  // 0. TRA CỨU WEB THỜI GIAN THỰC (Nếu cần hoặc người dùng ép buộc)
-  let webSearchContext: any = { searched: false, query: '', formattedContext: '', sources: [] };
-  const needsWebSearch = shouldTriggerWebSearch(userText, forceWebSearch);
+    // 0. TRA CỨU WEB THỜI GIAN THỰC (Nếu cần hoặc người dùng ép buộc)
+    let webSearchContext: any = { searched: false, query: '', formattedContext: '', sources: [] };
+    const needsWebSearch = shouldTriggerWebSearch(userText, forceWebSearch);
 
-  if (needsWebSearch) {
-    try {
-      if (onSearchStatusChange) onSearchStatusChange(true);
-      webSearchContext = await performSmartWebSearch(userText, recentChats, forceWebSearch);
-    } catch (e: any) {
-      console.warn('[AI Service] Tra cứu web gặp sự cố:', e?.message || e);
-    } finally {
-      if (onSearchStatusChange) onSearchStatusChange(false);
-    }
-  }
-
-  // LỚP 1 — PHẢN XẠ CỤC BỘ TRÊN MÁY: XUẤT ĐÚNG 1 NHÃN CHỈ ĐẠO DUY NHẤT
-  const directive = buildLocalReflexDirective(userText, recentChats, needsWebSearch || webSearchContext.searched);
-
-  let finalUserMessage = `${userText}\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
-  if (webSearchContext.searched && webSearchContext.formattedContext) {
-    finalUserMessage = `${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- TUYỆT ĐỐI CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', 'để mình tìm' vì dữ liệu đã được cung cấp sẵn ngay ở trên.\n- Nếu người dùng có yêu cầu xin link/đường dẫn: Hãy chèn trực tiếp URL thật (https://...) từ kết quả tìm kiếm vào câu trả lời.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
-  }
-
-  const systemPrompt = buildSystemPrompt(
-    userMemory,
-    recentChats,
-    previousSessionMessages,
-    userStyle.styleHint
-  );
-
-  // 1. BỘ NÃO CHÍNH SIÊU TỐC: OPENAI (gpt-4o-mini)
-  if (OPENAI_API_KEY && !isOpenAIUnavailable) {
-    try {
-      const openAiRaw = await callOpenAI(systemPrompt, finalUserMessage, recentChats, imageBase64);
-      const parsed = parseAIResponseJson(openAiRaw, userText, recentChats, webSearchContext.sources);
-      if (parsed && parsed.replies && parsed.replies.length > 0) {
-        if (parsed.memory_note) {
-          const currentVault = getVaultFromProfile(userMemory);
-          const updatedVault = mergeMemoryNoteIntoVault(currentVault, parsed.memory_note, userText);
-          parsed.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
-        }
-        if (webSearchContext.searched) {
-          parsed.sources = webSearchContext.sources;
-          parsed.searchQuery = webSearchContext.query;
-          parsed.isWebSearched = true;
-        }
-        return parsed;
+    if (needsWebSearch) {
+      try {
+        if (onSearchStatusChange) onSearchStatusChange(true);
+        webSearchContext = await performSmartWebSearch(userText, recentChats, forceWebSearch);
+      } catch (e: any) {
+        console.warn('[AI Service] Tra cứu web gặp sự cố:', e?.message || e);
+      } finally {
+        if (onSearchStatusChange) onSearchStatusChange(false);
       }
-    } catch (err: any) {
-      console.warn('[AI Service] OpenAI gặp sự cố, tự động chuyển ngầm sang Gemini:', err?.message || err);
     }
-  }
 
-  // 2. CHUỖI DỰ PHÒNG NGẦM: GEMINI MODEL FALLBACK CHAIN (MIỄN PHÍ)
-  for (let keyIdx = 0; keyIdx < ALL_GEMINI_KEYS.length; keyIdx++) {
-    const key = ALL_GEMINI_KEYS[keyIdx];
-    try {
-      const rawRes = await callModelFallbackChain(key, systemPrompt, finalUserMessage, imageBase64, webSearchContext.searched);
-      const parsed = parseAIResponseJson(rawRes.text, userText, recentChats, webSearchContext.sources);
-      if (parsed && parsed.replies && parsed.replies.length > 0) {
-        if (parsed.memory_note) {
-          const currentVault = getVaultFromProfile(userMemory);
-          const updatedVault = mergeMemoryNoteIntoVault(currentVault, parsed.memory_note, userText);
-          parsed.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
-        }
-        if (webSearchContext.searched) {
-          const allSources = [...(webSearchContext.sources || [])];
-          if (rawRes.groundingSources && rawRes.groundingSources.length > 0) {
-            allSources.push(...rawRes.groundingSources);
+    // LỚP 1 — PHẢN XẠ CỤC BỘ TRÊN MÁY: XUẤT ĐÚNG 1 NHÃN CHỈ ĐẠO DUY NHẤT
+    const directive = buildLocalReflexDirective(userText, recentChats, needsWebSearch || webSearchContext.searched);
+
+    let finalUserMessage = `${userText}\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
+    if (webSearchContext.searched && webSearchContext.formattedContext) {
+      finalUserMessage = `${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- TUYỆT ĐỐI CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', 'để mình tìm' vì dữ liệu đã được cung cấp sẵn ngay ở trên.\n- Nếu người dùng có yêu cầu xin link/đường dẫn: Hãy chèn trực tiếp URL thật (https://...) từ kết quả tìm kiếm vào câu trả lời.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
+    }
+
+    const systemPrompt = buildSystemPrompt(
+      userMemory,
+      recentChats,
+      previousSessionMessages,
+      userStyle.styleHint
+    );
+
+    // 1. BỘ NÃO CHÍNH SIÊU TỐC: OPENAI (gpt-4o-mini)
+    if (OPENAI_API_KEY && !isOpenAIUnavailable) {
+      try {
+        const openAiRaw = await callOpenAI(systemPrompt, finalUserMessage, recentChats, imageBase64);
+        const parsed = parseAIResponseJson(openAiRaw, userText, recentChats, webSearchContext.sources);
+        if (parsed && parsed.replies && parsed.replies.length > 0) {
+          if (parsed.memory_note) {
+            const currentVault = getVaultFromProfile(userMemory);
+            const updatedVault = mergeMemoryNoteIntoVault(currentVault, parsed.memory_note, userText);
+            parsed.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
           }
-          parsed.sources = allSources.slice(0, 4);
-          parsed.searchQuery = webSearchContext.query;
-          parsed.isWebSearched = true;
+          if (webSearchContext.searched) {
+            parsed.sources = webSearchContext.sources;
+            parsed.searchQuery = webSearchContext.query;
+            parsed.isWebSearched = true;
+          }
+          return parsed;
         }
-        return parsed;
+      } catch (err: any) {
+        console.warn('[AI Service] OpenAI gặp sự cố, tự động chuyển ngầm sang Gemini:', err?.message || err);
       }
-    } catch (err: any) {
-      console.warn(`[AI Service] API Key #${keyIdx + 1} lỗi:`, err?.message || err);
     }
-  }
 
-  // 3. CHỐNG SẬP TỨC THÌ: Local Resilient Fallback Engine chạy cục bộ
-  console.log('[AI Service] Kích hoạt Local Resilient Fallback Engine cho Tomorrow');
-  const fallbackRes = localResilientFallback(userText, !!imageBase64, userMemory);
-  if (fallbackRes.memory_note) {
-    const currentVault = getVaultFromProfile(userMemory);
-    const updatedVault = mergeMemoryNoteIntoVault(currentVault, fallbackRes.memory_note, userText);
-    fallbackRes.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
-  }
-  if (webSearchContext.searched) {
-    fallbackRes.sources = webSearchContext.sources;
-    fallbackRes.searchQuery = webSearchContext.query;
-    fallbackRes.isWebSearched = true;
-    if (webSearchContext.sources.length > 0 && webSearchContext.sources[0].snippet) {
-      const top = webSearchContext.sources[0];
-      const linkPart = top.url ? `\nĐường dẫn tham khảo: ${top.url}` : '';
-      fallbackRes.replies = [
-        `Theo thông tin kiểm chứng mới nhất: ${top.snippet.slice(0, 220)}...${linkPart}`,
-      ];
+    // 2. CHUỖI DỰ PHÒNG NGẦM: GEMINI MODEL FALLBACK CHAIN (MIỄN PHÍ)
+    for (let keyIdx = 0; keyIdx < ALL_GEMINI_KEYS.length; keyIdx++) {
+      const key = ALL_GEMINI_KEYS[keyIdx];
+      try {
+        const rawRes = await callModelFallbackChain(key, systemPrompt, finalUserMessage, imageBase64, webSearchContext.searched);
+        const parsed = parseAIResponseJson(rawRes.text, userText, recentChats, webSearchContext.sources);
+        if (parsed && parsed.replies && parsed.replies.length > 0) {
+          if (parsed.memory_note) {
+            const currentVault = getVaultFromProfile(userMemory);
+            const updatedVault = mergeMemoryNoteIntoVault(currentVault, parsed.memory_note, userText);
+            parsed.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
+          }
+          if (webSearchContext.searched) {
+            const allSources = [...(webSearchContext.sources || [])];
+            if (rawRes.groundingSources && rawRes.groundingSources.length > 0) {
+              allSources.push(...rawRes.groundingSources);
+            }
+            parsed.sources = allSources.slice(0, 4);
+            parsed.searchQuery = webSearchContext.query;
+            parsed.isWebSearched = true;
+          }
+          return parsed;
+        }
+      } catch (err: any) {
+        console.warn(`[AI Service] API Key #${keyIdx + 1} lỗi:`, err?.message || err);
+      }
     }
+
+    // 3. CHỐNG SẬP TỨC THÌ: Local Resilient Fallback Engine chạy cục bộ
+    console.log('[AI Service] Kích hoạt Local Resilient Fallback Engine cho Tomorrow');
+    const fallbackRes = localResilientFallback(userText, !!imageBase64, userMemory);
+    if (fallbackRes.memory_note) {
+      const currentVault = getVaultFromProfile(userMemory);
+      const updatedVault = mergeMemoryNoteIntoVault(currentVault, fallbackRes.memory_note, userText);
+      fallbackRes.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
+    }
+    if (webSearchContext.searched) {
+      fallbackRes.sources = webSearchContext.sources;
+      fallbackRes.searchQuery = webSearchContext.query;
+      fallbackRes.isWebSearched = true;
+      if (webSearchContext.sources.length > 0 && webSearchContext.sources[0].snippet) {
+        const top = webSearchContext.sources[0];
+        const linkPart = top.url ? `\nĐường dẫn tham khảo: ${top.url}` : '';
+        fallbackRes.replies = [
+          `Theo thông tin kiểm chứng mới nhất: ${top.snippet.slice(0, 220)}...${linkPart}`,
+        ];
+      }
+    }
+    return fallbackRes;
+  } catch (error: any) {
+    console.error('[AI Error Detail]:', error?.message || error);
+    const fallbackRes = localResilientFallback(userText, !!imageBase64, userMemory);
+    return fallbackRes;
   }
-  return fallbackRes;
 }
 
 // Giữ lại alias để tương thích ngược tuyệt đối
