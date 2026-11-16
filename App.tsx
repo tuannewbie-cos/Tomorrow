@@ -9,6 +9,8 @@ import {
   Pressable,
   ActivityIndicator,
   useWindowDimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -23,7 +25,6 @@ import {
   clearAllChatData,
   DEFAULT_USER_MEMORY,
   cleanNightNotesFromMemory,
-  GENERIC_TITLES,
   isPlaceholderOrNoiseTitle,
 } from './storage/chatStorage';
 import {
@@ -35,7 +36,7 @@ import { ColdGreeting } from './components/ColdGreeting';
 import { FloatingInputBar } from './components/FloatingInputBar';
 import { SidebarDrawer } from './components/SidebarDrawer';
 import { TypingIndicator } from './components/TypingIndicator';
-import { Menu, Sparkles, Dot, SquarePen, Sun, Moon } from 'lucide-react-native';
+import { Menu, Sparkles, Dot, SquarePen, Sun, Moon, ChevronDown } from 'lucide-react-native';
 import {
   ThemeMode,
   DARK_THEME,
@@ -51,7 +52,6 @@ export const isGreetingOrTooShort = (text: string) => {
 
 export default function App() {
   const { width } = useWindowDimensions();
-  const isDesktopSplitView = width >= 900;
   const isDesktop = width >= 768;
 
   const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
@@ -62,9 +62,11 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isTomorrowTyping, setIsTomorrowTyping] = useState<boolean>(false);
   const [isReady, setIsReady] = useState<boolean>(false);
-  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(isDesktopSplitView);
+  const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(width >= 768);
+  const [showScrollDownBtn, setShowScrollDownBtn] = useState<boolean>(false);
 
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
+  const prevIsDesktopRef = useRef<boolean>(isDesktop);
   const theme = themeMode === 'light' ? LIGHT_THEME : DARK_THEME;
 
   // 1. KHỞI TẠO WEB FONTS & NẠP DỮ LIỆU ĐA PHIÊN, THEME
@@ -86,7 +88,6 @@ export default function App() {
           const cleanedSessions = savedSessions.map((sess) => {
             const rawTitle = (sess.title || '').trim();
             if (isPlaceholderOrNoiseTitle(rawTitle)) {
-              // Tìm trong session.messages tin nhắn đầu tiên của user mà !isPlaceholderOrNoiseTitle(msg.text)
               const firstMeaningfulMsg = (sess.messages || []).find(
                 (m) => (m.role === 'user' || m.sender === 'user') && !isPlaceholderOrNoiseTitle(m.text || '')
               );
@@ -131,12 +132,22 @@ export default function App() {
     rehydrateContext();
   }, []);
 
-  // Tự động điều chỉnh trạng thái mặc định của sidebar khi resize cửa sổ
+  // Cập nhật màu nền body trên Web đồng bộ theo theme
   useEffect(() => {
-    if (width >= 900) {
-      setIsSidebarOpen(true);
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      document.body.style.backgroundColor = theme.bgMain;
     }
-  }, [width >= 900]);
+  }, [theme.bgMain]);
+
+  // Tự động điều chỉnh trạng thái mặc định của sidebar khi resize qua ngưỡng 768px
+  useEffect(() => {
+    if (isDesktop && !prevIsDesktopRef.current) {
+      setIsSidebarOpen(true);
+    } else if (!isDesktop && prevIsDesktopRef.current) {
+      setIsSidebarOpen(false);
+    }
+    prevIsDesktopRef.current = isDesktop;
+  }, [isDesktop]);
 
   // Tự động cuộn xuống cuối khi có tin nhắn mới hoặc Tomorrow đang gõ phím
   useEffect(() => {
@@ -158,6 +169,13 @@ export default function App() {
     } catch (err) {
       console.warn('[Theme] Không thể lưu theme:', err);
     }
+  };
+
+  // Theo dõi cuộn của tin nhắn để hiển thị nút "↓" khi cuộn ngược quá 250px
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+    setShowScrollDownBtn(distanceFromBottom > 250);
   };
 
   // 2. XỬ LÝ GỬI TIN NHẮN MỚI
@@ -402,12 +420,19 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <SafeAreaView
-        style={[styles.safeArea, { backgroundColor: theme.bgMain }]}
+        style={[
+          styles.safeArea,
+          { backgroundColor: theme.bgMain },
+          Platform.OS === 'web' && ({
+            minHeight: '100vh',
+            overflow: 'hidden',
+          } as any),
+        ]}
         edges={['top', 'left', 'right']}
       >
         <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
 
-        {/* 1. Header Bar: Trải rộng 100% chiều ngang cửa sổ MacBook */}
+        {/* 1. Header Bar: Trải rộng 100% chiều ngang cửa sổ MacBook (height: 60, paddingHorizontal: 24) */}
         <View
           style={[
             styles.header,
@@ -417,7 +442,7 @@ export default function App() {
             },
           ]}
         >
-          {/* Nút ☰ bên trái: Toggle Sidebar */}
+          {/* Nút ☰ bên trái: Toggle Sidebar (hiển thị trên cả Desktop và Mobile) */}
           <Pressable
             style={({ pressed }) => [
               styles.headerBtn,
@@ -437,7 +462,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v3.3</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v3.4</Text>
               </View>
             </View>
           </View>
@@ -462,7 +487,7 @@ export default function App() {
               )}
             </Pressable>
 
-            {/* Nút Cuộc trò chuyện mới (+) */}
+            {/* Nút Cuộc trò chuyện mới */}
             <Pressable
               style={({ pressed }) => [
                 styles.headerBtn,
@@ -478,9 +503,9 @@ export default function App() {
           </View>
         </View>
 
-        {/* 2. Thân Màn Hình: Bố cục Split-View thông minh & Fluid Desktop Layout */}
+        {/* 2. Thân Màn Hình: Bố cục Split-View 280px co giãn 100% */}
         <View style={styles.mainLayoutBody}>
-          {/* Thanh bên Lịch sử: Ghim bên trái khi width >= 900, hoặc trượt Modal khi màn hình hẹp */}
+          {/* Thanh bên Lịch sử 280px (Split-View Desktop / Modal Drawer Mobile) */}
           <SidebarDrawer
             visible={isSidebarOpen}
             onClose={() => setIsSidebarOpen(false)}
@@ -494,7 +519,7 @@ export default function App() {
             theme={theme}
           />
 
-          {/* Khung chat chính: Co giãn linh hoạt chiếm toàn bộ không gian còn lại */}
+          {/* Khung chat chính: Co giãn linh hoạt chiếm trọn 100% không gian còn lại */}
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={[styles.keyboardContainer, { backgroundColor: theme.bgMain }]}
@@ -522,8 +547,13 @@ export default function App() {
                     />
                   )}
                   style={styles.flatListStyle}
-                  contentContainerStyle={styles.chatListContent}
+                  contentContainerStyle={[
+                    styles.chatListContent,
+                    { paddingHorizontal: isDesktop ? 28 : 16 },
+                  ]}
                   showsVerticalScrollIndicator={false}
+                  onScroll={handleScroll}
+                  scrollEventThrottle={16}
                   ListFooterComponent={
                     <TypingIndicator
                       visible={isTomorrowTyping}
@@ -534,7 +564,28 @@ export default function App() {
                 />
               )}
 
-              {/* 3. Floating Pill Input Bar */}
+              {/* Nút tròn nhỏ "↓" cuộn mượt xuống đáy khi cuộn ngược lên xem lịch sử > 250px */}
+              {showScrollDownBtn && (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.scrollDownBtn,
+                    {
+                      backgroundColor: theme.mode === 'dark' ? '#1E2433' : '#FFFFFF',
+                      borderColor: theme.borderSubtle,
+                      shadowColor: '#000',
+                      shadowOpacity: theme.mode === 'dark' ? 0.35 : 0.12,
+                    },
+                    pressed && { transform: [{ scale: 0.92 }] },
+                    Platform.OS === 'web' && ({ cursor: 'pointer', transition: 'all 0.15s ease' } as any),
+                  ]}
+                  onPress={() => flatListRef.current?.scrollToEnd({ animated: true })}
+                  hitSlop={8}
+                >
+                  <ChevronDown size={18} color={theme.textPrimary} />
+                </Pressable>
+              )}
+
+              {/* 3. Floating Pill Input Bar (maxWidth: 820, alignSelf: 'center') */}
               <FloatingInputBar
                 onSendMessage={handleSendMessage}
                 isLoading={isLoading}
@@ -573,7 +624,7 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   header: {
-    height: 58,
+    height: 60,
     width: '100%',
     borderBottomWidth: 1,
     flexDirection: 'row',
@@ -600,12 +651,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   headerTitle: {
-    fontSize: 17,
+    fontSize: 16.5,
     fontWeight: '700',
-    letterSpacing: -0.2,
+    letterSpacing: -0.3,
     fontFamily:
       Platform.OS === 'web'
-        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif"
         : undefined,
   },
   liveBadge: {
@@ -643,6 +694,7 @@ const styles = StyleSheet.create({
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'space-between',
+    position: 'relative',
   },
   flatListStyle: {
     flex: 1,
@@ -650,10 +702,24 @@ const styles = StyleSheet.create({
   },
   chatListContent: {
     width: '100%',
-    maxWidth: 780,
+    maxWidth: 820,
     alignSelf: 'center',
-    paddingHorizontal: 16,
     paddingVertical: 16,
     paddingBottom: 24,
+  },
+  scrollDownBtn: {
+    position: 'absolute',
+    right: 28,
+    bottom: 82,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 6,
+    elevation: 4,
+    zIndex: 15,
   },
 });

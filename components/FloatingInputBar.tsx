@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderWidth: 1,
     width: '100%',
-    maxWidth: 780,
+    maxWidth: 820,
     alignSelf: 'center',
   },
   emojiBtn: {
@@ -280,7 +280,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 8,
     width: '100%',
-    maxWidth: 780,
+    maxWidth: 820,
     alignSelf: 'center',
   },
   imagePreview: {
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 4,
     width: '100%',
-    maxWidth: 780,
+    maxWidth: 820,
     alignSelf: 'center',
   },
   iconButton: {

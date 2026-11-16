@@ -18,8 +18,6 @@ import {
   Plus,
   Trash2,
   Sparkles,
-  Brain,
-  ShieldCheck,
   Clock,
 } from 'lucide-react-native';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
@@ -57,7 +55,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   theme = DARK_THEME,
 }) => {
   const { width } = useWindowDimensions();
-  const isDesktopSplitView = width >= 900;
+  const isDesktop = width >= 768;
 
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
   const [isNewChatHovered, setIsNewChatHovered] = useState<boolean>(false);
@@ -71,7 +69,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
       );
       if (confirmed) {
         onClearAll();
-        if (!isDesktopSplitView) onClose();
+        if (!isDesktop) onClose();
       }
       return;
     }
@@ -86,7 +84,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           style: 'destructive',
           onPress: () => {
             onClearAll();
-            if (!isDesktopSplitView) onClose();
+            if (!isDesktop) onClose();
           },
         },
       ]
@@ -121,7 +119,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
     );
   };
 
-  // Nội dung chính của Sidebar (dùng chung cho cả Split-View và Modal)
+  // Nội dung chính của Sidebar (dùng chung cho cả Split-View và Drawer)
   const renderSidebarContent = (showCloseBtn: boolean = true) => (
     <View
       style={[
@@ -132,7 +130,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
         },
       ]}
     >
-      {/* Header */}
+      {/* Header Sidebar */}
       <View style={[styles.drawerHeader, { borderBottomColor: theme.borderSubtle }]}>
         <View style={styles.brandRow}>
           <Sparkles size={20} color="#8B5CF6" />
@@ -148,18 +146,18 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
             onPress={onClose}
             hitSlop={8}
           >
-            <X size={20} color={theme.textSecondary} />
+            <X size={19} color={theme.textSecondary} />
           </Pressable>
         )}
       </View>
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Nút Tạo Phiên Mới (Cuộc trò chuyện mới chuẩn Desktop macOS) */}
+        {/* Nút Tạo Phiên Mới - Duy nhất 1 dấu + */}
         <Pressable
           style={({ pressed }) => [
             styles.newChatBtn,
             {
-              backgroundColor: theme.mode === 'dark' ? 'rgba(30, 34, 45, 0.85)' : '#F1F5F9',
+              backgroundColor: theme.mode === 'dark' ? 'rgba(30, 34, 45, 0.85)' : '#FFFFFF',
               borderColor: isNewChatHovered
                 ? (theme.mode === 'dark' ? '#60A5FA' : '#3B82F6')
                 : (theme.mode === 'dark' ? 'rgba(96, 165, 250, 0.35)' : 'rgba(37, 99, 235, 0.25)'),
@@ -167,7 +165,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
             isNewChatHovered && {
               backgroundColor: theme.mode === 'dark' ? 'rgba(37, 99, 235, 0.16)' : 'rgba(37, 99, 235, 0.08)',
               shadowColor: '#3B82F6',
-              shadowOpacity: 0.28,
+              shadowOpacity: 0.25,
               shadowRadius: 10,
             },
             pressed && styles.btnPressed,
@@ -178,7 +176,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           ]}
           onPress={() => {
             onCreateNewSession();
-            if (!isDesktopSplitView) onClose();
+            if (!isDesktop) onClose();
           }}
           onHoverIn={() => setIsNewChatHovered(true)}
           onHoverOut={() => setIsNewChatHovered(false)}
@@ -197,8 +195,8 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
         {/* Danh sách Gần đây (Recent Sessions) */}
         <View style={styles.sessionSection}>
           <View style={styles.recentSectionHeader}>
-            <Clock size={14} color={theme.textMuted} />
-            <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>Gần đây</Text>
+            <Clock size={13} color={theme.textMuted} />
+            <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>GẦN ĐÂY</Text>
           </View>
 
           {sessions.length === 0 ? (
@@ -217,15 +215,17 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
                   style={[
                     styles.sessionItemContainer,
                     {
-                      backgroundColor: theme.btnBg,
-                      borderColor: theme.borderSubtle,
+                      backgroundColor: theme.mode === 'dark' ? 'transparent' : 'transparent',
+                      borderColor: 'transparent',
                     },
                     isActive && {
-                      backgroundColor:
-                        theme.mode === 'dark' ? 'rgba(37, 99, 235, 0.18)' : 'rgba(37, 99, 235, 0.1)',
-                      borderColor: theme.bubbleUser,
+                      backgroundColor: theme.sidebarItemActiveBg,
+                      borderColor: theme.mode === 'dark' ? 'rgba(96, 165, 250, 0.3)' : 'rgba(37, 99, 235, 0.25)',
                     },
-                    isHovered && !isActive && { backgroundColor: theme.btnHover },
+                    isHovered && !isActive && {
+                      backgroundColor: theme.sidebarItemHoverBg,
+                      borderColor: theme.borderSubtle,
+                    },
                   ]}
                   onPointerEnter={() => setHoveredSessionId(sess.id)}
                   onPointerLeave={() => setHoveredSessionId(null)}
@@ -238,18 +238,24 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
                     ]}
                     onPress={() => {
                       onSelectSession(sess.id);
-                      if (!isDesktopSplitView) onClose();
+                      if (!isDesktop) onClose();
                     }}
                   >
                     <MessageSquare
-                      size={16}
-                      color={isActive ? theme.bubbleUser : theme.textSecondary}
+                      size={15}
+                      color={isActive ? (theme.mode === 'dark' ? '#60A5FA' : '#2563EB') : theme.textSecondary}
                     />
                     <Text
                       style={[
                         styles.sessionItemTitle,
-                        { color: theme.textPrimary },
-                        isActive && { color: theme.bubbleUser, fontWeight: '700' },
+                        { color: theme.textSecondary },
+                        isActive && {
+                          color: theme.sidebarItemActiveText,
+                          fontWeight: '600',
+                        },
+                        isHovered && !isActive && {
+                          color: theme.textPrimary,
+                        },
                       ]}
                       numberOfLines={1}
                     >
@@ -267,7 +273,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
                     onPress={() => handleConfirmDeleteSession(sess)}
                     hitSlop={8}
                   >
-                    <Trash2 size={15} color={theme.textMuted} />
+                    <Trash2 size={14} color={theme.textMuted} />
                   </Pressable>
                 </View>
               );
@@ -289,25 +295,39 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           onHoverIn={() => setIsClearHovered(true)}
           onHoverOut={() => setIsClearHovered(false)}
         >
-          <Trash2 size={16} color="#EF4444" />
+          <Trash2 size={15} color="#EF4444" />
           <Text style={styles.clearBtnText}>Xóa toàn bộ lịch sử & Reset</Text>
         </Pressable>
       </View>
     </View>
   );
 
-  // 1. CHẾ ĐỘ SPLIT-VIEW (Desktop width >= 900px):
-  // Hiển thị trực tiếp trong flex layout, không dùng Modal overlay
-  if (isDesktopSplitView) {
-    if (!visible) return null;
+  // 1. CHẾ ĐỘ SPLIT-VIEW (Desktop width >= 768px):
+  if (isDesktop) {
     return (
-      <View style={styles.splitViewContainer}>
-        {renderSidebarContent(true)}
+      <View
+        style={[
+          styles.splitViewContainer,
+          {
+            width: visible ? 280 : 0,
+            overflow: 'hidden',
+            borderRightWidth: visible ? 1 : 0,
+            borderRightColor: theme.borderSubtle,
+            backgroundColor: theme.bgSidebar,
+          },
+          Platform.OS === 'web' && ({
+            transition: 'width 0.22s cubic-bezier(0.2, 0, 0, 1)',
+          } as any),
+        ]}
+      >
+        <View style={styles.splitViewInner}>
+          {renderSidebarContent(true)}
+        </View>
       </View>
     );
   }
 
-  // 2. CHẾ ĐỘ MODAL DRAWER (Mobile / Narrow Desktop):
+  // 2. CHẾ ĐỘ MODAL DRAWER (Mobile width < 768px):
   return (
     <Modal
       visible={visible}
@@ -330,9 +350,12 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
 
 const styles = StyleSheet.create({
   splitViewContainer: {
-    width: 280,
     height: '100%',
     zIndex: 10,
+  },
+  splitViewInner: {
+    width: 280,
+    height: '100%',
   },
   drawerInner: {
     width: 280,
@@ -342,14 +365,14 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
   },
   modalDrawerWrapper: {
-    width: '82%',
-    maxWidth: 320,
+    width: 280,
+    maxWidth: '85%',
     height: '100%',
   },
   overlay: {
     flex: 1,
     flexDirection: 'row',
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
   },
   backdrop: {
     flex: 1,
@@ -359,7 +382,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    height: 58,
+    height: 60,
     borderBottomWidth: 1,
   },
   brandRow: {
@@ -368,9 +391,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   brandTitle: {
-    fontSize: 17,
+    fontSize: 16.5,
     fontWeight: '700',
-    letterSpacing: -0.2,
+    letterSpacing: -0.3,
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif"
+        : undefined,
   },
   closeBtn: {
     padding: 6,
@@ -378,7 +405,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flex: 1,
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingTop: 16,
   },
   newChatBtn: {
@@ -389,7 +416,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 14,
-    gap: 10,
+    gap: 8,
     marginBottom: 20,
     shadowColor: '#2563EB',
     shadowOffset: { width: 0, height: 2 },
@@ -403,24 +430,27 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     fontFamily:
       Platform.OS === 'web'
-        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif"
         : undefined,
   },
   sessionSection: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   recentSectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginBottom: 8,
-    paddingHorizontal: 4,
+    paddingHorizontal: 6,
   },
   sectionTitle: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif"
+        : undefined,
   },
   emptySessionBox: {
     paddingVertical: 14,
@@ -433,70 +463,36 @@ const styles = StyleSheet.create({
   sessionItemContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    marginTop: 6,
+    borderRadius: 10,
+    marginTop: 4,
     borderWidth: 1,
-    paddingRight: 6,
+    paddingRight: 4,
   },
   sessionMainClickArea: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 11,
-    paddingLeft: 12,
-    paddingRight: 6,
-    gap: 10,
+    paddingVertical: 9,
+    paddingLeft: 10,
+    paddingRight: 4,
+    gap: 8,
   },
   sessionItemTitle: {
     fontSize: 13.5,
+    lineHeight: 19,
     fontWeight: '500',
     flex: 1,
+    letterSpacing: -0.1,
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif"
+        : undefined,
   },
   sessionDeleteBtn: {
-    padding: 8,
-    borderRadius: 8,
+    padding: 6,
+    borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  memorySection: {
-    marginBottom: 24,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 10,
-    paddingHorizontal: 4,
-  },
-  memoryBox: {
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-  },
-  memoryFieldTitle: {
-    color: '#8B5CF6',
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 6,
-  },
-  memoryFieldValue: {
-    fontSize: 12.5,
-    lineHeight: 18,
-    marginTop: 2,
-  },
-  storageStatus: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 10,
-    paddingTop: 8,
-    borderTopWidth: 1,
-  },
-  storageStatusText: {
-    color: '#10B981',
-    fontSize: 10.5,
-    fontWeight: '500',
-    flex: 1,
   },
   btnPressed: {
     opacity: 0.75,
@@ -509,15 +505,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    backgroundColor: 'rgba(239, 68, 68, 0.08)',
     paddingVertical: 10,
-    borderRadius: 12,
+    borderRadius: 10,
     gap: 6,
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.25)',
+    borderColor: 'rgba(239, 68, 68, 0.2)',
   },
   clearBtnHovered: {
-    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+    backgroundColor: 'rgba(239, 68, 68, 0.18)',
   },
   clearBtnText: {
     color: '#EF4444',

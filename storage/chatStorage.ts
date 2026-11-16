@@ -28,12 +28,52 @@ export const DEFAULT_USER_MEMORY: UserMemoryProfile = {
  */
 export const isPlaceholderOrNoiseTitle = (title?: string): boolean => {
   if (!title) return true;
-  const clean = title.trim().toLowerCase();
-  const noiseWords = [
-    'cuộc trò chuyện mới', 'trò chuyện ngắn', 'hello', 'helo', 'hi', 'hí', 'halo',
-    'yo', 'ê', 'alo', 'ơi', 'ok', 'okk', 'oki', 'okii', 'uk', 'ừ', 'ừa', 'test', 'pp', 'bye'
+  const clean = title.trim().toLowerCase().replace(/[.!?,:;~_-]+$/g, '').trim();
+  if (clean.length <= 5) return true;
+
+  const noisePhrases = [
+    // Generic titles
+    'cuộc trò chuyện mới', 'trò chuyện ngắn', 'cuộc trò chuyện trước đó',
+    'tâm sự mới', 'hình ảnh gửi kèm', 'tin nhắn mới', 'new chat', 'chưa có tiêu đề', 'untitled',
+    // Greetings & Pings
+    'hello', 'helo', 'hi', 'hii', 'hí', 'halo', 'yo', 'ê', 'alo', 'ơi', 'hú', 'hu',
+    // Confirmations / Closures
+    'ok', 'okk', 'okkk', 'oki', 'okii', 'okie', 'okela', 'ok nha', 'ok nhé', 'ok nhe',
+    'ok bro', 'oki bro', 'ok r', 'ok r đó', 'ok r do', 'ok roi', 'ok rồi', 'ok rồi đó', 'ok bạn', 'ok b',
+    'uk', 'ừ', 'ừa', 'uh', 'uhm', 'ừm', 'um', 'umk',
+    // Thanks
+    'thanks', 'thanks bro', 'thank kiu', 'thank kiuu', 'thank kiu bro', 'tks', 'tks bro',
+    'thank you', 'cảm ơn', 'cảm ơn bro', 'cảm ơn bạn', 'cảm ơn nhiều', 'cam on', 'cam on bro',
+    // Bye & Leave
+    'bye', 'bye bro', 'pp', 'pp bro', 'g9', 'tạm biệt',
+    // Soft trials / step away
+    'để t thử', 'để t thử xem', 'de t thu', 'de t thu xem', 'để t xem', 'để t test',
+    // Dev test
+    'test', 'testing',
   ];
-  return noiseWords.includes(clean) || clean.length <= 5;
+
+  if (noisePhrases.includes(clean)) return true;
+
+  // Pattern check: Các cụm từ ngắn (<= 3 từ) bắt đầu bằng từ khóa xã giao/khép mạch
+  const words = clean.split(/\s+/);
+  if (words.length <= 3) {
+    const firstWord = words[0];
+    if (['ok', 'okk', 'oki', 'okie', 'okela', 'thanks', 'tks', 'bye', 'pp', 'alo', 'hello', 'yo', 'ê'].includes(firstWord)) {
+      return true;
+    }
+    if (
+      clean.startsWith('cảm ơn') ||
+      clean.startsWith('cam on') ||
+      clean.startsWith('để t thử') ||
+      clean.startsWith('de t thu') ||
+      clean.startsWith('để mình thử') ||
+      clean.startsWith('để tui thử')
+    ) {
+      return true;
+    }
+  }
+
+  return false;
 };
 
 /**

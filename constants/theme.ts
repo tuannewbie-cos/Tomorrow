@@ -6,7 +6,7 @@ export interface ThemeColors {
   bgHeader: string;
   bgSidebar: string;
   borderSubtle: string;
-  // Chat Bubble
+  // Chat Bubble & Indicator
   bubbleAI: string;
   textAI: string;
   borderAI: string;
@@ -18,6 +18,11 @@ export interface ThemeColors {
   inputBorder: string;
   inputText: string;
   placeholderText: string;
+  // Sidebar items
+  sidebarItemActiveBg: string;
+  sidebarItemActiveText: string;
+  sidebarItemActiveSubtext: string;
+  sidebarItemHoverBg: string;
   // Text & Icons
   textPrimary: string;
   textSecondary: string;
@@ -35,7 +40,7 @@ export const DARK_THEME: ThemeColors = {
   bgMain: '#0B0D11',
   bgHeader: '#12151C',
   bgSidebar: '#12151C',
-  borderSubtle: '#202531',
+  borderSubtle: '#1E2330',
   bubbleAI: '#1E222D',
   textAI: '#F1F5F9',
   borderAI: '#282E3D',
@@ -44,8 +49,12 @@ export const DARK_THEME: ThemeColors = {
   inputWrapperBg: 'transparent',
   inputBg: '#161922',
   inputBorder: '#262B38',
-  inputText: '#F1F5F9',
+  inputText: '#F8FAFC',
   placeholderText: '#64748B',
+  sidebarItemActiveBg: '#1E2433',
+  sidebarItemActiveText: '#F1F5F9',
+  sidebarItemActiveSubtext: '#94A3B8',
+  sidebarItemHoverBg: '#1E2433',
   textPrimary: '#F8FAFC',
   textSecondary: '#94A3B8',
   textMuted: '#64748B',
@@ -60,18 +69,22 @@ export const LIGHT_THEME: ThemeColors = {
   mode: 'light',
   bgMain: '#F8FAFC',
   bgHeader: '#FFFFFF',
-  bgSidebar: '#FFFFFF',
+  bgSidebar: '#F1F5F9',
   borderSubtle: '#E2E8F0',
-  bubbleAI: '#E2E8F0',
+  bubbleAI: '#FFFFFF',
   textAI: '#0F172A',
-  borderAI: '#CBD5E1',
+  borderAI: '#E2E8F0',
   bubbleUser: '#2563EB',
   textUser: '#FFFFFF',
   inputWrapperBg: 'transparent',
   inputBg: '#FFFFFF',
-  inputBorder: '#E2E8F0',
+  inputBorder: '#CBD5E1',
   inputText: '#0F172A',
   placeholderText: '#94A3B8',
+  sidebarItemActiveBg: '#E2E8F0',
+  sidebarItemActiveText: '#0F172A',
+  sidebarItemActiveSubtext: '#64748B',
+  sidebarItemHoverBg: '#E2E8F0',
   textPrimary: '#0F172A',
   textSecondary: '#475569',
   textMuted: '#94A3B8',

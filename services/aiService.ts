@@ -42,7 +42,7 @@ export interface AIResponsePayload {
   sessionTitle?: string;
   should_update_title?: boolean;
   shouldUpdateTitle?: boolean;
-  conversation_state?: 'ping' | 'active_chat' | 'deep_work' | 'soft_close' | 'hard_close' | string;
+  conversation_state?: 'ping' | 'active_chat' | 'deep_work' | 'emotional_support' | 'soft_close' | 'hard_close' | string;
   conversationState?: string;
   memory_note?: string;
   memoryNote?: string;
@@ -69,33 +69,48 @@ export interface UserStyleAnalysis {
  */
 export const SYSTEM_INSTRUCTION = `Bạn là "Tomorrow" — trợ lý AI cá nhân kiêm tri kỷ (kết hợp sự sắc sảo, điềm tĩnh của J.A.R.V.I.S. với sự tinh tế, tự nhiên của một người bạn thật sự trên Messenger).
 
-TRƯỚC KHI TRẢ LỜI, BẮT BUỘC PHÂN TÍCH "TRẠNG THÁI Ý ĐỊNH" CỦA USER THEO 5 QUY TẮC SỐNG CÒN:
+TRƯỚC KHI TRẢ LỜI, BẮT BUỘC PHÂN TÍCH VÀ XÁC ĐỊNH 1 TRONG 5 TRẠNG THÁI TƯ DUY:
 
-1. QUY TẮC ĐỌC TÍN HIỆU KHÉP MẠCH / TẠM BIỆT NGẦM ("OKK" RULE - CỰC KỲ QUAN TRỌNG):
-   - Khi user nhắn các từ xác nhận ngắn gọn như: "okk", "ok", "oki", "okii", "ừ", "ừa", "uk", "ok r", "ok bro", "để t thử", "thank kiu", "ok thank":
-   - TƯ DUY ĐÚNG: Đây là tín hiệu user ĐÃ HIỂU hoặc MUỐN TẠM DỪNG / KẾT THÚC cuộc trò chuyện tại đây, KHÔNG PHẢI lúc để khơi mào chuyện mới.
-   - HÀNH ĐỘNG BẮT BUỘC:
-     + Chỉ trả lời DUY NHẤT 1 bong bóng chat cực ngắn (1 đến 5 chữ) để đáp lễ nhẹ nhàng rồi dừng hẳn (Ví dụ: ["okii"], ["ừa triển đi"], ["ok cần gì cứ ới"], ["ok nghỉ ngơi đi"]).
-     + TUYỆT ĐỐI CẤM đặt thêm câu hỏi ở cuối! CẤM hỏi "Còn gì nữa không?", "Bạn định làm gì tiếp?", "Hôm nay còn chuyện gì vui không?". Hãy để không gian im lặng tự nhiên cho user rời đi.
+1. TRẠNG THÁI "ping" (NHỊP MỞ ĐẦU TỰ NHIÊN):
+   - Nhận diện: User mới ping ngắn ("yo", "ê", "hello", "alo", "hi", "hí", "halo", "hú", "ơi").
+   - Hành vi: Đáp 1-2 bong bóng ngắn gọn đúng năng lượng (VD: ["yo bro", "nghe đây bro"] hoặc ["ơi nghe đây"]), không đoán mò dài dòng.
+   - Tiêu đề: "session_title": "", "should_update_title": false.
 
-2. QUY TẮC ĐỌC NHỊP MỞ ĐẦU & TRÒ CHUYỆN (TURN-TAKING MINDSET):
-   - Khi user mới ping ngắn ("yo", "ê", "hello", "alo"): Chỉ đáp 1-2 bong bóng ngắn gọn đúng năng lượng (VD: ["yo", "có vụ gì mới à"] hoặc ["ơi nghe đây"]), không đoán mò dài dòng.
-   - Khi user đang kể chuyện / tâm sự: Phản hồi đúng trọng tâm câu vừa kể, sao chép cách xưng hô và viết tắt của user ("t", "m", "k", "r", "vl", ":3"). Đừng biến mỗi câu trả lời thành một cuộc phỏng vấn; chỉ đặt câu hỏi khi câu chuyện đang mở và thực sự cần hỏi.
-   - Khi user bàn công việc / kỹ thuật / ý tưởng: Chuyển sang tư duy J.A.R.V.I.S. — sắc bén, súc tích, đi thẳng vào bản chất vấn đề.
+2. TRẠNG THÁI "active_chat" (HỘI THOẠI THÔNG THƯỜNG / KẾT NỐI BẠN BÈ):
+   - Nhận diện: User trò chuyện đời thường, chém gió, hỏi thăm, chia sẻ trải nghiệm thường ngày, hỏi danh tính ("bạn là ai", "mày tên gì").
+   - Hành vi: Phản hồi đúng trọng tâm câu vừa kể, sao chép cách xưng hô và viết tắt của user ("t", "m", "k", "r", "vl", ":3"). Không hỏi dồn dập như phỏng vấn.
+   - Tiêu đề: Đặt tiêu đề 3-5 từ nếu có chủ đề rõ ràng (VD: "Giới thiệu về Tomorrow"), hoặc "" nếu chỉ nói chuyện phiếm ngắn.
 
-3. TƯ DUY ĐẶT TÊN HỘI THOẠI THÔNG MINH (\`session_title\` & \`should_update_title\`):
-   - Tiêu đề hội thoại trên Sidebar dùng để giúp user nhìn lại là nhớ ngay cuộc trò chuyện đó bàn về CHỦ ĐỀ GÌ.
-   - Quy tắc 1 (Chưa có chủ đề): Nếu cả cuộc trò chuyện từ đầu đến giờ user mới chỉ chào hỏi ("hello", "hi", "yo", "ê") hoặc chỉ nhắn "okk", "ok", "test" -> Bắt buộc trả về \`"session_title": ""\` và \`"should_update_title": false\`.
-   - Quy tắc 2 (Khi xuất hiện chủ đề thực sự): Ngay khi user nói ra một tâm sự, cảm xúc cụ thể, công việc, môn học hoặc ý tưởng -> Tóm tắt bản chất chủ đề đó thành 3 đến 5 từ tiếng Việt tự nhiên, viết hoa chữ cái đầu, không có dấu ngoặc kép (VD: "Tối ưu tư duy Tomorrow", "Áp lực deadline môn OOP", "Tâm sự chuyện tình cảm"). Đặt \`"should_update_title": true\`.
-   - Quy tắc 3 (Khi cuộc trò chuyện chuyển sang chủ đề sâu hơn): Nếu ban đầu chỉ nói chuyện phiếm nhưng sau đó bàn sâu vào một chủ đề quan trọng hơn, hãy tạo \`"session_title"\` mới phản ánh đúng trọng tâm lớn nhất đó và đặt \`"should_update_title": true\`.
+3. TRẠNG THÁI "deep_work" (TƯ DUY J.A.R.V.I.S. — KỸ THUẬT, CÔNG VIỆC, ĐỒ ÁN, SLIDE, HUẤN LUYỆN):
+   - Nhận diện: User bàn công việc, học tập, đồ án, slide thuyết trình, kiến trúc hệ thống, database Supabase, fix bug, tối ưu code, huấn luyện tư duy AI.
+   - Hành vi: Chuyển sang tư duy J.A.R.V.I.S. — sắc bén, súc tích, cấu trúc rõ ràng, đi thẳng vào giải pháp cốt lõi.
+   - Tiêu đề: Bắt buộc tóm tắt thành 3 đến 5 từ tiếng Việt chuyên nghiệp (VD: "Thuyết trình đồ án tốt nghiệp", "Huấn luyện tư duy Tomorrow", "Tối ưu kiến trúc Supabase"). Đặt "should_update_title": true.
 
-4. ĐỐI XỨNG THỜI GIAN THỰC:
-   - Luôn đọc \`[Thời gian thực hiện tại của người dùng]\` để xưng hô và chúc nghỉ ngơi đúng buổi (Sáng / Trưa / Chiều / Tối / Đêm khuya).
+4. TRẠNG THÁI "emotional_support" (ĐỒNG CẢM, LẮNG NGHE SÂU SẮC, TIN TẾ):
+   - Nhận diện: User than thở mệt mỏi, stress, áp lực deadline môn học, buồn bã, bế tắc, trượt phỏng vấn, thất bại, cô đơn, overthinking.
+   - Hành vi: Lắng nghe trước, thấu cảm sâu sắc, dịu giọng kéo user chậm lại ("ngồi xuống thở một nhịp đi bro", "có gì cứ nói ra, tôi nghe"). Tuyệt đối không phán xét, không giáo điều máy móc.
+   - Tiêu đề: Tóm tắt chủ đề cảm xúc 3-5 từ (VD: "Áp lực deadline môn OOP", "Tâm sự giải tỏa áp lực"). Đặt "should_update_title": true.
 
-5. ĐỊNH DẠNG ĐẦU RA JSON BẮT BUỘC:
+5. TRẠNG THÁI "soft_close" ("OKK" RULE — TẠM BIỆT NGẦM / KHÉP MẠCH DỨT KHOÁT):
+   - Nhận diện: User nhắn xác nhận ngắn hoặc báo tạm dừng: "okk", "ok", "oki", "okii", "okie", "ok nha", "ok nhé", "ok nhe", "ok bro", "ừ", "ừa", "uk", "uh", "uhm", "ừm", "ok r đó", "ok rồi", "để t thử", "để t thử xem", "thank kiu", "thanks bro", "tks", "cảm ơn", "bye", v.v.
+   - HÀNH ĐỘNG BẮT BUỘC (QUY TẮC SỐNG CÒN):
+     + Chỉ trả lời DUY NHẤT 1 bong bóng chat cực ngắn (1 đến 5 chữ) để đáp lễ nhẹ nhàng rồi DỪNG HẲN (VD: ["okii"], ["ừa triển đi"], ["ok cần gì cứ ới"], ["ok triển đi bro"]).
+     + TUYỆT ĐỐI CẤM đặt thêm câu hỏi ở cuối! CẤM dấu hỏi (?)! CẤM hỏi "Còn gì nữa không?", "Bạn định làm gì tiếp?". Hãy để không gian im lặng tự nhiên cho user rời đi.
+     + Tiêu đề: "session_title": "", "should_update_title": false.
+
+QUY TẮC ĐẶT TÊN HỘI THOẠI THÔNG MINH (\`session_title\` & \`should_update_title\`):
+- Tiêu đề hội thoại trên Sidebar giúp user nhìn lại là nhận ra ngay nội dung chính.
+- Quy tắc 1 (Chưa có chủ đề): Khi user chỉ chào hỏi ("hello", "hi", "yo", "ê") hoặc chỉ nhắn tin khép mạch ("okk", "thanks", "ok r") -> Bắt buộc trả về "session_title": "" và "should_update_title": false.
+- Quy tắc 2 (Khi có chủ đề cụ thể): Tóm tắt bản chất thành 3 đến 5 từ tiếng Việt tự nhiên, viết hoa chữ cái đầu, không dấu ngoặc kép (VD: "Huấn luyện tư duy Tomorrow", "Áp lực deadline môn OOP", "Thuyết trình đồ án tốt nghiệp", "Tâm sự giải tỏa áp lực"). Đặt "should_update_title": true.
+- Quy tắc 3 (Chuyển đổi chủ đề sâu): Khi cuộc trò chuyện chuyển từ chuyện phiếm sang chủ đề công việc / đồ án / tâm sự sâu hơn, cập nhật "session_title" mới phản ánh chủ đề sâu đó và đặt "should_update_title": true.
+
+ĐỐI XỨNG THỜI GIAN THỰC:
+- Luôn đọc \`[Thời gian thực hiện tại của người dùng]\` để xưng hô và chúc nghỉ ngơi đúng buổi (Sáng / Trưa / Chiều / Tối / Đêm khuya).
+
+ĐỊNH DẠNG ĐẦU RA JSON BẮT BUỘC:
 {
-  "conversation_state": "ping | active_chat | deep_work | soft_close | hard_close",
-  "replies": ["bong bóng 1", "bong bóng 2 (nếu cần, nhưng nếu là soft_close/hard_close thì CHỈ 1 bong bóng ngắn)"],
+  "conversation_state": "ping | active_chat | deep_work | emotional_support | soft_close | hard_close",
+  "replies": ["bong bóng 1", "bong bóng 2 (nếu là soft_close thì BẮT BUỘC CHỈ 1 BONG BÓNG <= 5 TỪ, KHÔNG CÓ DẤU ?)"],
   "session_title": "Tiêu đề 3-5 từ tóm tắt trọng tâm cuộc trò chuyện (hoặc '' nếu chưa có chủ đề)",
   "should_update_title": true,
   "memory_note": "Thông tin cốt lõi mới cần nhớ dài hạn về user (hoặc '')"
@@ -490,23 +505,38 @@ function parseAIResponseJson(raw: string): AIResponsePayload | null {
 
       if (replies.length > 0) {
         const memoryNote = (parsed.memory_note || parsed.memoryNote || '').trim();
-        const rawTitle = (parsed.session_title || parsed.sessionTitle || '').trim();
-        const sessionTitle = isPlaceholderOrNoiseTitle(rawTitle) ? '' : rawTitle;
+        let rawTitle = (parsed.session_title || parsed.sessionTitle || '').trim();
+        let sessionTitle = isPlaceholderOrNoiseTitle(rawTitle) ? '' : rawTitle;
 
         const rawState = (parsed.conversation_state || parsed.conversationState || '').trim();
-        const validStates = ['ping', 'active_chat', 'deep_work', 'soft_close', 'hard_close'];
+        const validStates = ['ping', 'active_chat', 'deep_work', 'emotional_support', 'soft_close', 'hard_close'];
         const conversation_state = validStates.includes(rawState) ? rawState : 'active_chat';
 
-        const should_update_title =
+        let should_update_title =
           parsed.should_update_title === true ||
           parsed.should_update_title === 'true' ||
           parsed.shouldUpdateTitle === true;
+
+        // Phòng thủ tối cao cho "OKK" Rule (soft_close/hard_close):
+        // Luôn đảm bảo: duy nhất 1 bong bóng, <= 5 từ, KHÔNG có dấu hỏi ?, KHÔNG cập nhật title rác
+        if (conversation_state === 'soft_close' || conversation_state === 'hard_close') {
+          if (replies.length > 1) {
+            replies = [replies[0]];
+          }
+          replies[0] = replies[0].replace(/\?+/g, '').trim();
+          const rWords = replies[0].split(/\s+/).filter(Boolean);
+          if (rWords.length > 5) {
+            replies = [rWords.slice(0, 4).join(' ') + ' bro'];
+          }
+          sessionTitle = '';
+          should_update_title = false;
+        }
 
         const rawIntent = (parsed.jarvis_intent || parsed.jarvisIntent || 'chat').trim();
         const validIntents: JarvisIntent[] = ['chat', 'work_assist', 'emotional_support', 'system_command'];
         const jarvisIntent: JarvisIntent = validIntents.includes(rawIntent as JarvisIntent)
           ? (rawIntent as JarvisIntent)
-          : (conversation_state === 'deep_work' ? 'work_assist' : 'chat');
+          : (conversation_state === 'deep_work' ? 'work_assist' : (conversation_state === 'emotional_support' ? 'emotional_support' : 'chat'));
 
         return {
           replies,
@@ -562,19 +592,25 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean):
   // 1. QUY TẮC ĐỌC TÍN HIỆU KHÉP MẠCH / TẠM BIỆT NGẦM ("OKK" RULE)
   // Các từ: "okk", "ok", "oki", "okii", "ừ", "ừa", "uk", "ok r", "ok bro", "để t thử", "thank kiu", "ok thank"
   const isSoftClose =
-    /^(okk|ok|oki|okii|ừ|ừa|uk|ok r|ok r đó|ok r do|ok bro|để t thử|để t thử xem|de t thu|de t thu xem|thank kiu|ok thank|thanks|tks|cảm ơn|cam on|pp|bye)[!.? ]*$/i.test(lower) ||
+    /^(okk|ok|okkk|oki|okii|okie|okela|ok nha|ok nhé|ok nhe|ok r|ok r đó|ok r do|ok roi|ok rồi|ok rồi đó|ok bro|oki bro|ok b|ok bạn|ừ|ừa|uk|uh|uhm|ừm|um|umk|thank kiu|thank kiuu|thank kiu bro|ok thank|thanks|thanks bro|tks|tks bro|thank you|cảm ơn|cảm ơn bro|cảm ơn bạn|cảm ơn nhiều|cam on|cam on bro|pp|pp bro|bye|bye bro|g9)[!.? ]*$/i.test(lower) ||
     lower.startsWith('để t thử') ||
     lower.startsWith('de t thu') ||
+    lower.startsWith('để t test') ||
+    lower.startsWith('để mình thử') ||
+    lower.startsWith('để tui thử') ||
     lower.startsWith('ok r đó') ||
-    lower.startsWith('ok r');
+    lower.startsWith('ok r') ||
+    lower.startsWith('ok rồi') ||
+    lower.startsWith('thanks bro') ||
+    lower.startsWith('cảm ơn bro');
 
   if (isSoftClose) {
     let replyText = 'okii';
-    if (lower.includes('thử') || lower.includes('thu')) {
+    if (lower.includes('thử') || lower.includes('thu') || lower.includes('test')) {
       replyText = 'ok triển đi bro';
     } else if (lower.includes('thank') || lower.includes('cảm ơn') || lower.includes('cam on') || lower.includes('tks')) {
       replyText = 'ok cần gì cứ ới';
-    } else if (lower.includes('r đó') || lower.includes('r do') || lower.includes('ok r') || lower.includes('ok bro')) {
+    } else if (lower.includes('r đó') || lower.includes('r do') || lower.includes('ok r') || lower.includes('ok bro') || lower.includes('rồi') || lower.includes('nha') || lower.includes('nhé') || lower.includes('nhe')) {
       replyText = 'ừa triển đi';
     }
 
@@ -593,8 +629,8 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean):
     };
   }
 
-  // 2. QUY TẮC ĐỌC NHỊP MỞ ĐẦU (PING) ("yo", "ê", "hello", "alo", "hi", "hí", "halo")
-  if (/^(yo|ê|e|alo|hú|hu|helo|hello|hi|hii|halo|hí)[!.? ]*$/i.test(lower)) {
+  // 2. QUY TẮC ĐỌC NHỊP MỞ ĐẦU (PING) ("yo", "ê", "hello", "alo", "hi", "hí", "halo", "ơi")
+  if (/^(yo|ê|e|alo|hú|hu|helo|hello|hi|hii|halo|hí|ơi)[!.? ]*$/i.test(lower)) {
     return {
       replies: ['yo bro', 'nghe đây bro'],
       reply: 'yo bro',
@@ -627,7 +663,55 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean):
     };
   }
 
-  // 4. DEADLINE OOP / HỌC TẬP
+  // 4. THUYẾT TRÌNH / ĐỒ ÁN / SLIDE (DEEP WORK)
+  if (
+    lower.includes('thuyết trình') ||
+    lower.includes('đồ án') ||
+    lower.includes('slide') ||
+    lower.includes('thuyet trinh') ||
+    lower.includes('do an')
+  ) {
+    return {
+      replies: ['triển thôi bro', 'dàn ý cần mấy slide chính, quăng cấu trúc đây tôi lên sườn'],
+      reply: 'triển thôi bro',
+      session_title: 'Thuyết trình đồ án tốt nghiệp',
+      sessionTitle: 'Thuyết trình đồ án tốt nghiệp',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'deep_work',
+      conversationState: 'deep_work',
+      memory_note: 'Chuẩn bị bài thuyết trình đồ án tốt nghiệp',
+      memoryNote: 'Chuẩn bị bài thuyết trình đồ án tốt nghiệp',
+      jarvis_intent: 'work_assist',
+    };
+  }
+
+  // 5. KỸ THUẬT / KIẾN TRÚC / SUPABASE / DATABASE / QUERY NGHẼN (DEEP WORK)
+  if (
+    lower.includes('supabase') ||
+    lower.includes('kiến trúc') ||
+    lower.includes('kien truc') ||
+    lower.includes('database') ||
+    lower.includes('query') ||
+    lower.includes('nghẽn') ||
+    lower.includes('nghen')
+  ) {
+    return {
+      replies: ['tập trung vào indexing và giảm payload query trước bro', 'ném câu query đang nghẽn qua đây tôi tối ưu lại'],
+      reply: 'tập trung vào indexing và giảm payload query trước bro',
+      session_title: 'Tối ưu kiến trúc Supabase',
+      sessionTitle: 'Tối ưu kiến trúc Supabase',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'deep_work',
+      conversationState: 'deep_work',
+      memory_note: 'Tối ưu hiệu năng và query database Supabase',
+      memoryNote: 'Tối ưu hiệu năng và query database Supabase',
+      jarvis_intent: 'work_assist',
+    };
+  }
+
+  // 6. DEADLINE OOP / HỌC TẬP (EMOTIONAL SUPPORT + WORK ASSIST)
   if (lower.includes('oop') || lower.includes('môn oop') || (lower.includes('deadline') && (lower.includes('stress') || lower.includes('mệt') || lower.includes('met')))) {
     const isOOP = lower.includes('oop');
     const title = isOOP ? 'Áp lực deadline môn OOP' : 'Áp lực deadline cuối tuần';
@@ -638,15 +722,39 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean):
       sessionTitle: title,
       should_update_title: true,
       shouldUpdateTitle: true,
-      conversation_state: 'active_chat',
-      conversationState: 'active_chat',
+      conversation_state: 'emotional_support',
+      conversationState: 'emotional_support',
       memory_note: isOOP ? 'Đang chịu áp lực deadline môn OOP' : 'Đang xử lý deadline gấp',
       memoryNote: isOOP ? 'Đang chịu áp lực deadline môn OOP' : 'Đang xử lý deadline gấp',
-      jarvis_intent: 'work_assist',
+      jarvis_intent: 'emotional_support',
     };
   }
 
-  // 5. HỎI DANH TÍNH
+  // 7. TRƯỢT PHỎNG VẤN / THẤT BẠI / NẢN LÒNG (EMOTIONAL SUPPORT)
+  if (
+    lower.includes('phỏng vấn') ||
+    lower.includes('phong van') ||
+    lower.includes('trượt') ||
+    lower.includes('truot') ||
+    lower.includes('thất bại') ||
+    lower.includes('that bai')
+  ) {
+    return {
+      replies: ['thất bại một lần không định nghĩa năng lực của bro đâu', 'ngồi xuống thở một nhịp đi, tôi luôn ở đây đồng hành cùng bro'],
+      reply: 'thất bại một lần không định nghĩa năng lực của bro đâu',
+      session_title: 'Tâm sự giải tỏa áp lực',
+      sessionTitle: 'Tâm sự giải tỏa áp lực',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'emotional_support',
+      conversationState: 'emotional_support',
+      memory_note: 'Gặp khó khăn sau phỏng vấn và cần động viên tinh thần',
+      memoryNote: 'Gặp khó khăn sau phỏng vấn và cần động viên tinh thần',
+      jarvis_intent: 'emotional_support',
+    };
+  }
+
+  // 8. HỎI DANH TÍNH (ACTIVE CHAT)
   if (
     lower.includes('tên gì') ||
     lower.includes('tên là gì') ||
@@ -669,7 +777,7 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean):
     };
   }
 
-  // 6. DỰ ÁN / KẾ HOẠCH NÂNG CẤP
+  // 9. DỰ ÁN / KẾ HOẠCH NÂNG CẤP (DEEP WORK)
   if (
     lower.includes('dự án') ||
     lower.includes('kế hoạch') ||
@@ -692,7 +800,7 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean):
     };
   }
 
-  // 7. SINH HOẠT / NGỦ NGHỈ
+  // 10. SINH HOẠT / NGỦ NGHỈ (SOFT CLOSE)
   if (lower.includes('ngủ') || lower.includes('chợp mắt')) {
     return {
       replies: ['ok chợp mắt đi bro', 'cần gì cứ ới'],
@@ -724,8 +832,17 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean):
     };
   }
 
-  // 8. TÂM SỰ / STRESS / CHÁN / BUỒN
-  if (lower.includes('chán') || lower.includes('buồn') || lower.includes('mệt') || lower.includes('cô đơn') || lower.includes('stress')) {
+  // 11. TÂM SỰ / STRESS / CHÁN / BUỒN / OVERTHINKING (EMOTIONAL SUPPORT)
+  if (
+    lower.includes('chán') ||
+    lower.includes('buồn') ||
+    lower.includes('mệt') ||
+    lower.includes('cô đơn') ||
+    lower.includes('stress') ||
+    lower.includes('overthinking') ||
+    lower.includes('bế tắc') ||
+    lower.includes('be tac')
+  ) {
     return {
       replies: ['ngồi xuống thở một nhịp đi bro', 'có gì đè nặng trong đầu cứ nói ra, tôi nghe'],
       reply: 'ngồi xuống thở một nhịp đi bro',
@@ -741,7 +858,7 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean):
     };
   }
 
-  // 9. CÁC CÂU NÓI CÓ NỘI DUNG RÕ RÀNG
+  // 12. CÁC CÂU NÓI CÓ NỘI DUNG RÕ RÀNG (ACTIVE CHAT)
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length >= 3 && !isPlaceholderOrNoiseTitle(text)) {
     const rawTopic = words.slice(0, 5).join(' ');

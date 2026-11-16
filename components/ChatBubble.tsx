@@ -41,6 +41,7 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
             borderColor: borderColor,
             borderWidth: isAI ? 1 : 0,
             maxWidth: isDesktop ? '76%' : '85%',
+            shadowOpacity: theme.mode === 'light' ? 0.05 : 0.12,
           },
           isAI ? styles.bubbleAI : styles.bubbleUser,
         ]}
@@ -105,11 +106,12 @@ const styles = StyleSheet.create({
   },
   messageText: {
     fontSize: 15.5,
-    lineHeight: 22,
+    lineHeight: 23,
     letterSpacing: -0.1,
+    fontWeight: '400',
     fontFamily:
       Platform.OS === 'web'
-        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif"
         : undefined,
   },
   messageImage: {
