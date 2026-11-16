@@ -29,7 +29,7 @@ export const ColdGreeting: React.FC<ColdGreetingProps> = ({
         { label: 'Cứu tui deadline dí sấp mặt rồi 😭', icon: Flame, color: '#EF4444' },
         { label: 'Làm sao để bớt overthinking bây giờ?', icon: Coffee, color: '#F59E0B' },
         { label: 'Gợi ý bài tập thở 3 phút xả stress', icon: Heart, color: '#8B5CF6' },
-        { label: 'Kể một câu chuyện tấu hài nghe coi bro', icon: Smile, color: '#10B981' },
+        { label: 'Kể một câu chuyện tấu hài nghe coi nào', icon: Smile, color: '#10B981' },
       ];
     }
 

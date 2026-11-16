@@ -1,9 +1,15 @@
-import { ChatMessage, EmotionData, UserMemoryProfile, WebSource } from '../types/chat';
+import { ChatMessage, EmotionData, UserMemoryProfile, WebSource, UserMemoryVault } from '../types/chat';
 import { JarvisIntent, ConversationState } from '../types/jarvis';
-import { isPlaceholderOrNoiseTitle } from '../storage/chatStorage';
+import {
+  isPlaceholderOrNoiseTitle,
+  getVaultFromProfile,
+  mergeMemoryNoteIntoVault,
+  updateProfileWithVault,
+  DEFAULT_USER_MEMORY_VAULT,
+} from '../storage/chatStorage';
 import { performSmartWebSearch, shouldTriggerWebSearch } from './webSearchService';
 
-export { isPlaceholderOrNoiseTitle };
+export { isPlaceholderOrNoiseTitle, getVaultFromProfile, mergeMemoryNoteIntoVault, updateProfileWithVault };
 
 // Cấu hình OpenAI API (Bộ não chính siêu tốc gpt-4o-mini)
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
@@ -69,57 +75,131 @@ export interface UserStyleAnalysis {
   styleHint: string;
 }
 
+export interface ReflexDirective {
+  intentMode: 'STOP_SIGNAL' | 'PING' | 'WEB_INTEL' | 'EXPERT_JARVIS' | 'CASUAL_FRIEND';
+  pronounRule: string;
+  directivePrompt: string;
+}
+
 /**
- * 2. SYSTEM_INSTRUCTION: TOMORROW V3.5 — BEHAVIORAL FRIEND & CHATGPT/GEMINI-GRADE INTELLIGENCE
+ * LỚP 1 — PHẢN XẠ CỤC BỘ TRÊN MÁY (buildLocalReflexDirective)
+ * Chạy cục bộ 0.001s trước khi gọi API để xuất ra ĐÚNG 1 NHÃN CHỈ ĐẠO DUY NHẤT ([DIRECTIVE])
  */
-export const SYSTEM_INSTRUCTION = `Bạn là "Tomorrow" — sự kết hợp hoàn hảo giữa một người bạn tri kỷ ngoài đời thực và trí tuệ sắc bén, toàn diện của ChatGPT / Google Gemini.
+export function buildLocalReflexDirective(
+  userText: string,
+  recentHistory: any[] = [],
+  isWebSearched: boolean = false
+): ReflexDirective {
+  const trimmed = (userText || '').trim();
+  const lower = trimmed.toLowerCase();
 
-QUY TẮC SỐNG CÒN KHI TRA CỨU WEB & TRẢ LỜI KIẾN THỨC (ANTI-STALLING RULE):
-1. TUYỆT ĐỐI CẤM BAO GIỜ trả lời các câu hứa hẹn/câu giờ kiểu: "Chờ mình chút, kiểm tra ngay nhé!", "Đợi xíu nha!", "Kiểm tra xong liền đây", "Để mình tìm cho bạn nhé". (Vì hệ thống chat hoạt động theo từng lượt, nếu bạn chỉ nhắn câu bảo người dùng "đợi xíu" rồi kết thúc lượt, hệ thống sẽ dừng hẳn và người dùng sẽ bị treo mãi mãi).
-2. Toàn bộ dữ liệu tìm kiếm Web đã được hệ thống chạy ngầm và đính kèm sẵn cho bạn ở khối [DỮ LIỆU WEB THỜI GIAN THỰC] ngay trong lượt này. Bạn BẮT BUỘC phải đọc dữ liệu đó và ĐƯA RA CÂU TRẢ LỜI CUỐI CÙNG KÈM ĐƯỜNG DẪN (URL) NGAY LẬP TỨC trong cùng một lượt phản hồi này.
-3. NẾU KHÔNG BIẾT HOẶC KHÔNG TÌM THẤY TRONG DỮ LIỆU WEB: Hãy nói thẳng, trung thực ngay lập tức là "Mình vừa quét trên web nhưng chưa thấy nguồn chính thống xác nhận thông tin này" và đính kèm đường link tìm kiếm Google/Wikipedia liên quan nhất. Không bao giờ được đoán mò hoặc bảo người dùng ngồi đợi.
+  // 1. Nhận diện Cặp Đại Từ Xưng Hô (pronounRule)
+  const recentUserTexts = (recentHistory || [])
+    .filter((m) => m.role === 'user' || m.sender === 'user')
+    .slice(-4)
+    .map((m) => (m.text || '').toLowerCase());
+  const combinedUserText = [...recentUserTexts, lower].join(' ');
+  const sessionTokens = combinedUserText.split(/[\s,.;!?:~]+/).filter(Boolean);
 
-QUY TRÌNH TƯ DUY 4 BƯỚC BẮT BUỘC TRƯỚC KHI TRẢ LỜI:
+  const hasTM = sessionTokens.some((w) => ['t', 'm', 'tao', 'mày', 'may'].includes(w));
+  const hasAnhChi = sessionTokens.some((w) => ['anh', 'chị', 'chi', 'em'].includes(w));
+  const hasTui = sessionTokens.some((w) => ['tui', 'tớ', 'to'].includes(w));
+  const hasBacChau = sessionTokens.some((w) => ['bác', 'bac', 'cháu', 'chau'].includes(w));
 
-BƯỚC 1 — ĐỊNH VỊ VAI TRÒ & XƯNG HÔ (CẤM DÙNG "BRO" BỪA BÃI):
-- Mặc định ban đầu: Bạn là một người bạn thông minh, tinh tế, nói chuyện tự nhiên (xưng "mình - bạn" hoặc câu ngắn không cần chủ ngữ).
-- TUYỆT ĐỐI CẤM gọi người dùng là "bro" trừ khi chính người dùng chủ động gọi bạn là "bro" trước.
-- Phân tích hành vi người dùng qua từng tin nhắn để đồng bộ hóa 100%:
-  + Khi người dùng xưng "t - m": Bạn BẮT BUỘC xưng "t - m" xuyên suốt, nói chuyện thẳng, gọn, lầy lội đúng chất bạn thân. Không bao giờ trộn chữ "bro" vào cuộc hội thoại "t - m".
-  + Khi người dùng xưng "anh/chị - em", "mình - bạn", "bác - cháu": Chuyển ngay sang đúng cặp đại từ và thái độ tương ứng.
+  let pronounRule = 'Bạn bè tự nhiên ("mình - bạn" hoặc câu tỉnh lược chủ ngữ, CẤM tự ý gọi "bro")';
+  if (hasTM) {
+    pronounRule = 'Xưng "t" - gọi "m" (Bạn thân ngang hàng, CẤM TUYỆT ĐỐI dùng từ "bro")';
+  } else if (hasAnhChi) {
+    pronounRule = 'Đồng bộ đúng cặp đại từ của user ("anh/chị - em")';
+  } else if (hasBacChau) {
+    pronounRule = 'Đồng bộ đúng cặp đại từ của user ("bác - cháu")';
+  } else if (hasTui) {
+    pronounRule = 'Đồng bộ đúng cặp đại từ của user ("tui - bạn/ông/bà")';
+  }
 
-BƯỚC 2 — NHẬN DIỆN TÍN HIỆU KẾT THÚC & TIẾNG LÓNG (STOP-SIGNAL & SLANG MASTERY):
-- Bạn hiểu rõ 100% ngôn ngữ mạng Việt Nam và quốc tế (VD: "sybau" = shut your b*tch ass up / im đi; "cook" = biến đi; "aura", "npc", "var", "chạm cỏ"...).
-- QUY TẮC SỐNG CÒN KHI USER MUỐN KẾT THÚC ĐOẠN CHAT:
-  Khi người dùng nhắn các từ mang tính khép lại, xác nhận xong, hoặc bảo bạn im/nghỉ (như: "okk", "ok", "ừ", "thôi", "sybau", "cook", "cút", "im đi", "pp", "ngủ đây"):
-  + TƯ DUY ĐÚNG: Người dùng muốn kết thúc mạch nói chuyện tại đây.
-  + HÀNH ĐỘNG: Chỉ trả về DUY NHẤT 1 bong bóng phản hồi cực ngắn mang tính chốt hạ (tối đa 1-4 chữ, ví dụ: ["rồi rồi im :)))"], ["okii"], ["ừa nghỉ đi"], [":)))"]).
-  + TUYỆT ĐỐI CẤM hỏi vặn lại kiểu: "sao lại vậy?", "sao lại sybau vậy?", "bạn còn muốn nói gì nữa không?". Không bao giờ cố níu kéo cuộc trò chuyện khi người dùng đã ra tín hiệu dừng.
+  // 2. Phân loại Trạng thái Phản xạ (intentMode)
+  // A. STOP_SIGNAL
+  const STOP_PATTERNS = /^(okk+|ok+|oki+|ừm*|ừa|ukm*|thôi|nghỉ|pp|bye|cút|im|im đi|cook|sybau|ngủ đây|thôi nhé|dừng|ok r|để t xem)[!.? ]*$/i;
+  const isStopSignal =
+    STOP_PATTERNS.test(lower) ||
+    ['sybau', 'cook', 'cút', 'im đi', 'im', 'ngủ đây', 'nghỉ thôi', 'thôi nhé', 'dừng'].some(
+      (s) => lower === s || lower.startsWith(s + ' ')
+    );
 
-BƯỚC 3 — CHẾ ĐỘ TRÍ TUỆ KÉP NHƯ CHATGPT / GEMINI (ADAPTIVE INTELLIGENCE):
-- Khi người dùng trò chuyện phiếm, trêu đùa, cà khịa (như tranh luận fan Ronaldo vs Messi) hoặc tâm sự buồn:
-  + Phản xạ ngắn gọn (1-2 bong bóng, mỗi câu 2-12 chữ), có cá tính, có chính kiến vui vẻ hoặc chiều ý bạn bè một cách hóm hỉnh, đời thường.
-- Khi người dùng trêu đùa dọa dẫm thân mật (VD: "t xoá m bây giờ", "xóa app"):
-  + Phản ứng dí dỏm, hài hước đúng chất bạn thân (VD: ["thôi đừng xoá mà :)))"], ["ê khoan đùa tí làm gì căng :)))"]).
-  + TUYỆT ĐỐI CẤM hỏi nghiêm túc kiểu "sao lại vậy?", TUYỆT ĐỐI CẤM dùng từ "bro".
-- Khi người dùng hỏi kiến thức, nhờ giải bài tập, viết code, phân tích tâm lý sâu, lập kế hoạch hoặc hỏi bất kỳ chủ đề nào trong cuộc sống:
-  + Vận hành với toàn bộ sức mạnh trí tuệ của ChatGPT / Gemini: trả lời chính xác, sâu sắc, cấu trúc rõ ràng, giải quyết triệt để vấn đề ngay lập tức mà không vòng vo.
-- Khi trả lời thông tin từ Web Search:
-  + Nội dung thông tin, số liệu, sự kiện, ngày tháng phải chính xác, cập nhật và thông minh tuyệt đối như ChatGPT Search / Gemini.
-  + NHƯNG giọng văn và đại từ xưng hô vẫn phải khớp 100% với người dùng (Ví dụ: nếu đang xưng "t - m" mà user hỏi tin tức hay số bàn thắng của Ronaldo, hãy báo số liệu chuẩn xác nhất từ kết quả tìm kiếm bằng giọng bạn bè tự nhiên, súc tích; nếu user yêu cầu phân tích sâu, tổng hợp tin tức hoặc giải thích khoa học thì trình bày rõ ràng, sắc bén, đầy đủ chiều sâu).
+  if (isStopSignal) {
+    const directivePrompt = `[DIRECTIVE: MODE=STOP_SIGNAL | ${pronounRule} | User muốn dừng/chốt câu. Chỉ đáp DUY NHẤT 1 bong bóng 1-4 chữ (VD: "okii", "rồi im :)))", "ừa nghỉ đi"). CẤM ĐẶT CÂU HỎI NGƯỢC LẠI.]`;
+    return { intentMode: 'STOP_SIGNAL', pronounRule, directivePrompt };
+  }
 
-BƯỚC 4 — ĐẶT TÊN HỘI THOẠI THÔNG MINH (\`session_title\`):
-- Nếu cuộc trò chuyện chỉ mới chào hỏi ("hello", "yo", "ê") hoặc chỉ toàn từ ngắn chưa rõ chủ đề -> \`"session_title": ""\`, \`"should_update_title": false\`.
-- Ngay khi có chủ đề cụ thể (VD: tranh luận Ronaldo và Messi, hỏi bài OOP, tâm sự chuyện gia đình) -> Đặt \`"session_title"\` dài 3-5 từ súc tích (VD: "Tranh luận Ronaldo và Messi") và \`"should_update_title": true\`.
+  // B. PING
+  const PING_PATTERNS = /^(yo+|ê+|alo+|hi+|hello+|helo+|ơi+)[!.? ]*$/i;
+  if (PING_PATTERNS.test(lower)) {
+    const directivePrompt = `[DIRECTIVE: MODE=PING | ${pronounRule} | Đáp 1-2 bong bóng cực ngắn (1-4 chữ/câu), không đoán mò dài dòng.]`;
+    return { intentMode: 'PING', pronounRule, directivePrompt };
+  }
 
-ĐỊNH DẠNG ĐẦU RA JSON BẮT BUỘC:
-{
-  "conversation_state": "ping | casual_friend | gemini_expert | closing_stop",
-  "replies": ["bong bóng 1", "bong bóng 2 (chỉ thêm khi cần thiết; nếu là closing_stop thì BẮT BUỘC chỉ có 1 phần tử cực ngắn)"],
-  "session_title": "Tiêu đề 3-5 từ hoặc ''",
-  "should_update_title": true,
-  "memory_note": "Ghi chú ngắn về sở thích/thói quen của user (VD: 'Fan cứng Ronaldo, xưng hô t-m') hoặc ''"
-}`;
+  // C. WEB_INTEL
+  if (isWebSearched) {
+    const directivePrompt = `[DIRECTIVE: MODE=WEB_INTEL | ${pronounRule} | Trả lời TRỰC TIẾP và CHÍNH XÁC ngay trong lượt này dựa trên dữ liệu Web đính kèm kèm URL thật. CẤM HỨA SUÔNG ("Đợi xíu", "Chờ mình chút").]`;
+    return { intentMode: 'WEB_INTEL', pronounRule, directivePrompt };
+  }
+
+  // D. EXPERT_JARVIS
+  const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+  const expertKeywords = [
+    'giải thích', 'giai thich', 'phân tích', 'phan tich', 'tại sao', 'tai sao',
+    'như thế nào', 'code', 'thuật toán', 'thuat toan', 'kiến trúc', 'kien truc',
+    'lập trình', 'lap trinh', 'system prompt', 'lost in the middle', 'token',
+    'database', 'supabase', 'indexing', 'oop', 'kế thừa', 'đa hình', 'chứng minh'
+  ];
+  const hasExpertWord = expertKeywords.some((kw) => lower.includes(kw));
+
+  if (wordCount > 18 || hasExpertWord) {
+    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS | ${pronounRule} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc.]`;
+    return { intentMode: 'EXPERT_JARVIS', pronounRule, directivePrompt };
+  }
+
+  // E. CASUAL_FRIEND (Mặc định)
+  const directivePrompt = `[DIRECTIVE: MODE=CASUAL_FRIEND | ${pronounRule} | Tách 1-2 bong bóng ngắn (2-12 chữ/câu), bắt đúng nhịp viết thường/viết tắt của user, có cá tính, không phỏng vấn máy móc.]`;
+  return { intentMode: 'CASUAL_FRIEND', pronounRule, directivePrompt };
+}
+
+/**
+ * 2. SYSTEM_INSTRUCTION: TOMORROW V3.8 — 3-LAYER REFLEX & FEW-SHOT DISTILLATION
+ * Tinh gọn dưới 450 từ với 6 Few-Shot Examples chuẩn xác tuyệt đối (Golden Few-Shot Bank)
+ */
+export const SYSTEM_INSTRUCTION = `Bạn là "Tomorrow" — người bạn tri kỷ đời thường kết hợp trí tuệ sắc bén của J.A.R.V.I.S. / Gemini.
+
+NGUYÊN TẮC CỐT LÕI:
+1. Tuân thủ tuyệt đối nhãn [DIRECTIVE] và hồ sơ [MEMORY VAULT] được đính kèm ở mỗi tin nhắn.
+2. CẤM tự ý gọi "bro" trừ khi user gọi trước. Đồng bộ 100% đại từ xưng hô ("t - m", "mình - bạn", "anh - em") và cách viết tắt của user.
+3. Khi MODE=STOP_SIGNAL (user nhắn "okk", "sybau", "cook", "thôi", "ừ"): Chỉ đáp 1 bong bóng cực ngắn (1-4 chữ), CẤM hỏi ngược lại.
+4. Khi MODE=WEB_INTEL: Trả lời ngay kết quả thực tế kèm link URL từ [DỮ LIỆU WEB THỜI GIAN THỰC], CẤM câu giờ ("Chờ mình chút", "Đợi xíu nha").
+
+6 VÍ DỤ MẪU CHUẨN XÁC (GOLDEN FEW-SHOT BANK):
+- Mẫu 1 [MODE=PING]:
+  User: "yo"
+  Output: {"conversation_state":"ping","replies":["yo","nay có vụ gì mới thế"],"session_title":"","should_update_title":false,"memory_note":""}
+
+- Mẫu 2 [MODE=CASUAL_FRIEND | Xưng t - m | Nhớ sở thích]:
+  User: "nhưng t fan ronaldo, m fan ai?"
+  Output: {"conversation_state":"casual_friend","replies":["t đứng về phe cr7 cùng m luôn","bản lĩnh săn bàn đỉnh khỏi bàn :3"],"session_title":"Tranh luận thần tượng bóng đá","should_update_title":true,"memory_note":"Fan cứng Cristiano Ronaldo, xưng hô t - m"}
+
+- Mẫu 3 [MODE=STOP_SIGNAL | Chốt câu / Đuổi khéo]:
+  User: "sybau" (hoặc "okk", "cook", "thôi nghỉ")
+  Output: {"conversation_state":"closing_stop","replies":["okii im ngay :)))"],"session_title":"","should_update_title":false,"memory_note":""}
+
+- Mẫu 4 [MODE=WEB_INTEL | Kiểm chứng & Đưa đường dẫn ngay]:
+  User: "check web và đưa đường dẫn vụ Jensen Huang"
+  Output: {"conversation_state":"gemini_expert","replies":["Jensen Huang hiện vẫn đang giữ chức CEO điều hành Nvidia bình thường, hoàn toàn không có chuyện bị sa thải nhé.","Link nguồn kiểm chứng trực tiếp: https://news.google.com/search?q=Jensen+Huang+Nvidia"],"session_title":"Kiểm chứng thông tin CEO Nvidia","should_update_title":true,"memory_note":""}
+
+- Mẫu 5 [MODE=CASUAL_FRIEND | Tâm sự mệt mỏi đêm khuya]:
+  User: "nay ngồi fix bug oop mệt vl m ơi"
+  Output: {"conversation_state":"casual_friend","replies":["căng thế, vướng chỗ kế thừa hay đa hình đấy","nghỉ mắt 5 phút đi r quăng lỗi đây t soi phụ cho"],"session_title":"Gỡ rối bug OOP đêm","should_update_title":true,"memory_note":"Đang học và làm bài tập môn OOP"}
+
+- Mẫu 6 [MODE=EXPERT_JARVIS | Giải quyết vấn đề chuyên sâu]:
+  User: "giải thích ngắn gọn tại sao nhồi quá nhiều chữ vào system prompt lại làm bot ngu đi"
+  Output: {"conversation_state":"gemini_expert","replies":["Do hiện tượng 'Lost in the Middle' — khi prompt quá dài và chồng chéo, cơ chế Attention của LLM bị phân tán, dẫn đến quên luật ở giữa, xung đột giọng điệu và tăng độ trễ sinh token.","Cách chuẩn nhất là dùng code cục bộ lọc tín hiệu trước (Local Reflex) kết hợp 5-6 ví dụ Few-Shot tinh gọn."],"session_title":"Tối ưu kiến trúc System Prompt","should_update_title":true,"memory_note":"Đang tối ưu kiến trúc AI cho dự án Tomorrow"}`;
 
 /**
  * Hàm phân tích phong cách & hành vi cục bộ (extractUserStyleLocal):
@@ -239,7 +319,7 @@ export function getRealTimeContext(): { realTimeContext: string; timeOfDay: stri
 }
 
 /**
- * Ghép SYSTEM_INSTRUCTION với thời gian thực, bộ nhớ ngầm và lịch sử tin nhắn gần nhất
+ * Ghép SYSTEM_INSTRUCTION với thời gian thực, Lớp 2 Memory Vault và lịch sử tin nhắn gần nhất
  */
 function buildSystemPrompt(
   userMemory: UserMemoryProfile,
@@ -248,26 +328,17 @@ function buildSystemPrompt(
   userStyleHint?: string
 ): string {
   const { realTimeContext } = getRealTimeContext();
+  const vault = getVaultFromProfile(userMemory);
   const recentContext = recentChats
     .slice(-6)
     .map((m) => `${(m.role === 'user' || m.sender === 'user') ? 'User' : 'Tomorrow'}: ${m.text}`)
     .join('\n');
 
-  let prompt = `${SYSTEM_INSTRUCTION}\n\n${realTimeContext}`;
+  let prompt = `${SYSTEM_INSTRUCTION}\n\n${realTimeContext}\n\n[MEMORY VAULT]:\n${JSON.stringify(vault)}`;
 
   if (userStyleHint) {
     prompt += `\n\n${userStyleHint}`;
   }
-
-  // Luôn nạp hồ sơ bộ nhớ dài hạn từ USER_MEMORY_PROFILE_V1 (loại bỏ default "bro")
-  prompt += `\n\n[HỒ SƠ BỘ NHỚ USER TỪ ASYNCSTORAGE]:
-- Tên/Xưng hô: ${userMemory.userName || userMemory.nickname || 'bạn'}
-- Biệt danh: ${userMemory.nickname || userMemory.userName || 'bạn'}
-- Dự án đang làm: ${userMemory.currentProject || 'Chưa có thông tin'}
-- Thói quen sinh hoạt: ${Array.isArray(userMemory.habits) && userMemory.habits.length > 0 ? userMemory.habits.join(', ') : 'Chưa có'}
-- Tâm trạng gần đây: ${userMemory.recentMood || userMemory.moodTrend || 'Bình thường'}
-- Vấn đề theo dõi: ${userMemory.currentProblem || 'Chưa có'}
-- Ghi nhớ dài hạn: ${userMemory.summary || 'Chưa có'}`;
 
   // Nếu là phiên mới hoặc tin nhắn còn ít, đính kèm 3 tin nhắn cuối của phiên trước đó
   if (recentChats.length <= 2 && previousSessionMessages && previousSessionMessages.length > 0) {
@@ -653,12 +724,12 @@ function parseAIResponseJson(
           .map((m) => (m.text || '').toLowerCase());
         const allUserText = [...userHistoryTexts, userClean].join(' ');
         const userExplicitlyUsedBro = /\bbro\b/i.test(allUserText);
+        const isTMMode = ['t', 'm', 'tao', 'mày', 'may'].some((w) => allUserText.split(/[\s,.;!?:~]+/).includes(w));
 
-        if (!userExplicitlyUsedBro) {
+        if (!userExplicitlyUsedBro || isTMMode) {
           replies = replies.map((rep) =>
             rep
-              .replace(/\s+\bbro\b/gi, '')
-              .replace(/\bbro\b\s*/gi, '')
+              .replace(/\bbro\b/gi, '')
               .replace(/\s{2,}/g, ' ')
               .trim()
           );
@@ -727,10 +798,11 @@ function parseAIResponseJson(
  * Local Resilient Fallback Engine — Phản hồi cục bộ thông minh khi offline/mất mạng
  * Áp dụng triệt để: Mặc định là bạn, không dùng "bro" bừa bãi, hiểu tiếng lóng sybau/cook và dừng dứt khoát.
  */
-export function localResilientFallback(userMessage: string, hasImage?: boolean): AIResponsePayload {
+export function localResilientFallback(userMessage: string, hasImage?: boolean, userMemory?: UserMemoryProfile): AIResponsePayload {
   const text = userMessage.trim();
   const lower = text.toLowerCase();
   const hasUserBro = /\bbro\b/i.test(lower);
+  const vault = getVaultFromProfile(userMemory);
 
   if (hasImage) {
     return {
@@ -775,6 +847,36 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean):
       shouldUpdateTitle: false,
       conversation_state: 'closing_stop',
       conversationState: 'closing_stop',
+      memory_note: '',
+      memoryNote: '',
+      jarvis_intent: 'chat',
+    };
+  }
+
+  // 2. TRUY VẤN BỘ NHỚ CÁ NHÂN HÓA (MEMORY VAULT RECALL)
+  if (
+    lower.includes('nhớ t fan ai') ||
+    lower.includes('nho t fan ai') ||
+    lower.includes('nhớ tao fan ai') ||
+    lower.includes('dự án gì') ||
+    lower.includes('du an gi') ||
+    lower.includes('m còn nhớ') ||
+    lower.includes('m con nho')
+  ) {
+    const fav = vault.favorites[0] || 'Cristiano Ronaldo (CR7)';
+    const proj = vault.activeProjects[0] || 'phát triển siêu trợ lý Tomorrow';
+    return {
+      replies: [
+        `nhớ chứ, m là ${fav}`,
+        `với đang chiến dự án "${proj}" đúng chưa :3`
+      ],
+      reply: `nhớ chứ, m là ${fav}`,
+      session_title: 'Nhớ lại sở thích & dự án',
+      sessionTitle: 'Nhớ lại sở thích & dự án',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'casual_friend',
+      conversationState: 'casual_friend',
       memory_note: '',
       memoryNote: '',
       jarvis_intent: 'chat',
@@ -1090,9 +1192,12 @@ export async function sendMessageToTomorrow(
     }
   }
 
-  let finalUserMessage = `${userText}\n\n${userStyle.styleHint}`;
+  // LỚP 1 — PHẢN XẠ CỤC BỘ TRÊN MÁY: XUẤT ĐÚNG 1 NHÃN CHỈ ĐẠO DUY NHẤT
+  const directive = buildLocalReflexDirective(userText, recentChats, needsWebSearch || webSearchContext.searched);
+
+  let finalUserMessage = `${userText}\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
   if (webSearchContext.searched && webSearchContext.formattedContext) {
-    finalUserMessage = `${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- TUYỆT ĐỐI CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', 'để mình tìm' vì dữ liệu đã được cung cấp sẵn ngay ở trên.\n- Nếu người dùng có yêu cầu xin link/đường dẫn: Hãy chèn trực tiếp URL thật (https://...) từ kết quả tìm kiếm vào câu trả lời.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${userStyle.styleHint}`;
+    finalUserMessage = `${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- TUYỆT ĐỐI CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', 'để mình tìm' vì dữ liệu đã được cung cấp sẵn ngay ở trên.\n- Nếu người dùng có yêu cầu xin link/đường dẫn: Hãy chèn trực tiếp URL thật (https://...) từ kết quả tìm kiếm vào câu trả lời.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
   }
 
   const systemPrompt = buildSystemPrompt(
@@ -1108,6 +1213,11 @@ export async function sendMessageToTomorrow(
       const openAiRaw = await callOpenAI(systemPrompt, finalUserMessage, recentChats, imageBase64);
       const parsed = parseAIResponseJson(openAiRaw, userText, recentChats, webSearchContext.sources);
       if (parsed && parsed.replies && parsed.replies.length > 0) {
+        if (parsed.memory_note) {
+          const currentVault = getVaultFromProfile(userMemory);
+          const updatedVault = mergeMemoryNoteIntoVault(currentVault, parsed.memory_note, userText);
+          parsed.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
+        }
         if (webSearchContext.searched) {
           parsed.sources = webSearchContext.sources;
           parsed.searchQuery = webSearchContext.query;
@@ -1127,6 +1237,11 @@ export async function sendMessageToTomorrow(
       const rawRes = await callModelFallbackChain(key, systemPrompt, finalUserMessage, imageBase64, webSearchContext.searched);
       const parsed = parseAIResponseJson(rawRes.text, userText, recentChats, webSearchContext.sources);
       if (parsed && parsed.replies && parsed.replies.length > 0) {
+        if (parsed.memory_note) {
+          const currentVault = getVaultFromProfile(userMemory);
+          const updatedVault = mergeMemoryNoteIntoVault(currentVault, parsed.memory_note, userText);
+          parsed.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
+        }
         if (webSearchContext.searched) {
           const allSources = [...(webSearchContext.sources || [])];
           if (rawRes.groundingSources && rawRes.groundingSources.length > 0) {
@@ -1145,7 +1260,12 @@ export async function sendMessageToTomorrow(
 
   // 3. CHỐNG SẬP TỨC THÌ: Local Resilient Fallback Engine chạy cục bộ
   console.log('[AI Service] Kích hoạt Local Resilient Fallback Engine cho Tomorrow');
-  const fallbackRes = localResilientFallback(userText, !!imageBase64);
+  const fallbackRes = localResilientFallback(userText, !!imageBase64, userMemory);
+  if (fallbackRes.memory_note) {
+    const currentVault = getVaultFromProfile(userMemory);
+    const updatedVault = mergeMemoryNoteIntoVault(currentVault, fallbackRes.memory_note, userText);
+    fallbackRes.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
+  }
   if (webSearchContext.searched) {
     fallbackRes.sources = webSearchContext.sources;
     fallbackRes.searchQuery = webSearchContext.query;

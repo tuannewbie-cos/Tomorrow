@@ -1,27 +1,170 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ChatMessage, UserMemoryProfile, ChatSession } from '../types/chat';
+import { ChatMessage, UserMemoryProfile, ChatSession, UserMemoryVault } from '../types/chat';
 
 export const STORAGE_KEYS = {
   CHAT_SESSIONS: 'CHAT_SESSIONS_V2',
   USER_MEMORY_PROFILE: 'USER_MEMORY_PROFILE_V1',
+  USER_MEMORY_VAULT: 'USER_MEMORY_VAULT_V1',
   // Khóa cũ (để migrate nếu có)
   LEGACY_CHAT_HISTORY: 'CHAT_HISTORY_V1',
   LEGACY_CHAT_SESSIONS: 'CHAT_SESSIONS_V1',
   LEGACY_ACTIVE_SESSION: 'ACTIVE_SESSION_ID_V1',
 };
 
+export const DEFAULT_USER_MEMORY_VAULT: UserMemoryVault = {
+  pronouns: 'bạn bè tự nhiên',
+  favorites: ['Fan cứng Ronaldo', 'Thích giao diện Dark Mode macOS'],
+  activeProjects: ['Đang phát triển siêu trợ lý Tomorrow (React Native + Vercel)'],
+  habits: ['Làm việc tập trung', 'Ghét chatbot hỏi vặn khi nhắn okk/sybau'],
+  recentContext: 'Bắt đầu phiên trò chuyện mới cùng Tomorrow',
+};
+
 export const DEFAULT_USER_MEMORY: UserMemoryProfile = {
   userName: 'Bạn iu',
-  nickname: 'bro',
+  nickname: 'bạn',
   currentProblem: 'Áp lực học tập/công việc và cần không gian xả stress',
   moodTrend: 'Thích phong cách nói chuyện ấm áp, chân thành nhưng hài hước',
-  interests: ['Lướt TikTok/Reels', 'Nghe nhạc Chill', 'Meme mèo'],
+  interests: ['Fan cứng Ronaldo', 'Thích giao diện Dark Mode macOS'],
   lastActiveDate: new Date().toISOString(),
   summary: 'Người dùng cần không gian trò chuyện tâm sự nhẹ nhàng, không phán xét.',
-  currentProject: 'Dự án Tomorrow v3 & Nâng cấp Proto-Jarvis',
-  habits: ['Làm việc tập trung', 'Thức đêm khi có dự án gấp'],
+  currentProject: 'Đang phát triển siêu trợ lý Tomorrow (React Native + Vercel)',
+  habits: ['Làm việc tập trung', 'Ghét chatbot hỏi vặn khi nhắn okk/sybau'],
   recentMood: 'Tập trung và nhiệt huyết',
+  vault: DEFAULT_USER_MEMORY_VAULT,
 };
+
+/**
+ * Trích xuất UserMemoryVault từ profile hoặc tạo mới từ các trường phẳng
+ */
+export function getVaultFromProfile(profile?: UserMemoryProfile): UserMemoryVault {
+  if (profile?.vault) {
+    return {
+      pronouns: profile.vault.pronouns || 'bạn bè tự nhiên',
+      favorites: Array.isArray(profile.vault.favorites) && profile.vault.favorites.length > 0
+        ? profile.vault.favorites.slice(0, 5)
+        : [...DEFAULT_USER_MEMORY_VAULT.favorites],
+      activeProjects: Array.isArray(profile.vault.activeProjects) && profile.vault.activeProjects.length > 0
+        ? profile.vault.activeProjects.slice(0, 5)
+        : [...DEFAULT_USER_MEMORY_VAULT.activeProjects],
+      habits: Array.isArray(profile.vault.habits) && profile.vault.habits.length > 0
+        ? profile.vault.habits.slice(0, 5)
+        : [...DEFAULT_USER_MEMORY_VAULT.habits],
+      recentContext: profile.vault.recentContext || profile.summary || DEFAULT_USER_MEMORY_VAULT.recentContext,
+    };
+  }
+
+  return {
+    pronouns: profile?.nickname === 'm' || profile?.userName === 'm' ? 't - m' : 'bạn bè tự nhiên',
+    favorites: Array.isArray(profile?.interests) && profile.interests.length > 0
+      ? profile.interests.slice(0, 5)
+      : [...DEFAULT_USER_MEMORY_VAULT.favorites],
+    activeProjects: profile?.currentProject
+      ? [profile.currentProject]
+      : [...DEFAULT_USER_MEMORY_VAULT.activeProjects],
+    habits: Array.isArray(profile?.habits) && profile.habits.length > 0
+      ? profile.habits.slice(0, 5)
+      : [...DEFAULT_USER_MEMORY_VAULT.habits],
+    recentContext: profile?.summary || DEFAULT_USER_MEMORY_VAULT.recentContext,
+  };
+}
+
+/**
+ * Hợp nhất ghi chú mới vào JSON Memory Vault và giới hạn tối đa 5 mục mỗi mảng
+ */
+export function mergeMemoryNoteIntoVault(
+  vault: UserMemoryVault,
+  newNote: string,
+  userText: string
+): UserMemoryVault {
+  const current = vault || DEFAULT_USER_MEMORY_VAULT;
+  const updated: UserMemoryVault = {
+    pronouns: current.pronouns || 'bạn bè tự nhiên',
+    favorites: [...(current.favorites || [])],
+    activeProjects: [...(current.activeProjects || [])],
+    habits: [...(current.habits || [])],
+    recentContext: current.recentContext || '',
+  };
+
+  const lowerText = (userText || '').toLowerCase();
+  const lowerNote = (newNote || '').toLowerCase();
+
+  // 1. Cập nhật Pronouns
+  if (['t', 'm', 'tao', 'mày', 'may'].some((w) => lowerText.split(/[\s,.;!?:~]+/).includes(w))) {
+    updated.pronouns = 't - m';
+  } else if (['anh', 'em'].some((w) => lowerText.split(/[\s,.;!?:~]+/).includes(w))) {
+    updated.pronouns = 'anh - em';
+  } else if (['tui'].some((w) => lowerText.split(/[\s,.;!?:~]+/).includes(w))) {
+    updated.pronouns = 'tui - bạn';
+  }
+
+  // 2. Cập nhật Favorites (Sở thích/Thần tượng)
+  if (lowerText.includes('ronaldo') || lowerNote.includes('ronaldo') || lowerText.includes('cr7')) {
+    if (!updated.favorites.some((f) => f.toLowerCase().includes('ronaldo'))) {
+      updated.favorites.unshift('Fan cứng Cristiano Ronaldo (CR7)');
+    }
+  } else if (lowerText.includes('messi') || lowerNote.includes('messi') || lowerText.includes('m10')) {
+    if (!updated.favorites.some((f) => f.toLowerCase().includes('messi'))) {
+      updated.favorites.unshift('Fan Lionel Messi (M10)');
+    }
+  }
+
+  // 3. Cập nhật Dự án (Active Projects)
+  if (lowerText.includes('tomorrow') || lowerNote.includes('tomorrow')) {
+    if (!updated.activeProjects.some((p) => p.toLowerCase().includes('tomorrow'))) {
+      updated.activeProjects.unshift('Đang phát triển siêu trợ lý Tomorrow (React Native + Vercel)');
+    }
+  }
+  if (lowerText.includes('oop') || lowerNote.includes('oop')) {
+    if (!updated.activeProjects.some((p) => p.toLowerCase().includes('oop'))) {
+      updated.activeProjects.unshift('Đang học và làm bài tập môn OOP');
+    }
+  }
+  if (lowerText.includes('sub-agent') || lowerText.includes('sub agent') || lowerNote.includes('sub-agent')) {
+    if (!updated.activeProjects.some((p) => p.toLowerCase().includes('sub-agent'))) {
+      updated.activeProjects.unshift('Đang nghiên cứu và tối ưu hệ thống Sub-Agent AI');
+    }
+  }
+
+  // 4. Nếu newNote có nội dung cụ thể
+  if (newNote && newNote.trim().length > 3) {
+    const cleanNote = newNote.trim();
+    if (lowerNote.includes('thích') || lowerNote.includes('fan') || lowerNote.includes('mê')) {
+      if (!updated.favorites.includes(cleanNote)) updated.favorites.unshift(cleanNote);
+    } else if (lowerNote.includes('dự án') || lowerNote.includes('làm') || lowerNote.includes('code') || lowerNote.includes('phát triển')) {
+      if (!updated.activeProjects.includes(cleanNote)) updated.activeProjects.unshift(cleanNote);
+    } else if (lowerNote.includes('thói quen') || lowerNote.includes('hay') || lowerNote.includes('ghét')) {
+      if (!updated.habits.includes(cleanNote)) updated.habits.unshift(cleanNote);
+    } else {
+      updated.recentContext = cleanNote;
+    }
+  }
+
+  if (userText && userText.trim().length > 6 && !lowerText.includes('hello') && !lowerText.includes('yo')) {
+    updated.recentContext = userText.trim().slice(0, 80);
+  }
+
+  // Giới hạn tối đa 5 mục mỗi mảng để prompt luôn siêu nhẹ dưới 120 tokens
+  updated.favorites = updated.favorites.slice(0, 5);
+  updated.activeProjects = updated.activeProjects.slice(0, 5);
+  updated.habits = updated.habits.slice(0, 5);
+
+  return updated;
+}
+
+/**
+ * Cập nhật UserMemoryProfile từ UserMemoryVault đã merge
+ */
+export function updateProfileWithVault(profile: UserMemoryProfile, vault: UserMemoryVault): UserMemoryProfile {
+  return {
+    ...profile,
+    vault,
+    interests: vault.favorites,
+    currentProject: vault.activeProjects[0] || profile.currentProject,
+    habits: vault.habits,
+    summary: vault.recentContext || profile.summary,
+    lastActiveDate: new Date().toISOString(),
+  };
+}
 
 /**
  * Kiểm tra xem một tiêu đề có phải là placeholder hoặc từ rác không
@@ -287,12 +430,17 @@ export async function loadUserMemoryProfile(): Promise<UserMemoryProfile> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.USER_MEMORY_PROFILE);
     if (!raw) return DEFAULT_USER_MEMORY;
-    const parsed = { ...DEFAULT_USER_MEMORY, ...JSON.parse(raw) };
-    const cleaned = cleanNightNotesFromMemory(parsed);
-    // Nếu có sự thay đổi do dọn dẹp ghi chú đêm muộn sai, lưu lại
-    if (JSON.stringify(parsed) !== JSON.stringify(cleaned)) {
-      await saveUserMemoryProfile(cleaned);
+    const parsed: UserMemoryProfile = { ...DEFAULT_USER_MEMORY, ...JSON.parse(raw) };
+    if (parsed.nickname === 'bro') {
+      parsed.nickname = 'bạn';
     }
+    if (parsed.userName === 'bro') {
+      parsed.userName = 'Bạn iu';
+    }
+    if (!parsed.vault) {
+      parsed.vault = getVaultFromProfile(parsed);
+    }
+    const cleaned = cleanNightNotesFromMemory(parsed);
     return cleaned;
   } catch (error) {
     console.error('[Storage] Lỗi khi load User Memory Profile:', error);

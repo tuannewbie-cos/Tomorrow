@@ -30,6 +30,14 @@ export interface ChatMessage {
   searchQuery?: string;
 }
 
+export interface UserMemoryVault {
+  pronouns: string;        // VD: "t - m"
+  favorites: string[];     // VD: ["Fan cứng Ronaldo", "Thích giao diện Dark Mode macOS"]
+  activeProjects: string[];// VD: ["Đang phát triển siêu trợ lý Tomorrow (React Native + Vercel)"]
+  habits: string[];        // VD: ["Hay code đêm", "Ghét chatbot hỏi vặn khi nhắn okk/sybau"]
+  recentContext: string;   // Tóm tắt 1 câu về chủ đề vừa bàn gần nhất
+}
+
 export interface UserMemoryProfile {
   userName: string;
   currentProblem: string;
@@ -42,6 +50,7 @@ export interface UserMemoryProfile {
   currentProject?: string; // Dự án đang làm
   habits?: string[];       // Thói quen sinh hoạt
   recentMood?: string;     // Tâm trạng gần đây
+  vault?: UserMemoryVault; // v3.8 JSON Memory Vault siêu nén
 }
 
 export interface ChatSession {
