@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, Pressable, useWindowDimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, Image, Pressable, useWindowDimensions, Platform, Linking } from 'react-native';
 import { ChatMessage } from '../types/chat';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
+import { Globe, ExternalLink } from 'lucide-react-native';
 
 interface ChatBubbleProps {
   message: ChatMessage;
@@ -29,6 +30,28 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
   const textColor = isAI ? theme.textAI : theme.textUser;
   const borderColor = isAI ? theme.borderAI : 'transparent';
   const timestampColor = isAI ? theme.textMuted : 'rgba(255, 255, 255, 0.8)';
+
+  const getDomainName = (url: string, sourceName?: string): string => {
+    if (sourceName && !['Google News', 'Web Search', 'Google Grounding'].includes(sourceName)) {
+      return sourceName;
+    }
+    try {
+      const cleanUrl = url.replace(/^https?:\/\//i, '');
+      const domain = cleanUrl.split('/')[0].replace(/^www\./i, '');
+      return domain || sourceName || 'Nguồn web';
+    } catch {
+      return sourceName || 'Nguồn web';
+    }
+  };
+
+  const handleOpenUrl = (url?: string) => {
+    if (!url) return;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      Linking.openURL(url).catch((err) => console.warn('Không thể mở liên kết:', err));
+    }
+  };
 
   return (
     <View style={[styles.container, isAI ? styles.containerAI : styles.containerUser]}>
@@ -72,6 +95,63 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
           {formatTime(message.timestamp)}
         </Text>
       </View>
+
+      {/* Danh sách các thẻ Nguồn trích dẫn (Source Pills) khi có tra cứu Web */}
+      {isAI && message.sources && message.sources.length > 0 && (
+        <View style={[styles.sourcesContainer, { maxWidth: isDesktop ? '76%' : '90%' }]}>
+          <Text style={[styles.sourcesHeader, { color: theme.textMuted }]}>
+            Nguồn trích dẫn ({message.sources.length})
+          </Text>
+          <View style={styles.sourcesList}>
+            {message.sources.slice(0, 4).map((src, idx) => {
+              const domain = getDomainName(src.url, src.source);
+              return (
+                <Pressable
+                  key={`src-${idx}-${src.url}`}
+                  onPress={() => handleOpenUrl(src.url)}
+                  style={({ hovered }: any) => [
+                    styles.sourcePill,
+                    {
+                      backgroundColor: theme.mode === 'light' ? 'rgba(0, 0, 0, 0.04)' : 'rgba(255, 255, 255, 0.07)',
+                      borderColor: theme.mode === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.12)',
+                    },
+                    hovered && {
+                      backgroundColor: theme.mode === 'light' ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.14)',
+                    },
+                    Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+                  ]}
+                >
+                  <Globe
+                    size={12}
+                    color={theme.mode === 'light' ? '#2563eb' : '#60a5fa'}
+                    style={{ marginRight: 5 }}
+                  />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.sourceTitle,
+                      { color: theme.mode === 'light' ? '#1e293b' : '#f1f5f9', maxWidth: isDesktop ? 180 : 130 },
+                    ]}
+                  >
+                    {src.title || domain}
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.sourceDomain, { color: theme.textMuted }]}
+                  >
+                    • {domain}
+                  </Text>
+                  <ExternalLink
+                    size={10}
+                    color={theme.textMuted}
+                    style={{ marginLeft: 4, opacity: 0.7 }}
+                  />
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -125,5 +205,37 @@ const styles = StyleSheet.create({
     marginTop: 4,
     alignSelf: 'flex-end',
     fontWeight: '500',
+  },
+  sourcesContainer: {
+    marginTop: 6,
+    marginLeft: 4,
+  },
+  sourcesHeader: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 4,
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
+  },
+  sourcesList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  sourcePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  sourceTitle: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  sourceDomain: {
+    fontSize: 11,
+    marginLeft: 3,
   },
 });

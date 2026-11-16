@@ -6,6 +6,14 @@ export interface EmotionData {
   adviceTag?: string; // Tag nhắc nhở nhẹ nhàng
 }
 
+export interface WebSource {
+  title: string;
+  url: string;
+  source?: string;
+  snippet?: string;
+  publishedAt?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'model';
@@ -18,6 +26,8 @@ export interface ChatMessage {
   memeId?: string;
   suggestedReplies?: string[];
   jarvisIntent?: string;
+  sources?: WebSource[];
+  searchQuery?: string;
 }
 
 export interface UserMemoryProfile {

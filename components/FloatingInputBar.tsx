@@ -12,11 +12,11 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Image as ImageIcon, Send, X, Smile } from 'lucide-react-native';
+import { Image as ImageIcon, Send, X, Smile, Globe } from 'lucide-react-native';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
 
 interface FloatingInputBarProps {
-  onSendMessage: (text: string, imageBase64?: string, imageUri?: string) => void;
+  onSendMessage: (text: string, imageBase64?: string, imageUri?: string, forceWebSearch?: boolean) => void;
   isLoading: boolean;
   disabled?: boolean;
   isTomorrowTyping?: boolean;
@@ -38,6 +38,7 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
   const [inputText, setInputText] = useState('');
   const [selectedImage, setSelectedImage] = useState<{ uri: string; base64?: string } | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [forceWebSearch, setForceWebSearch] = useState(false);
 
   // Chọn ảnh từ thư viện thiết bị (an toàn trên cả Mobile lẫn Web Desktop)
   const handlePickImage = async () => {
@@ -78,10 +79,11 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
     if (!trimmed && !selectedImage) return;
     if (isLoading || isTomorrowTyping) return;
 
-    onSendMessage(trimmed, selectedImage?.base64, selectedImage?.uri);
+    onSendMessage(trimmed, selectedImage?.base64, selectedImage?.uri, forceWebSearch);
     setInputText('');
     setSelectedImage(null);
     setShowEmojiPicker(false);
+    setForceWebSearch(false);
   };
 
   // Phím tắt macOS: Enter để gửi (ngăn xuống dòng), Shift + Enter để xuống dòng
@@ -186,6 +188,21 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
           disabled={isLoading || isTomorrowTyping}
         >
           <Smile size={21} color={showEmojiPicker ? theme.bubbleUser : theme.textSecondary} />
+        </Pressable>
+
+        {/* Nút bật/tắt Ép buộc Tìm kiếm Web (🌐 Web) */}
+        <Pressable
+          style={({ pressed }) => [
+            styles.iconButton,
+            forceWebSearch && { backgroundColor: '#2563EB' },
+            !forceWebSearch && pressed && { backgroundColor: theme.btnHover },
+            Platform.OS === 'web' && { cursor: 'pointer' as any },
+          ]}
+          onPress={() => setForceWebSearch((prev) => !prev)}
+          disabled={isLoading || isTomorrowTyping}
+          hitSlop={6}
+        >
+          <Globe size={19} color={forceWebSearch ? '#FFFFFF' : theme.textSecondary} />
         </Pressable>
 
         {/* TextInput đa dòng hỗ trợ phím tắt macOS & xóa viền outline xanh mặc định */}

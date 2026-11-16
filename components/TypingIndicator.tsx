@@ -1,22 +1,26 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, Animated } from 'react-native';
+import { View, Text, StyleSheet, Animated, Platform } from 'react-native';
+import { Globe } from 'lucide-react-native';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
 
 interface TypingIndicatorProps {
   visible: boolean;
   isDesktop?: boolean;
   theme?: ThemeColors;
+  isSearchingWeb?: boolean;
 }
 
 export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
   visible,
   isDesktop,
   theme = DARK_THEME,
+  isSearchingWeb = false,
 }) => {
   const [shouldRender, setShouldRender] = useState<boolean>(visible);
 
   const fadeAnim = useRef(new Animated.Value(visible ? 1 : 0)).current;
   const scaleAnim = useRef(new Animated.Value(visible ? 1 : 0.85)).current;
+  const pulseAnim = useRef(new Animated.Value(0.6)).current;
 
   const dot1Anim = useRef(new Animated.Value(0)).current;
   const dot2Anim = useRef(new Animated.Value(0)).current;
@@ -108,6 +112,28 @@ export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
     };
   }, [visible, fadeAnim, scaleAnim, dot1Anim, dot2Anim, dot3Anim]);
 
+  // Pulse animation cho dòng "Đang tìm kiếm trên web..."
+  useEffect(() => {
+    if (isSearchingWeb) {
+      const pulseLoop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 0.5,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      pulseLoop.start();
+      return () => pulseLoop.stop();
+    }
+  }, [isSearchingWeb, pulseAnim]);
+
   if (!shouldRender) {
     return null;
   }
@@ -129,28 +155,53 @@ export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
 
   return (
     <View style={styles.container}>
-      <Animated.View
-        style={[
-          styles.bubble,
-          {
-            backgroundColor: theme.bubbleAI,
-            borderColor: theme.borderAI,
-            shadowOpacity: theme.mode === 'light' ? 0.05 : 0.12,
-            opacity: fadeAnim,
-            transform: [{ scale: scaleAnim }],
-          },
-        ]}
-      >
+      <View style={styles.bubbleRow}>
         <Animated.View
-          style={[styles.dot, { backgroundColor: theme.textSecondary }, getDotStyle(dot1Anim)]}
-        />
-        <Animated.View
-          style={[styles.dot, { backgroundColor: theme.textSecondary }, getDotStyle(dot2Anim)]}
-        />
-        <Animated.View
-          style={[styles.dot, { backgroundColor: theme.textSecondary }, getDotStyle(dot3Anim)]}
-        />
-      </Animated.View>
+          style={[
+            styles.bubble,
+            {
+              backgroundColor: theme.bubbleAI,
+              borderColor: theme.borderAI,
+              shadowOpacity: theme.mode === 'light' ? 0.05 : 0.12,
+              opacity: fadeAnim,
+              transform: [{ scale: scaleAnim }],
+            },
+          ]}
+        >
+          <Animated.View
+            style={[styles.dot, { backgroundColor: theme.textSecondary }, getDotStyle(dot1Anim)]}
+          />
+          <Animated.View
+            style={[styles.dot, { backgroundColor: theme.textSecondary }, getDotStyle(dot2Anim)]}
+          />
+          <Animated.View
+            style={[styles.dot, { backgroundColor: theme.textSecondary }, getDotStyle(dot3Anim)]}
+          />
+        </Animated.View>
+
+        {isSearchingWeb && (
+          <Animated.View
+            style={[
+              styles.searchingBadge,
+              {
+                backgroundColor: theme.mode === 'dark' ? 'rgba(37, 99, 235, 0.16)' : 'rgba(37, 99, 235, 0.08)',
+                borderColor: theme.mode === 'dark' ? 'rgba(96, 165, 250, 0.35)' : 'rgba(37, 99, 235, 0.25)',
+                opacity: pulseAnim,
+              },
+            ]}
+          >
+            <Globe size={13} color={theme.mode === 'dark' ? '#60A5FA' : '#2563EB'} />
+            <Text
+              style={[
+                styles.searchingText,
+                { color: theme.mode === 'dark' ? '#93C5FD' : '#2563EB' },
+              ]}
+            >
+              Đang tìm kiếm trên web...
+            </Text>
+          </Animated.View>
+        )}
+      </View>
     </View>
   );
 };
@@ -161,6 +212,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     alignItems: 'flex-start',
     width: '100%',
+  },
+  bubbleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   bubble: {
     flexDirection: 'row',
@@ -183,6 +239,24 @@ const styles = StyleSheet.create({
     height: 7,
     borderRadius: 3.5,
     marginHorizontal: 2.5,
+  },
+  searchingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  searchingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif"
+        : undefined,
   },
 });
 

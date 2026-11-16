@@ -1,6 +1,7 @@
-import { ChatMessage, EmotionData, UserMemoryProfile } from '../types/chat';
+import { ChatMessage, EmotionData, UserMemoryProfile, WebSource } from '../types/chat';
 import { JarvisIntent, ConversationState } from '../types/jarvis';
 import { isPlaceholderOrNoiseTitle } from '../storage/chatStorage';
+import { performSmartWebSearch, shouldTriggerWebSearch } from './webSearchService';
 
 export { isPlaceholderOrNoiseTitle };
 
@@ -47,6 +48,9 @@ export interface AIResponsePayload {
   memory_note?: string;
   memoryNote?: string;
   jarvis_intent?: JarvisIntent;
+  sources?: WebSource[];
+  searchQuery?: string;
+  isWebSearched?: boolean;
   // Các trường tương thích ngược nếu module cũ có tham chiếu
   reply?: string;
   emotion?: EmotionData;
@@ -90,8 +94,14 @@ BƯỚC 2 — NHẬN DIỆN TÍN HIỆU KẾT THÚC & TIẾNG LÓNG (STOP-SIGNAL
 BƯỚC 3 — CHẾ ĐỘ TRÍ TUỆ KÉP NHƯ CHATGPT / GEMINI (ADAPTIVE INTELLIGENCE):
 - Khi người dùng trò chuyện phiếm, trêu đùa, cà khịa (như tranh luận fan Ronaldo vs Messi) hoặc tâm sự buồn:
   + Phản xạ ngắn gọn (1-2 bong bóng, mỗi câu 2-12 chữ), có cá tính, có chính kiến vui vẻ hoặc chiều ý bạn bè một cách hóm hỉnh, đời thường.
+- Khi người dùng trêu đùa dọa dẫm thân mật (VD: "t xoá m bây giờ", "xóa app"):
+  + Phản ứng dí dỏm, hài hước đúng chất bạn thân (VD: ["thôi đừng xoá mà :)))"], ["ê khoan đùa tí làm gì căng :)))"]).
+  + TUYỆT ĐỐI CẤM hỏi nghiêm túc kiểu "sao lại vậy?", TUYỆT ĐỐI CẤM dùng từ "bro".
 - Khi người dùng hỏi kiến thức, nhờ giải bài tập, viết code, phân tích tâm lý sâu, lập kế hoạch hoặc hỏi bất kỳ chủ đề nào trong cuộc sống:
   + Vận hành với toàn bộ sức mạnh trí tuệ của ChatGPT / Gemini: trả lời chính xác, sâu sắc, cấu trúc rõ ràng, giải quyết triệt để vấn đề ngay lập tức mà không vòng vo.
+- Khi trả lời thông tin từ Web Search:
+  + Nội dung thông tin, số liệu, sự kiện, ngày tháng phải chính xác, cập nhật và thông minh tuyệt đối như ChatGPT Search / Gemini.
+  + NHƯNG giọng văn và đại từ xưng hô vẫn phải khớp 100% với người dùng (Ví dụ: nếu đang xưng "t - m" mà user hỏi tin tức hay số bàn thắng của Ronaldo, hãy báo số liệu chuẩn xác nhất từ kết quả tìm kiếm bằng giọng bạn bè tự nhiên, súc tích; nếu user yêu cầu phân tích sâu, tổng hợp tin tức hoặc giải thích khoa học thì trình bày rõ ràng, sắc bén, đầy đủ chiều sâu).
 
 BƯỚC 4 — ĐẶT TÊN HỘI THOẠI THÔNG MINH (\`session_title\`):
 - Nếu cuộc trò chuyện chỉ mới chào hỏi ("hello", "yo", "ê") hoặc chỉ toàn từ ngắn chưa rõ chủ đề -> \`"session_title": ""\`, \`"should_update_title": false\`.
@@ -110,7 +120,7 @@ BƯỚC 4 — ĐẶT TÊN HỘI THOẠI THÔNG MINH (\`session_title\`):
  * Hàm phân tích phong cách & hành vi cục bộ (extractUserStyleLocal):
  * Phân tích trực tiếp trên thiết bị để gắn nhãn xưng hô và tín hiệu dừng chính xác.
  */
-export function extractUserStyleLocal(text: string): UserStyleAnalysis {
+export function extractUserStyleLocal(text: string, recentChats?: ChatMessage[]): UserStyleAnalysis {
   const trimmed = text.trim();
   const lower = trimmed.toLowerCase();
   const words = trimmed.split(/\s+/).filter(Boolean);
@@ -138,12 +148,19 @@ export function extractUserStyleLocal(text: string): UserStyleAnalysis {
 
   const hasShorthand = detectedShorthands.length > 0;
 
-  // 1. PHÁT HIỆN ĐẠI TỪ XƯNG HÔ
-  const cleanTokens = lower.split(/[\s,.;!?:~]+/).filter(Boolean);
-  const hasTM = cleanTokens.some((w) => ['t', 'm', 'tao', 'mày', 'may'].includes(w));
-  const hasTui = cleanTokens.some((w) => ['tui', 'tớ', 'to'].includes(w));
-  const hasUserBro = cleanTokens.some((w) => ['bro', 'bờ râu'].includes(w));
-  const hasAnhChi = cleanTokens.some((w) => ['anh', 'chị', 'chi', 'em'].includes(w));
+  // 1. PHÁT HIỆN ĐẠI TỪ XƯNG HÔ (Quét cả tin nhắn hiện tại LẪN toàn bộ phiên trò chuyện gần đây)
+  const userPastTexts = (recentChats || [])
+    .filter((m) => m.role === 'user' || m.sender === 'user')
+    .map((m) => (m.text || '').toLowerCase());
+  const combinedUserText = [...userPastTexts, lower].join(' ');
+
+  const currentTokens = lower.split(/[\s,.;!?:~]+/).filter(Boolean);
+  const sessionTokens = combinedUserText.split(/[\s,.;!?:~]+/).filter(Boolean);
+
+  const hasTM = sessionTokens.some((w) => ['t', 'm', 'tao', 'mày', 'may'].includes(w));
+  const hasTui = sessionTokens.some((w) => ['tui', 'tớ', 'to'].includes(w));
+  const hasUserBro = sessionTokens.some((w) => ['bro', 'bờ râu'].includes(w));
+  const hasAnhChi = sessionTokens.some((w) => ['anh', 'chị', 'chi', 'em'].includes(w));
 
   let detectedPronoun = '';
   if (hasTM) {
@@ -158,7 +175,7 @@ export function extractUserStyleLocal(text: string): UserStyleAnalysis {
     detectedPronoun = 'Mặc định là một người bạn tự nhiên, gần gũi (dùng "mình - bạn" hoặc câu tỉnh lược chủ ngữ tự nhiên, TUYỆT ĐỐI CẤM tự ý gọi "bro" trừ khi chính user gõ chữ "bro" trước)';
   }
 
-  // 2. PHÁT HIỆN TÍN HIỆU KẾT THÚC / CHỐT CÂU (isClosingSignal)
+  // 2. PHÁT HIỆN TÍN HIỆU KẾT THÚC / CHỐT CÂU / TIẾNG LÓNG ĐUỔI KHÉO (isClosingSignal)
   const CLOSING_PATTERNS = /^(okk+|ok+|oki+|ừm*|ừa|ukm*|thôi|nghỉ|pp|bye|cút|im|im đi|cook|sybau|ngủ đây|thôi nhé|dừng)[!.? ]*$/i;
   const isClosingSignal =
     CLOSING_PATTERNS.test(lower) ||
@@ -168,7 +185,7 @@ export function extractUserStyleLocal(text: string): UserStyleAnalysis {
 
   let styleHint = `[QUY TẮC XƯNG HÔ: ${detectedPronoun}]`;
   if (isClosingSignal) {
-    styleHint += `\n[TÍN HIỆU KẾT THÚC: User muốn dừng/chốt câu tại đây. Chỉ đáp tối đa 1 bong bóng cực ngắn (1-4 chữ hoặc biểu cảm ":))", "ok im :))", "okii"), TUYỆT ĐỐI CẤM ĐẶT CÂU HỎI NGƯỢC LẠI như "sao lại vậy", "sao lại..."]`;
+    styleHint += `\n[TÍN HIỆU KẾT THÚC / SYBAU: User muốn dừng/chốt câu hoặc bảo im tại đây. CHỈ ĐÁP DUY NHẤT 1 BONG BÓNG CỰC NGẮN (1-4 chữ hoặc biểu cảm ":))", "rồi rồi im :)))", "okii"), TUYỆT ĐỐI CẤM HỎI NGƯỢC LẠI như "sao lại vậy", "sao bro lại sybau", CẤM DÙNG TỪ BRO]`;
   } else {
     styleHint += `\n[Gợi ý phong cách: giữ phong cách bạn bè tự nhiên, ${hasShorthand ? 'viết thường/dùng từ thân mật giống user' : 'nói chuyện thoải mái'}, CẤM DÙNG TỪ "BRO" BỪA BÃI]`;
   }
@@ -358,16 +375,22 @@ async function callOpenAI(
   }
 }
 
+interface ExecuteApiCallResult {
+  text: string;
+  groundingSources?: WebSource[];
+}
+
 /**
  * Thực hiện 1 lượt gọi API tới 1 URL cụ thể kèm timeout 10 giây qua AbortController
- * Tăng maxOutputTokens lên 800 tokens
+ * Tăng maxOutputTokens lên 800 tokens và hỗ trợ trích xuất Google Search Grounding metadata
  */
 async function executeApiCall(
   url: string,
   systemPrompt: string,
   userMessageWithHint: string,
-  imageBase64?: string
-): Promise<string> {
+  imageBase64?: string,
+  enableGrounding: boolean = false
+): Promise<ExecuteApiCallResult> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -384,7 +407,7 @@ async function executeApiCall(
       });
     }
 
-    const payload = {
+    const payload: any = {
       systemInstruction: {
         parts: [{ text: systemPrompt }],
       },
@@ -396,17 +419,47 @@ async function executeApiCall(
       },
     };
 
-    const res = await fetch(url, {
+    if (enableGrounding) {
+      payload.tools = [{ google_search: {} }];
+    }
+
+    let res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
 
+    // Nếu endpoint không hỗ trợ tools google_search (400 Bad Request), tự động thử lại không dùng tools
+    if (!res.ok && enableGrounding && res.status === 400) {
+      delete payload.tools;
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+    }
+
     if (res.ok) {
       const data = await res.json();
       const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text) return text;
+      const groundingChunks = data?.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+      const groundingSources: WebSource[] = [];
+
+      if (Array.isArray(groundingChunks)) {
+        for (const chunk of groundingChunks) {
+          if (chunk?.web?.uri && chunk?.web?.title) {
+            groundingSources.push({
+              title: chunk.web.title,
+              url: chunk.web.uri,
+              source: 'Google Grounding',
+            });
+          }
+        }
+      }
+
+      if (text) return { text, groundingSources };
     }
 
     const errStatus = res.status;
@@ -424,8 +477,9 @@ async function callModelFallbackChain(
   apiKey: string,
   systemPrompt: string,
   userMessageWithHint: string,
-  imageBase64?: string
-): Promise<string> {
+  imageBase64?: string,
+  enableGrounding: boolean = false
+): Promise<ExecuteApiCallResult> {
   let lastError: any = null;
 
   for (const model of FREE_MODEL_CHAIN) {
@@ -433,9 +487,9 @@ async function callModelFallbackChain(
 
     for (const url of endpoints) {
       try {
-        const text = await executeApiCall(url, systemPrompt, userMessageWithHint, imageBase64);
-        if (text) {
-          return text;
+        const result = await executeApiCall(url, systemPrompt, userMessageWithHint, imageBase64, enableGrounding);
+        if (result && result.text) {
+          return result;
         }
       } catch (err: any) {
         lastError = err;
@@ -451,7 +505,7 @@ async function callModelFallbackChain(
 /**
  * Phân tích JSON chuẩn hóa: trích xuất "conversation_state", "replies", "session_title", "should_update_title", "memory_note"
  */
-function parseAIResponseJson(raw: string, userText?: string): AIResponsePayload | null {
+function parseAIResponseJson(raw: string, userText?: string, recentChats?: ChatMessage[]): AIResponsePayload | null {
   try {
     const cleaned = raw
       .replace(/^```json\s*/i, '')
@@ -542,6 +596,8 @@ function parseAIResponseJson(raw: string, userText?: string): AIResponsePayload 
           parsed.shouldUpdateTitle === true;
 
         const userClean = (userText || '').toLowerCase().trim();
+
+        // 1. PHÒNG THỦ TUYỆT ĐỐI CHO TÍN HIỆU KẾT THÚC / DỪNG / TIẾNG LÓNG (closing_stop)
         const isUserClosing =
           conversation_state === 'closing_stop' ||
           conversation_state === 'soft_close' ||
@@ -549,39 +605,45 @@ function parseAIResponseJson(raw: string, userText?: string): AIResponsePayload 
           /^(okk+|ok+|oki+|ừm*|ừa|ukm*|thôi|nghỉ|pp|bye|cút|im|im đi|cook|sybau|ngủ đây|thôi nhé|dừng)[!.? ]*$/i.test(userClean) ||
           userClean.includes('sybau') ||
           userClean.includes('cook') ||
-          userClean === 'cút';
+          userClean === 'cút' ||
+          userClean === 'im' ||
+          userClean.startsWith('im ');
 
-        // Phòng thủ tối cao cho Tín hiệu Kết thúc (closing_stop):
-        // 1. Chỉ duy nhất 1 bong bóng <= 4 từ
-        // 2. TUYỆT ĐỐI CẤM dấu hỏi (?)
-        // 3. TUYỆT ĐỐI CẤM hỏi ngược lại như "sao lại vậy?", "sao lại sybau vậy?"
         if (isUserClosing) {
           conversation_state = 'closing_stop';
           sessionTitle = '';
           should_update_title = false;
 
-          let singleReply = replies[0] || 'okii';
-          // Nếu AI lỡ hỏi lại vặn vẹo "sao lại..." khi user nói sybau/cook/im/cút
-          if (/sao.*(lại|sybau|vậy|thế)/i.test(singleReply) || singleReply.includes('?')) {
-            if (userClean.includes('sybau') || userClean.includes('im')) {
-              singleReply = 'rồi rồi im :)))';
-            } else if (userClean.includes('cook') || userClean.includes('cút')) {
-              singleReply = 'rồi rồi đi đây :)))';
-            } else {
-              singleReply = 'okii';
-            }
-          }
-
-          singleReply = singleReply.replace(/\?+/g, '').trim();
-          const rWords = singleReply.split(/\s+/).filter(Boolean);
-          if (rWords.length > 5) {
-            singleReply = rWords.slice(0, 3).join(' ') + ' :))';
+          let singleReply = '';
+          if (userClean.includes('sybau') || userClean.includes('im')) {
+            singleReply = 'rồi rồi im :)))';
+          } else if (userClean.includes('cook') || userClean.includes('cút')) {
+            singleReply = 'rồi rồi đi đây :)))';
+          } else if (userClean.includes('nghỉ') || userClean.includes('ngủ')) {
+            singleReply = 'ừa nghỉ đi';
+          } else if (userClean.includes('thử') || userClean.includes('test')) {
+            singleReply = 'ok triển đi nhé';
+          } else if (userClean.includes('cảm ơn') || userClean.includes('thank')) {
+            singleReply = 'ok cần gì cứ ới';
+          } else {
+            singleReply = 'okii';
           }
           replies = [singleReply];
         }
 
-        // LỌC TỪ "BRO" BỪA BÃI: Nếu user không chủ động dùng từ "bro", loại bỏ "bro" khỏi replies
-        const userExplicitlyUsedBro = userClean ? /\bbro\b/i.test(userClean) : false;
+        // 2. PHÒNG THỦ CHO CÂU ĐÙA DỌA XOÁ APP ("t xoá m bây giờ")
+        const isJokingThreat = /(xoá|xóa|xoa)\s+(m|mày|app|may)/i.test(userClean);
+        if (isJokingThreat) {
+          replies = ['thôi đừng xoá mà :)))'];
+        }
+
+        // 3. LỌC TỪ "BRO" BỪA BÃI XUYÊN SUỐT TOÀN BỘ PHIÊN HỘI THOẠI
+        const userHistoryTexts = (recentChats || [])
+          .filter((m) => m.role === 'user' || m.sender === 'user')
+          .map((m) => (m.text || '').toLowerCase());
+        const allUserText = [...userHistoryTexts, userClean].join(' ');
+        const userExplicitlyUsedBro = /\bbro\b/i.test(allUserText);
+
         if (!userExplicitlyUsedBro) {
           replies = replies.map((rep) =>
             rep
@@ -973,10 +1035,32 @@ export async function sendMessageToTomorrow(
   userMemory: UserMemoryProfile,
   recentChats: ChatMessage[],
   imageBase64?: string,
-  previousSessionMessages?: ChatMessage[]
+  previousSessionMessages?: ChatMessage[],
+  forceWebSearch: boolean = false,
+  onSearchStatusChange?: (isSearching: boolean) => void
 ): Promise<AIResponsePayload> {
-  const userStyle = extractUserStyleLocal(userText);
-  const userMessageWithHint = `${userText}\n\n${userStyle.styleHint}`;
+  const userStyle = extractUserStyleLocal(userText, recentChats);
+
+  // 0. TRA CỨU WEB THỜI GIAN THỰC (Nếu cần hoặc người dùng ép buộc)
+  let webSearchContext: any = { searched: false, query: '', formattedContext: '', sources: [] };
+  const needsWebSearch = shouldTriggerWebSearch(userText, forceWebSearch);
+
+  if (needsWebSearch) {
+    try {
+      if (onSearchStatusChange) onSearchStatusChange(true);
+      webSearchContext = await performSmartWebSearch(userText, recentChats, forceWebSearch);
+    } catch (e: any) {
+      console.warn('[AI Service] Tra cứu web gặp sự cố:', e?.message || e);
+    } finally {
+      if (onSearchStatusChange) onSearchStatusChange(false);
+    }
+  }
+
+  let finalUserMessage = `${userText}\n\n${userStyle.styleHint}`;
+  if (webSearchContext.searched && webSearchContext.formattedContext) {
+    finalUserMessage = `${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${userStyle.styleHint}`;
+  }
+
   const systemPrompt = buildSystemPrompt(
     userMemory,
     recentChats,
@@ -987,9 +1071,14 @@ export async function sendMessageToTomorrow(
   // 1. BỘ NÃO CHÍNH SIÊU TỐC: OPENAI (gpt-4o-mini)
   if (OPENAI_API_KEY && !isOpenAIUnavailable) {
     try {
-      const openAiRaw = await callOpenAI(systemPrompt, userMessageWithHint, recentChats, imageBase64);
-      const parsed = parseAIResponseJson(openAiRaw, userText);
+      const openAiRaw = await callOpenAI(systemPrompt, finalUserMessage, recentChats, imageBase64);
+      const parsed = parseAIResponseJson(openAiRaw, userText, recentChats);
       if (parsed && parsed.replies && parsed.replies.length > 0) {
+        if (webSearchContext.searched) {
+          parsed.sources = webSearchContext.sources;
+          parsed.searchQuery = webSearchContext.query;
+          parsed.isWebSearched = true;
+        }
         return parsed;
       }
     } catch (err: any) {
@@ -1001,9 +1090,18 @@ export async function sendMessageToTomorrow(
   for (let keyIdx = 0; keyIdx < ALL_GEMINI_KEYS.length; keyIdx++) {
     const key = ALL_GEMINI_KEYS[keyIdx];
     try {
-      const rawRes = await callModelFallbackChain(key, systemPrompt, userMessageWithHint, imageBase64);
-      const parsed = parseAIResponseJson(rawRes, userText);
+      const rawRes = await callModelFallbackChain(key, systemPrompt, finalUserMessage, imageBase64, webSearchContext.searched);
+      const parsed = parseAIResponseJson(rawRes.text, userText, recentChats);
       if (parsed && parsed.replies && parsed.replies.length > 0) {
+        if (webSearchContext.searched) {
+          const allSources = [...(webSearchContext.sources || [])];
+          if (rawRes.groundingSources && rawRes.groundingSources.length > 0) {
+            allSources.push(...rawRes.groundingSources);
+          }
+          parsed.sources = allSources.slice(0, 4);
+          parsed.searchQuery = webSearchContext.query;
+          parsed.isWebSearched = true;
+        }
         return parsed;
       }
     } catch (err: any) {
@@ -1013,7 +1111,19 @@ export async function sendMessageToTomorrow(
 
   // 3. CHỐNG SẬP TỨC THÌ: Local Resilient Fallback Engine chạy cục bộ
   console.log('[AI Service] Kích hoạt Local Resilient Fallback Engine cho Tomorrow');
-  return localResilientFallback(userText, !!imageBase64);
+  const fallbackRes = localResilientFallback(userText, !!imageBase64);
+  if (webSearchContext.searched) {
+    fallbackRes.sources = webSearchContext.sources;
+    fallbackRes.searchQuery = webSearchContext.query;
+    fallbackRes.isWebSearched = true;
+    if (webSearchContext.sources.length > 0 && webSearchContext.sources[0].snippet) {
+      fallbackRes.replies = [
+        `theo thông tin mới nhất: ${webSearchContext.sources[0].snippet.slice(0, 150)}...`,
+        'cần tôi tổng hợp thêm góc nào cứ bảo nhé :3'
+      ];
+    }
+  }
+  return fallbackRes;
 }
 
 // Giữ lại alias để tương thích ngược tuyệt đối

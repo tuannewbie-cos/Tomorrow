@@ -61,6 +61,7 @@ export default function App() {
   const [userMemory, setUserMemory] = useState<UserMemoryProfile>(DEFAULT_USER_MEMORY);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isTomorrowTyping, setIsTomorrowTyping] = useState<boolean>(false);
+  const [isSearchingWeb, setIsSearchingWeb] = useState<boolean>(false);
   const [isReady, setIsReady] = useState<boolean>(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(width >= 768);
   const [showScrollDownBtn, setShowScrollDownBtn] = useState<boolean>(false);
@@ -179,7 +180,12 @@ export default function App() {
   };
 
   // 2. XỬ LÝ GỬI TIN NHẮN MỚI
-  const handleSendMessage = async (text: string, imageBase64?: string, imageUri?: string) => {
+  const handleSendMessage = async (
+    text: string,
+    imageBase64?: string,
+    imageUri?: string,
+    forceWebSearch?: boolean
+  ) => {
     const userMsg: ChatMessage = {
       id: `usr-${Date.now()}`,
       role: 'user',
@@ -256,7 +262,9 @@ export default function App() {
         userMemory,
         updatedMessages,
         imageBase64,
-        previousSessionMessages
+        previousSessionMessages,
+        forceWebSearch,
+        (isSearching) => setIsSearchingWeb(isSearching)
       );
 
       // Bước B: Đồng bộ luồng cập nhật tiêu đề hội thoại thông minh
@@ -303,6 +311,7 @@ export default function App() {
 
         setIsTomorrowTyping(false);
 
+        const isLastReply = index === replies.length - 1;
         const aiMsg: ChatMessage = {
           id: `ai-${Date.now()}-${index}`,
           role: 'model',
@@ -310,6 +319,8 @@ export default function App() {
           text: replyText,
           timestamp: Date.now(),
           jarvisIntent: aiResponse.jarvis_intent,
+          sources: isLastReply ? aiResponse.sources : undefined,
+          searchQuery: isLastReply ? aiResponse.searchQuery : undefined,
         };
 
         currentHistory = [...currentHistory, aiMsg];
@@ -462,7 +473,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v3.5</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v3.6</Text>
               </View>
             </View>
           </View>
@@ -556,7 +567,8 @@ export default function App() {
                   scrollEventThrottle={16}
                   ListFooterComponent={
                     <TypingIndicator
-                      visible={isTomorrowTyping}
+                      visible={isTomorrowTyping || isSearchingWeb}
+                      isSearchingWeb={isSearchingWeb}
                       isDesktop={isDesktop}
                       theme={theme}
                     />
