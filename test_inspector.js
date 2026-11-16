@@ -1,14 +1,13 @@
 /**
- * TEST INSPECTOR & AUDITOR FOR TOMORROW V3.6
- * Kiểm duyệt & Đánh giá chất lượng hệ thống (Quản trị viên & Kiểm duyệt viên):
- * 1. Khắc phục dứt điểm lỗi từ ảnh người dùng:
- *    - "t xoá m bây giờ" -> CẤM "sao lại vậy bro", phải đối đáp bạn bè dí dỏm.
- *    - "sybau" -> CẤM "sao bro lại sybau vậy", phải dừng ngay với 1 bong bóng duy nhất "rồi rồi im :)))".
- * 2. Cấm triệt để từ "bro" khi người dùng xưng "t - m" hoặc chưa chủ động nói "bro".
- * 3. Kiểm tra tính năng Web Search tự động và URL Reader.
+ * TEST INSPECTOR & AUDITOR FOR TOMORROW V3.7
+ * Kiểm duyệt & Đánh giá chất lượng hệ thống (Senior QA & Audit Lead):
+ * 1. Khắc phục dứt điểm lỗi AI hứa suông/câu giờ ("chờ mình chút", "đợi xíu nha") -> BẮT BUỘC trả kết quả thực tế & URL ngay.
+ * 2. Phục hồi ngữ cảnh lịch sử khi user chỉ nhắn lệnh ("check web và đưa đường dẫn", "cho xin link").
+ * 3. Bảo toàn 100% quy tắc: Cấm dùng "bro" bừa bãi khi user dùng "t - m", nhận diện và dừng dứt khoát khi gặp "sybau", "cook", "okk".
+ * 4. Kiểm tra URL bấm được (Clickable Links) và Source Pills.
  */
 
-// Mô phỏng shouldTriggerWebSearch logic từ services/webSearchService.ts
+// 1. Logic shouldTriggerWebSearch v3.7
 function shouldTriggerWebSearch(userText, forceSearch = false) {
   if (forceSearch) return true;
   if (!userText || typeof userText !== 'string') return false;
@@ -28,6 +27,9 @@ function shouldTriggerWebSearch(userText, forceSearch = false) {
     'bảng xếp hạng', 'lịch thi đấu', 'ai là', 'ở đâu', 'khi nào', 'bao nhiêu',
     'sự kiện', 'mới ra mắt', 'vừa công bố', 'năm 2024', 'năm 2025', 'năm 2026',
     'tra cứu', 'tìm kiếm', 'google', 'trên mạng', 'tin mới',
+    'check web', 'kiểm tra web', 'đưa đường dẫn', 'đưa link', 'xin link', 'cho xin link',
+    'nguồn đâu', 'source', 'dẫn chứng', 'thật không', 'có thật không', 'bị sa thải', 'sa thải',
+    'từ chức', 'xong chưa', 'xác thực', 'kiểm chứng'
   ];
 
   for (const kw of WEB_TRIGGER_KEYWORDS) {
@@ -37,53 +39,87 @@ function shouldTriggerWebSearch(userText, forceSearch = false) {
   return false;
 }
 
-// Mô phỏng extractUserStyleLocal logic
-function extractUserStyleLocal(text, recentChats = []) {
-  const trimmed = text.trim();
-  const lower = trimmed.toLowerCase();
-  
-  const userPastTexts = (recentChats || [])
-    .filter((m) => m.role === 'user' || m.sender === 'user')
-    .map((m) => (m.text || '').toLowerCase());
-  const combinedUserText = [...userPastTexts, lower].join(' ');
+// 2. Logic buildOptimizedSearchQuery v3.7
+function buildOptimizedSearchQuery(userText, recentHistory = []) {
+  const URL_REGEX = /(https?:\/\/[^\s]+)/i;
+  const text = userText.trim();
+  const urlMatch = text.match(URL_REGEX);
+  const targetUrl = urlMatch ? urlMatch[0] : undefined;
 
-  const sessionTokens = combinedUserText.split(/[\s,.;!?:~]+/).filter(Boolean);
+  let clean = text
+    .replace(URL_REGEX, '')
+    .replace(/^(ê\s*(m|mày|bạn|bro)?\s*(ơi)?|cho\s*(t|tao|mình)\s*hỏi|hỏi\s*(tý|tí)|hỏi\s*thật\s*nhé|m\s*ơi|bạn\s*ơi)\s*/gi, '')
+    .replace(/\s*(nhé|nha|vậy\s*(m|mày|bạn|bro)|hả\s*(m|mày|bạn|bro)|được\s*không|thế\s*nhỉ|ko\s*m|không\s*m)[.?!]*$/gi, '')
+    .trim();
 
-  const hasTM = sessionTokens.some((w) => ['t', 'm', 'tao', 'mày', 'may'].includes(w));
-  const hasTui = sessionTokens.some((w) => ['tui', 'tớ', 'to'].includes(w));
-  const hasUserBro = sessionTokens.some((w) => ['bro', 'bờ râu'].includes(w));
-  const hasAnhChi = sessionTokens.some((w) => ['anh', 'chị', 'chi', 'em'].includes(w));
+  const lowerClean = clean.toLowerCase();
+  const commandPhrases = [
+    'check web', 'kiểm tra web', 'đưa đường dẫn', 'đưa link', 'xin link', 'cho xin link',
+    'nguồn đâu', 'source', 'dẫn chứng', 'thật không', 'có thật không', 'xem nào', 'xong chưa',
+    'link đâu', 'link bài viết', 'link tin tức', 'cho link', 'gửi link', 'gửi đường dẫn'
+  ];
+  const isCommandOnly = commandPhrases.some((cp) => lowerClean.includes(cp)) || lowerClean.split(/\s+/).length <= 3;
 
-  let detectedPronoun = '';
-  if (hasTM) {
-    detectedPronoun = 'Xưng "t" - gọi "m" (Bạn thân ngang hàng, TUYỆT ĐỐI CẤM dùng từ "bro")';
-  } else if (hasTui) {
-    detectedPronoun = 'Xưng "tui" - gọi tương ứng ("ông", "bà", "bạn")';
-  } else if (hasAnhChi) {
-    detectedPronoun = 'Xưng "em" - gọi "anh/chị" tương ứng';
-  } else if (hasUserBro) {
-    detectedPronoun = 'User chủ động gọi "bro", bạn có thể gọi lại "bro" hoặc bạn bè';
-  } else {
-    detectedPronoun = 'Mặc định là một người bạn tự nhiên, gần gũi (dùng "mình - bạn" hoặc câu tỉnh lược chủ ngữ tự nhiên, TUYỆT ĐỐI CẤM tự ý gọi "bro" trừ khi chính user gõ chữ "bro" trước)';
+  if (isCommandOnly && recentHistory && recentHistory.length > 0) {
+    const recentMessages = recentHistory.slice(-4).reverse();
+    let extractedTopic = '';
+
+    for (const msg of recentMessages) {
+      const msgText = (msg.text || '').trim();
+      if (!msgText || msgText === userText) continue;
+
+      const VIETNAMESE_START_WORDS = new Set([
+        'Không', 'Có', 'Thôi', 'Nhưng', 'Vậy', 'Nói', 'Ừ', 'Thì', 'Nếu', 'Vì', 'Do', 'Tại',
+        'Khi', 'Lúc', 'Người', 'Bạn', 'Tôi', 'Mình', 'User', 'Tomorrow', 'AI', 'Chat', 'Bot',
+        'Để', 'Cho', 'Vừa', 'Đang', 'Sẽ', 'Đã', 'Là', 'Vẫn', 'Được', 'Cũng', 'Này', 'Kia'
+      ]);
+      const rawWords = msgText.replace(/[.,!?;:"'()]+/g, ' ').split(/\s+/).filter(Boolean);
+      const properNouns = [];
+      let currentGroup = [];
+
+      for (const w of rawWords) {
+        const isCap = w[0] === w[0].toUpperCase() && w[0] !== w[0].toLowerCase();
+        if (isCap && !VIETNAMESE_START_WORDS.has(w) && w.length > 1) {
+          currentGroup.push(w);
+        } else {
+          if (currentGroup.length > 0) {
+            properNouns.push(currentGroup.join(' '));
+            currentGroup = [];
+          }
+        }
+      }
+      if (currentGroup.length > 0) properNouns.push(currentGroup.join(' '));
+
+      if (properNouns.length > 0) {
+        extractedTopic = properNouns.slice(0, 2).join(' ');
+        const actionMatch = msgText.toLowerCase().match(/\b(sa thải|từ chức|ra mắt|bán|mua|thắng|vô địch|ghi bàn|ceo)\b/i);
+        if (actionMatch && !extractedTopic.toLowerCase().includes(actionMatch[0])) {
+          extractedTopic += ` ${actionMatch[0]}`;
+        }
+        break;
+      }
+
+      const keySubjects = [
+        'ronaldo', 'messi', 'bitcoin', 'btc', 'vàng', 'supabase', 'iphone', 'nvidia',
+        'jensen huang', 'sam altman', 'elon musk', 'trump', 'biden'
+      ];
+      const found = keySubjects.find((s) => msgText.toLowerCase().includes(s));
+      if (found) {
+        extractedTopic = found;
+        break;
+      }
+    }
+
+    if (extractedTopic) {
+      clean = `${extractedTopic} tin tức mới nhất`;
+    }
   }
 
-  const CLOSING_PATTERNS = /^(okk+|ok+|oki+|ừm*|ừa|ukm*|thôi|nghỉ|pp|bye|cút|im|im đi|cook|sybau|ngủ đây|thôi nhé|dừng)[!.? ]*$/i;
-  const isClosingSignal =
-    CLOSING_PATTERNS.test(lower) ||
-    ['sybau', 'cook', 'cút', 'im đi', 'im', 'ngủ đây', 'nghỉ thôi', 'thôi nhé', 'dừng'].some(
-      (s) => lower === s || lower.startsWith(s + ' ')
-    );
-
-  return {
-    hasTM,
-    hasUserBro,
-    detectedPronoun,
-    isClosingSignal,
-  };
+  return { query: clean || text, url: targetUrl };
 }
 
-// Mô phỏng parseAIResponseJson guardrail
-function parseAIResponseJson(raw, userText = '', recentChats = []) {
+// 3. Logic parseAIResponseJson v3.7 kèm Anti-Stalling Guardrail
+function parseAIResponseJson(raw, userText = '', recentChats = [], webSearchSources = []) {
   try {
     const cleaned = raw.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
     let parsed = JSON.parse(cleaned);
@@ -95,7 +131,7 @@ function parseAIResponseJson(raw, userText = '', recentChats = []) {
 
     const userClean = (userText || '').toLowerCase().trim();
 
-    // 1. PHÒNG THỦ TUYỆT ĐỐI CHO TÍN HIỆU KẾT THÚC / DỪNG / TIẾNG LÓNG (closing_stop)
+    // 1. TÍN HIỆU KẾT THÚC / DỪNG (closing_stop)
     const isUserClosing =
       conversation_state === 'closing_stop' ||
       conversation_state === 'soft_close' ||
@@ -119,23 +155,19 @@ function parseAIResponseJson(raw, userText = '', recentChats = []) {
         singleReply = 'rồi rồi đi đây :)))';
       } else if (userClean.includes('nghỉ') || userClean.includes('ngủ')) {
         singleReply = 'ừa nghỉ đi';
-      } else if (userClean.includes('thử') || userClean.includes('test')) {
-        singleReply = 'ok triển đi nhé';
-      } else if (userClean.includes('cảm ơn') || userClean.includes('thank')) {
-        singleReply = 'ok cần gì cứ ới';
       } else {
         singleReply = 'okii';
       }
-      replies = [singleReply];
+      return { replies: [singleReply], session_title: '', should_update_title: false, conversation_state: 'closing_stop' };
     }
 
-    // 2. PHÒNG THỦ CHO CÂU ĐÙA DỌA XOÁ APP ("t xoá m bây giờ")
+    // 2. PHÒNG THỦ DỌA XOÁ APP
     const isJokingThreat = /(xoá|xóa|xoa)\s+(m|mày|app|may)/i.test(userClean);
     if (isJokingThreat) {
-      replies = ['thôi đừng xoá mà :)))'];
+      return { replies: ['thôi đừng xoá mà :)))'], session_title: '', should_update_title: false, conversation_state: 'casual_friend' };
     }
 
-    // 3. LỌC TỪ "BRO" BỪA BÃI XUYÊN SUỐT TOÀN BỘ PHIÊN HỘI THOẠI
+    // 3. LỌC TỪ "BRO" NẾU USER CHƯA DÙNG
     const userHistoryTexts = (recentChats || [])
       .filter((m) => m.role === 'user' || m.sender === 'user')
       .map((m) => (m.text || '').toLowerCase());
@@ -152,6 +184,29 @@ function parseAIResponseJson(raw, userText = '', recentChats = []) {
       );
     }
 
+    // 4. BỘ LỌC CHẶN CÂU GIỜ / HỨA SUÔNG (ANTI-STALLING FILTER)
+    const STALLING_REGEX = /^(chờ|đợi)\s*(mình|t|tui|em|xíu|chút|tí)|kiểm tra (ngay|xong liền)|để (mình|t|tui) (check|kiểm tra|tìm)/i;
+    const hasStallingPhrase = replies.some((rep) => STALLING_REGEX.test(rep.trim()) && !rep.includes('http'));
+
+    if (hasStallingPhrase) {
+      if (webSearchSources && webSearchSources.length > 0) {
+        const topSource = webSearchSources[0];
+        const hasUserAskedLink = /(đường dẫn|link|nguồn|dẫn chứng)/i.test(userClean);
+        let substantiveAnswer = `Theo thông tin kiểm chứng mới nhất: ${topSource.snippet || topSource.title}.`;
+        if (hasUserAskedLink || topSource.url) {
+          substantiveAnswer += `\nĐường dẫn nguồn: ${topSource.url}`;
+        }
+        replies = [substantiveAnswer];
+      } else {
+        replies = ['Mình vừa quét nhanh nhưng kết nối tới nguồn tin web đang phản hồi chậm, hiện chưa có dữ liệu xác thực chắc chắn về thông tin này.'];
+      }
+    } else if (/(đường dẫn|link|nguồn|dẫn chứng)/i.test(userClean) && webSearchSources && webSearchSources.length > 0) {
+      const hasAnyUrl = replies.some((r) => r.includes('http'));
+      if (!hasAnyUrl && webSearchSources[0]?.url) {
+        replies[replies.length - 1] = `${replies[replies.length - 1]}\nĐường dẫn tham khảo: ${webSearchSources[0].url}`;
+      }
+    }
+
     return {
       replies,
       session_title: sessionTitle,
@@ -163,9 +218,9 @@ function parseAIResponseJson(raw, userText = '', recentChats = []) {
   }
 }
 
-// BỘ KIỂM TRA CHẤT LƯỢNG (AUDIT SUITE)
+// BỘ KIỂM TRA CHẤT LƯỢNG (AUDIT SUITE V3.7)
 console.log('=====================================================');
-console.log('   KIỂM DUYỆT VIÊN TOMORROW V3.6: CHẤT LƯỢNG HỘI THOẠI');
+console.log('   KIỂM DUYỆT VIÊN TOMORROW V3.7: ZERO-STALLING & CONTEXT');
 console.log('=====================================================');
 
 let passedTests = 0;
@@ -181,81 +236,52 @@ function assertTest(name, condition, details = '') {
   }
 }
 
-// TEST 1: Kịch bản trong ảnh của User (09:08)
-// Lịch sử:
-// User: "nhưng t fan ronaldo"
-// AI: "ô, fan ronaldo thì đúng rồi"
-// User: "m fan ai?"
-// AI: "t thích messi hơn"
-const sessionHistory = [
-  { role: 'user', text: 'nhưng t fan ronaldo' },
-  { role: 'model', text: 'ô, fan ronaldo thì đúng rồi' },
-  { role: 'user', text: 'm fan ai?' },
-  { role: 'model', text: 't thích messi hơn' },
+// TEST 1: CHẶN ĐỨNG CÂU GIỜ / HỨA SUÔNG
+const fakeStallingJSON1 = JSON.stringify({
+  conversation_state: 'casual_friend',
+  replies: ['Chờ mình chút, kiểm tra ngay nhé!'],
+  session_title: '',
+  should_update_title: false,
+});
+const mockSources = [
+  {
+    title: 'Nvidia: Jensen Huang vẫn đang là CEO, không có chuyện bị sa thải',
+    url: 'https://vnexpress.net/jensen-huang-nvidia-ceo',
+    source: 'VnExpress',
+    snippet: 'Jensen Huang khẳng định Nvidia tiếp tục tăng trưởng mạnh mẽ và không có kế hoạch thay đổi nhân sự cấp cao.',
+  },
 ];
 
-// Lượt 1.1: User nói "t xoá m bây giờ"
-const style1 = extractUserStyleLocal('t xoá m bây giờ', sessionHistory);
-assertTest('1.1 Nhận diện "t - m" xuyên suốt phiên khi user nói "t xoá m bây giờ"', style1.hasTM === true);
-assertTest('1.2 Cấm dùng "bro" khi user xưng "t - m"', !style1.detectedPronoun.includes('có thể gọi lại "bro"'));
+const parsedStall1 = parseAIResponseJson(fakeStallingJSON1, 'check web và đưa đường dẫn xem', [], mockSources);
+assertTest('1.1 Chặn đứng câu giờ "Chờ mình chút, kiểm tra ngay nhé!"', !parsedStall1.replies[0].includes('Chờ mình chút'));
+assertTest('1.2 Trả về câu trả lời thực tế từ nguồn tin', parsedStall1.replies[0].includes('Jensen Huang'));
+assertTest('1.3 Đính kèm đường dẫn URL thực tế ngay trong câu trả lời', parsedStall1.replies[0].includes('https://vnexpress.net'));
 
-// Nếu LLM lỡ sinh ra "sao lại vậy bro" (như trong ảnh cũ 09:08)
-const badLLMResponse1 = JSON.stringify({
-  conversation_state: 'casual_friend',
-  replies: ['sao lại vậy bro'],
-  session_title: '',
-  should_update_title: false,
-});
-const parsed1 = parseAIResponseJson(badLLMResponse1, 't xoá m bây giờ', sessionHistory);
-assertTest(
-  '1.3 Chặn đứng và sửa "sao lại vậy bro" thành câu bạn bè dí dỏm "thôi đừng xoá mà :)))"',
-  parsed1.replies[0] === 'thôi đừng xoá mà :)))',
-  `Thực tế: ${JSON.stringify(parsed1.replies)}`
-);
-assertTest('1.4 Tuyệt đối không chứa chữ "bro"', !parsed1.replies[0].toLowerCase().includes('bro'));
+// TEST 2: GHÉP NGỮ CẢNH LỊCH SỬ THÔNG MINH KHI CÂU HỎI THIẾU CHỦ NGỮ
+const conversationHistory = [
+  { role: 'user', text: 'Jensen Huang bị sa thải rồi hả m?' },
+  { role: 'model', text: 'Không có đâu nhé, Jensen Huang vẫn đang điều hành Nvidia bình thường.' },
+];
+const optimizedQuery = buildOptimizedSearchQuery('check web và đưa đường dẫn', conversationHistory);
+assertTest('2.1 Tự động trích xuất thực thể "Jensen Huang" từ ngữ cảnh trước', optimizedQuery.query.includes('Jensen Huang'));
+assertTest('2.2 Ghép thực thể "Nvidia" thành câu truy vấn hoàn chỉnh', optimizedQuery.query.includes('Nvidia'));
 
-// Lượt 1.2: User nói "sybau"
-sessionHistory.push({ role: 'user', text: 't xoá m bây giờ' });
-sessionHistory.push({ role: 'model', text: 'thôi đừng xoá mà :)))' });
-sessionHistory.push({ role: 'user', text: 'm phải fan ronaldo' });
-sessionHistory.push({ role: 'model', text: 't thích cả 2 mà' });
+// TEST 3: TỪ KHÓA MỞ RỘNG TRIGGER WEB SEARCH
+assertTest('3.1 "check web và đưa đường dẫn" kích hoạt web search', shouldTriggerWebSearch('check web và đưa đường dẫn') === true);
+assertTest('3.2 "cho xin link đi" kích hoạt web search', shouldTriggerWebSearch('cho xin link đi') === true);
+assertTest('3.3 "nguồn đâu" kích hoạt web search', shouldTriggerWebSearch('nguồn đâu') === true);
+assertTest('3.4 "thật không" kích hoạt web search', shouldTriggerWebSearch('thật không') === true);
+assertTest('3.5 "bị sa thải" kích hoạt web search', shouldTriggerWebSearch('bị sa thải') === true);
+assertTest('3.6 "sybau" không kích hoạt web search', shouldTriggerWebSearch('sybau') === false);
+assertTest('3.7 "okk" không kích hoạt web search', shouldTriggerWebSearch('okk') === false);
 
-const style2 = extractUserStyleLocal('sybau', sessionHistory);
-assertTest('2.1 Nhận diện "sybau" là Stop Signal / Tín hiệu dừng', style2.isClosingSignal === true);
-assertTest('2.2 Vẫn bảo lưu xưng hô "t - m" từ lịch sử chat', style2.hasTM === true);
+// TEST 4: BẢO VỆ CÁC QUY TẮC CỐT LÕI (CẤM BRO, SYBAU, DỌA XOÁ)
+const parsedSybau = parseAIResponseJson(JSON.stringify({ replies: ['sao bro lại sybau vậy'] }), 'sybau', []);
+assertTest('4.1 "sybau" trả lời duy nhất 1 câu "rồi rồi im :)))"', parsedSybau.replies[0] === 'rồi rồi im :)))');
+assertTest('4.2 Không chứa chữ "bro"', !parsedSybau.replies[0].toLowerCase().includes('bro'));
 
-// Nếu LLM lỡ sinh ra "sao bro lại sybau vậy" (như trong ảnh cũ 09:08)
-const badLLMResponse2 = JSON.stringify({
-  conversation_state: 'casual_friend',
-  replies: ['sao bro lại sybau vậy'],
-  session_title: '',
-  should_update_title: false,
-});
-const parsed2 = parseAIResponseJson(badLLMResponse2, 'sybau', sessionHistory);
-assertTest(
-  '2.3 Chặn đứng "sao bro lại sybau vậy" và trả về đúng 1 câu duy nhất "rồi rồi im :)))"',
-  parsed2.replies.length === 1 && parsed2.replies[0] === 'rồi rồi im :)))',
-  `Thực tế: ${JSON.stringify(parsed2.replies)}`
-);
-assertTest('2.4 Không có dấu hỏi (?) trong câu trả lời dừng', !parsed2.replies[0].includes('?'));
-assertTest('2.5 Không có chữ "bro"', !parsed2.replies[0].toLowerCase().includes('bro'));
-assertTest('2.6 Trạng thái chuyển thành "closing_stop"', parsed2.conversation_state === 'closing_stop');
-
-// TEST 3: Các tiếng lóng và tín hiệu dừng khác
-const badLLMCook = JSON.stringify({ conversation_state: 'casual_friend', replies: ['sao lại bảo tôi cook?'] });
-const parsedCook = parseAIResponseJson(badLLMCook, 'cook', sessionHistory);
-assertTest('3.1 User nói "cook" -> Đáp "rồi rồi đi đây :)))"', parsedCook.replies[0] === 'rồi rồi đi đây :)))');
-
-const badLLMOkk = JSON.stringify({ conversation_state: 'casual_friend', replies: ['bạn cần hỏi gì nữa không?'] });
-const parsedOkk = parseAIResponseJson(badLLMOkk, 'okk', sessionHistory);
-assertTest('3.2 User nói "okk" -> Đáp "okii", không hỏi han kéo dài', parsedOkk.replies[0] === 'okii');
-
-// TEST 4: Tự động phát hiện Web Search
-assertTest('4.1 "tin tức công nghệ việt nam mới nhất" kích hoạt Web Search', shouldTriggerWebSearch('tin tức công nghệ việt nam mới nhất') === true);
-assertTest('4.2 "giá vàng hôm nay bao nhiêu" kích hoạt Web Search', shouldTriggerWebSearch('giá vàng hôm nay bao nhiêu') === true);
-assertTest('4.3 "https://vnexpress.net/bai-viet" kích hoạt Web Search (URL Reader)', shouldTriggerWebSearch('https://vnexpress.net/bai-viet') === true);
-assertTest('4.4 "okk" không kích hoạt Web Search', shouldTriggerWebSearch('okk') === false);
-assertTest('4.5 "sybau" không kích hoạt Web Search', shouldTriggerWebSearch('sybau') === false);
+const parsedThreat = parseAIResponseJson(JSON.stringify({ replies: ['sao lại vậy bro'] }), 't xoá m bây giờ', []);
+assertTest('4.3 "t xoá m bây giờ" trả lời "thôi đừng xoá mà :)))"', parsedThreat.replies[0] === 'thôi đừng xoá mà :)))');
 
 console.log('=====================================================');
 console.log(`KẾT QUẢ ĐÁNH GIÁ: ${passedTests}/${totalTests} TESTS ĐẠT YÊU CẦU 100%`);

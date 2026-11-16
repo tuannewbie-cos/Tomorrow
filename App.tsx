@@ -62,6 +62,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isTomorrowTyping, setIsTomorrowTyping] = useState<boolean>(false);
   const [isSearchingWeb, setIsSearchingWeb] = useState<boolean>(false);
+  const [typingStatusText, setTypingStatusText] = useState<string | undefined>(undefined);
   const [isReady, setIsReady] = useState<boolean>(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(width >= 768);
   const [showScrollDownBtn, setShowScrollDownBtn] = useState<boolean>(false);
@@ -241,31 +242,62 @@ export default function App() {
     setMessages(updatedMessages);
     setIsLoading(true);
 
+    // HẠNG MỤC 1: Hiện bong bóng đợi chat tức thì (0ms delay) ngay lập tức khi suy nghĩ hoặc tìm kiếm
+    setIsTomorrowTyping(true);
+    setTypingStatusText(undefined);
+
     await saveSessions(nextSessions);
 
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
-    }, 50);
+    }, 20);
 
-    await sleep(350);
-    setIsTomorrowTyping(true);
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 50);
+    // Bật timer sau 2s nếu vẫn đang suy nghĩ sâu thì đổi statusText sang "💭 Đang suy nghĩ..."
+    const deepThinkingTimer = setTimeout(() => {
+      setTypingStatusText((curr) => (!curr ? '💭 Đang suy nghĩ...' : curr));
+    }, 2000);
 
     try {
       const previousSession = sessions.find((s) => s.id !== activeId);
       const previousSessionMessages = previousSession?.messages?.slice(-3);
 
-      const aiResponse = await sendMessageToTomorrow(
+      // Cơ chế Watchdog Chống Đợi Vô Định (Hard Timeout 9.5s)
+      const aiResponsePromise = sendMessageToTomorrow(
         text,
         userMemory,
         updatedMessages,
         imageBase64,
         previousSessionMessages,
         forceWebSearch,
-        (isSearching) => setIsSearchingWeb(isSearching)
+        (isSearching) => {
+          setIsSearchingWeb(isSearching);
+          if (isSearching) {
+            setTypingStatusText('🌐 Đang quét web & lấy đường dẫn...');
+          } else {
+            setTypingStatusText('💭 Đang suy nghĩ...');
+          }
+        }
       );
+
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('WATCHDOG_TIMEOUT')), 9500)
+      );
+
+      let aiResponse: any;
+      try {
+        aiResponse = await Promise.race([aiResponsePromise, timeoutPromise]);
+      } catch (err: any) {
+        console.warn('[App] Watchdog kích hoạt hoặc lỗi mạng:', err?.message || err);
+        aiResponse = {
+          replies: ['Mình vừa thử quét nhanh nhưng kết nối tới nguồn web đang phản hồi chậm, hiện mình chưa kiểm chứng chắc chắn được thông tin này.'],
+          conversation_state: 'casual_friend',
+          should_update_title: false,
+        };
+      } finally {
+        clearTimeout(deepThinkingTimer);
+        setTypingStatusText(undefined);
+        setIsSearchingWeb(false);
+      }
 
       // Bước B: Đồng bộ luồng cập nhật tiêu đề hội thoại thông minh
       const aiSessionTitle = (aiResponse.session_title || aiResponse.sessionTitle || '').trim();
@@ -298,6 +330,7 @@ export default function App() {
           : [aiResponse.reply || 'ơi'];
 
       let currentHistory = [...updatedMessages];
+      setTypingStatusText(undefined);
 
       for (const [index, replyText] of replies.entries()) {
         const typingDuration = Math.min(Math.max(replyText.length * 45, 650), 2200);
@@ -473,7 +506,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v3.6</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v3.7</Text>
               </View>
             </View>
           </View>
@@ -569,6 +602,7 @@ export default function App() {
                     <TypingIndicator
                       visible={isTomorrowTyping || isSearchingWeb}
                       isSearchingWeb={isSearchingWeb}
+                      statusText={typingStatusText}
                       isDesktop={isDesktop}
                       theme={theme}
                     />

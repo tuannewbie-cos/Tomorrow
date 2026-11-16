@@ -8,6 +8,7 @@ interface TypingIndicatorProps {
   isDesktop?: boolean;
   theme?: ThemeColors;
   isSearchingWeb?: boolean;
+  statusText?: string;
 }
 
 export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
@@ -15,6 +16,7 @@ export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
   isDesktop,
   theme = DARK_THEME,
   isSearchingWeb = false,
+  statusText,
 }) => {
   const [shouldRender, setShouldRender] = useState<boolean>(visible);
 
@@ -112,9 +114,11 @@ export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
     };
   }, [visible, fadeAnim, scaleAnim, dot1Anim, dot2Anim, dot3Anim]);
 
-  // Pulse animation cho dòng "Đang tìm kiếm trên web..."
+  const activeStatusText = statusText || (isSearchingWeb ? '🌐 Đang quét web & lấy đường dẫn...' : undefined);
+
+  // Pulse animation cho dòng trạng thái suy nghĩ / quét web
   useEffect(() => {
-    if (isSearchingWeb) {
+    if (activeStatusText) {
       const pulseLoop = Animated.loop(
         Animated.sequence([
           Animated.timing(pulseAnim, {
@@ -132,7 +136,7 @@ export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
       pulseLoop.start();
       return () => pulseLoop.stop();
     }
-  }, [isSearchingWeb, pulseAnim]);
+  }, [activeStatusText, pulseAnim]);
 
   if (!shouldRender) {
     return null;
@@ -179,7 +183,7 @@ export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
           />
         </Animated.View>
 
-        {isSearchingWeb && (
+        {activeStatusText ? (
           <Animated.View
             style={[
               styles.searchingBadge,
@@ -190,17 +194,19 @@ export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
               },
             ]}
           >
-            <Globe size={13} color={theme.mode === 'dark' ? '#60A5FA' : '#2563EB'} />
+            {activeStatusText.includes('web') || activeStatusText.includes('quét') ? (
+              <Globe size={13} color={theme.mode === 'dark' ? '#60A5FA' : '#2563EB'} />
+            ) : null}
             <Text
               style={[
                 styles.searchingText,
                 { color: theme.mode === 'dark' ? '#93C5FD' : '#2563EB' },
               ]}
             >
-              Đang tìm kiếm trên web...
+              {activeStatusText.replace(/^[🌐💭]\s*/, '')}
             </Text>
           </Animated.View>
-        )}
+        ) : null}
       </View>
     </View>
   );

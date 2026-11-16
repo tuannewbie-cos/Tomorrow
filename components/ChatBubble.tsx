@@ -53,6 +53,44 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
     }
   };
 
+  const renderMessageWithLinks = (text: string, defaultColor: string) => {
+    const URL_REGEX = /(https?:\/\/[^\s)]+)/g;
+    const parts = text.split(URL_REGEX);
+
+    if (parts.length === 1) {
+      return (
+        <Text style={[styles.messageText, { color: defaultColor }]}>
+          {text}
+        </Text>
+      );
+    }
+
+    const linkColor = theme.mode === 'dark' ? '#60A5FA' : '#2563EB';
+
+    return (
+      <Text style={[styles.messageText, { color: defaultColor }]}>
+        {parts.map((part, idx) => {
+          if (URL_REGEX.test(part)) {
+            return (
+              <Text
+                key={`link-${idx}`}
+                style={{
+                  color: linkColor,
+                  textDecorationLine: 'underline',
+                  fontWeight: '600',
+                }}
+                onPress={() => handleOpenUrl(part)}
+              >
+                {part}
+              </Text>
+            );
+          }
+          return part;
+        })}
+      </Text>
+    );
+  };
+
   return (
     <View style={[styles.container, isAI ? styles.containerAI : styles.containerUser]}>
       {/* Khung bong bóng chat phong cách Messenger & Fluid MacBook */}
@@ -83,12 +121,8 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
           </Pressable>
         )}
 
-        {/* Nội dung bong bóng tin nhắn text với font chữ thanh thoát */}
-        {message.text ? (
-          <Text style={[styles.messageText, { color: textColor }]}>
-            {message.text}
-          </Text>
-        ) : null}
+        {/* Nội dung bong bóng tin nhắn text với font chữ thanh thoát và link bấm được trực tiếp */}
+        {message.text ? renderMessageWithLinks(message.text, textColor) : null}
 
         {/* Dấu thời gian tinh tế */}
         <Text style={[styles.timestamp, { color: timestampColor }]}>

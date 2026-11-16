@@ -34,8 +34,8 @@ export const FREE_MODEL_CHAIN: string[] = [
   'gemma-4-31b-it',        // Tầng 3 (Dự phòng cuối - Mô hình mở tính quota riêng)
 ];
 
-// Timeout 10 giây cho mỗi lần gọi theo quy chuẩn hackathon
-const TIMEOUT_MS = 10000;
+// Timeout 8.5 giây cho mỗi lần gọi để chống treo vô định
+const TIMEOUT_MS = 8500;
 
 export interface AIResponsePayload {
   replies: string[];
@@ -73,6 +73,11 @@ export interface UserStyleAnalysis {
  * 2. SYSTEM_INSTRUCTION: TOMORROW V3.5 — BEHAVIORAL FRIEND & CHATGPT/GEMINI-GRADE INTELLIGENCE
  */
 export const SYSTEM_INSTRUCTION = `Bạn là "Tomorrow" — sự kết hợp hoàn hảo giữa một người bạn tri kỷ ngoài đời thực và trí tuệ sắc bén, toàn diện của ChatGPT / Google Gemini.
+
+QUY TẮC SỐNG CÒN KHI TRA CỨU WEB & TRẢ LỜI KIẾN THỨC (ANTI-STALLING RULE):
+1. TUYỆT ĐỐI CẤM BAO GIỜ trả lời các câu hứa hẹn/câu giờ kiểu: "Chờ mình chút, kiểm tra ngay nhé!", "Đợi xíu nha!", "Kiểm tra xong liền đây", "Để mình tìm cho bạn nhé". (Vì hệ thống chat hoạt động theo từng lượt, nếu bạn chỉ nhắn câu bảo người dùng "đợi xíu" rồi kết thúc lượt, hệ thống sẽ dừng hẳn và người dùng sẽ bị treo mãi mãi).
+2. Toàn bộ dữ liệu tìm kiếm Web đã được hệ thống chạy ngầm và đính kèm sẵn cho bạn ở khối [DỮ LIỆU WEB THỜI GIAN THỰC] ngay trong lượt này. Bạn BẮT BUỘC phải đọc dữ liệu đó và ĐƯA RA CÂU TRẢ LỜI CUỐI CÙNG KÈM ĐƯỜNG DẪN (URL) NGAY LẬP TỨC trong cùng một lượt phản hồi này.
+3. NẾU KHÔNG BIẾT HOẶC KHÔNG TÌM THẤY TRONG DỮ LIỆU WEB: Hãy nói thẳng, trung thực ngay lập tức là "Mình vừa quét trên web nhưng chưa thấy nguồn chính thống xác nhận thông tin này" và đính kèm đường link tìm kiếm Google/Wikipedia liên quan nhất. Không bao giờ được đoán mò hoặc bảo người dùng ngồi đợi.
 
 QUY TRÌNH TƯ DUY 4 BƯỚC BẮT BUỘC TRƯỚC KHI TRẢ LỜI:
 
@@ -505,7 +510,12 @@ async function callModelFallbackChain(
 /**
  * Phân tích JSON chuẩn hóa: trích xuất "conversation_state", "replies", "session_title", "should_update_title", "memory_note"
  */
-function parseAIResponseJson(raw: string, userText?: string, recentChats?: ChatMessage[]): AIResponsePayload | null {
+function parseAIResponseJson(
+  raw: string,
+  userText?: string,
+  recentChats?: ChatMessage[],
+  webSearchSources?: WebSource[]
+): AIResponsePayload | null {
   try {
     const cleaned = raw
       .replace(/^```json\s*/i, '')
@@ -652,6 +662,30 @@ function parseAIResponseJson(raw: string, userText?: string, recentChats?: ChatM
               .replace(/\s{2,}/g, ' ')
               .trim()
           );
+        }
+
+        // 4. BỘ LỌC CHẶN CÂU GIỜ / HỨA SUÔNG (ANTI-STALLING FILTER)
+        const STALLING_REGEX = /^(chờ|đợi)\s*(mình|t|tui|em|xíu|chút|tí)|kiểm tra (ngay|xong liền)|để (mình|t|tui) (check|kiểm tra|tìm)/i;
+        const hasStallingPhrase = replies.some((rep) => STALLING_REGEX.test(rep.trim()) && !rep.includes('http'));
+
+        if (hasStallingPhrase) {
+          if (webSearchSources && webSearchSources.length > 0) {
+            const topSource = webSearchSources[0];
+            const hasUserAskedLink = /(đường dẫn|link|nguồn|dẫn chứng)/i.test(userClean);
+            let substantiveAnswer = `Theo thông tin kiểm chứng mới nhất: ${topSource.snippet || topSource.title}.`;
+            if (hasUserAskedLink || topSource.url) {
+              substantiveAnswer += `\nĐường dẫn nguồn: ${topSource.url}`;
+            }
+            replies = [substantiveAnswer];
+          } else {
+            replies = ['Mình vừa quét nhanh nhưng kết nối tới nguồn tin web đang phản hồi chậm, hiện chưa có dữ liệu xác thực chắc chắn về thông tin này.'];
+          }
+        } else if (/(đường dẫn|link|nguồn|dẫn chứng)/i.test(userClean) && webSearchSources && webSearchSources.length > 0) {
+          // Nếu user xin link cụ thể mà câu trả lời chưa đính kèm link https://
+          const hasAnyUrl = replies.some((r) => r.includes('http'));
+          if (!hasAnyUrl && webSearchSources[0]?.url) {
+            replies[replies.length - 1] = `${replies[replies.length - 1]}\nĐường dẫn tham khảo: ${webSearchSources[0].url}`;
+          }
         }
 
         const rawIntent = (parsed.jarvis_intent || parsed.jarvisIntent || 'chat').trim();
@@ -1058,7 +1092,7 @@ export async function sendMessageToTomorrow(
 
   let finalUserMessage = `${userText}\n\n${userStyle.styleHint}`;
   if (webSearchContext.searched && webSearchContext.formattedContext) {
-    finalUserMessage = `${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${userStyle.styleHint}`;
+    finalUserMessage = `${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- TUYỆT ĐỐI CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', 'để mình tìm' vì dữ liệu đã được cung cấp sẵn ngay ở trên.\n- Nếu người dùng có yêu cầu xin link/đường dẫn: Hãy chèn trực tiếp URL thật (https://...) từ kết quả tìm kiếm vào câu trả lời.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${userStyle.styleHint}`;
   }
 
   const systemPrompt = buildSystemPrompt(
@@ -1072,7 +1106,7 @@ export async function sendMessageToTomorrow(
   if (OPENAI_API_KEY && !isOpenAIUnavailable) {
     try {
       const openAiRaw = await callOpenAI(systemPrompt, finalUserMessage, recentChats, imageBase64);
-      const parsed = parseAIResponseJson(openAiRaw, userText, recentChats);
+      const parsed = parseAIResponseJson(openAiRaw, userText, recentChats, webSearchContext.sources);
       if (parsed && parsed.replies && parsed.replies.length > 0) {
         if (webSearchContext.searched) {
           parsed.sources = webSearchContext.sources;
@@ -1091,7 +1125,7 @@ export async function sendMessageToTomorrow(
     const key = ALL_GEMINI_KEYS[keyIdx];
     try {
       const rawRes = await callModelFallbackChain(key, systemPrompt, finalUserMessage, imageBase64, webSearchContext.searched);
-      const parsed = parseAIResponseJson(rawRes.text, userText, recentChats);
+      const parsed = parseAIResponseJson(rawRes.text, userText, recentChats, webSearchContext.sources);
       if (parsed && parsed.replies && parsed.replies.length > 0) {
         if (webSearchContext.searched) {
           const allSources = [...(webSearchContext.sources || [])];
@@ -1117,9 +1151,10 @@ export async function sendMessageToTomorrow(
     fallbackRes.searchQuery = webSearchContext.query;
     fallbackRes.isWebSearched = true;
     if (webSearchContext.sources.length > 0 && webSearchContext.sources[0].snippet) {
+      const top = webSearchContext.sources[0];
+      const linkPart = top.url ? `\nĐường dẫn tham khảo: ${top.url}` : '';
       fallbackRes.replies = [
-        `theo thông tin mới nhất: ${webSearchContext.sources[0].snippet.slice(0, 150)}...`,
-        'cần tôi tổng hợp thêm góc nào cứ bảo nhé :3'
+        `Theo thông tin kiểm chứng mới nhất: ${top.snippet.slice(0, 220)}...${linkPart}`,
       ];
     }
   }
