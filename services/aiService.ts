@@ -16,6 +16,14 @@ const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
 // Biến trạng thái ngắt mạch (Silent Circuit Breaker): Nếu key OpenAI hết hạn/hết credit trong phiên thì chuyển hẳn sang Gemini
 let isOpenAIUnavailable = false;
 
+export function getOpenAICircuitBreakerStatus(): boolean {
+  return isOpenAIUnavailable;
+}
+
+export function resetOpenAICircuitBreaker(): void {
+  isOpenAIUnavailable = false;
+}
+
 // Cấu hình Gemini API Keys (Chuỗi dự phòng ngầm miễn phí xoay vòng)
 const PRIMARY_GEMINI_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 const BACKUP_GEMINI_KEYS: string[] = [
@@ -613,22 +621,35 @@ export function safeParseAIJson(rawText: string): any {
   const firstBrace = cleaned.indexOf('{');
   const lastBrace = cleaned.lastIndexOf('}');
 
-  if (firstBrace !== -1 && lastBrace > firstBrace) {
-    const candidate = cleaned.slice(firstBrace, lastBrace + 1);
+  if (firstBrace !== -1) {
+    const candidate = lastBrace > firstBrace
+      ? cleaned.slice(firstBrace, lastBrace + 1)
+      : cleaned.slice(firstBrace);
+
     try {
       return JSON.parse(candidate);
     } catch {
-      // Tự động vá nếu chuỗi JSON bị cắt cụt đuôi
+      // Tự động vá nếu chuỗi JSON bị cắt cụt đuôi (VD: do max_tokens: 250)
       try {
-        let repaired = candidate;
-        if (!repaired.endsWith('}')) {
-          if (repaired.endsWith('"')) {
-            repaired += ']}';
-          } else if (repaired.endsWith(',')) {
-            repaired = repaired.slice(0, -1) + ']}';
-          } else {
-            repaired += '"]}';
-          }
+        let repaired = candidate.trim().replace(/,\s*$/, '');
+        // Đếm số dấu ngoặc kép chưa đóng (bỏ qua dấu đã escape \")
+        const quoteMatches = repaired.match(/(^|[^\\])"/g);
+        const quoteCount = quoteMatches ? quoteMatches.length : 0;
+        if (quoteCount % 2 !== 0) {
+          repaired += '"';
+        }
+        repaired = repaired.replace(/,\s*$/, '');
+        // Đếm số ngoặc vuông [ và ]
+        const openBrackets = (repaired.match(/\[/g) || []).length;
+        const closeBrackets = (repaired.match(/\]/g) || []).length;
+        if (openBrackets > closeBrackets) {
+          repaired += ']'.repeat(openBrackets - closeBrackets);
+        }
+        // Đếm số ngoặc nhọn { và }
+        const openBraces = (repaired.match(/\{/g) || []).length;
+        const closeBraces = (repaired.match(/\}/g) || []).length;
+        if (openBraces > closeBraces) {
+          repaired += '}'.repeat(openBraces - closeBraces);
         }
         return JSON.parse(repaired);
       } catch {
@@ -657,6 +678,7 @@ export function safeParseAIJson(rawText: string): any {
             memoryNote: '',
             memory_note: '',
             jarvis_intent: 'chat',
+            sources: [],
           };
         }
       }
