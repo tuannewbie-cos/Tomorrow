@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 60-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v3.9` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.1` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 60 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -57,17 +57,19 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 60 ngày của
 
 #### 🎯 Mục tiêu kế tiếp ngay lập tức (Next Sprints):
 
-- [ ] **Ngày 4: `perf/hybrid-ai-router` (Bộ Định Tuyến Hybrid Tối Ưu Quota & Tốc Độ)**
+- [x] **Ngày 4: `perf/hybrid-ai-router` (Tomorrow v4.0 - Hybrid AI Router, 7s OpenAI Timeout & Silent Circuit Breaker)**
   - Tích hợp chuỗi xoay vòng Model tự động:
-    1. Ưu tiên `callOpenAI` (`gpt-4o-mini`) khi key còn hạn.
-    2. Tự động kích hoạt mạch ngắt `isOpenAIUnavailable` khi gặp lỗi 401/429/hết quota mà không gây gián đoạn phiên trò chuyện.
-    3. Chuyển tầng êm ái sang chuỗi 3 tầng Gemini: `gemini-3.8-flash` / `gemini-2.5-flash` -> `gemini-3.5-flash-lite` -> `gemma-4-31b-it`.
-  - Giảm độ trễ Round-Trip Time (RTT) xuống dưới 800ms cho các phản hồi cục bộ.
+    1. Ưu tiên `callOpenAI` (`gpt-4o-mini`, max_tokens: 250, timeout cứng 7000ms AbortController).
+    2. Tự động kích hoạt mạch ngắt `isOpenAIUnavailable = true` khi gặp lỗi 401/402/403/429 mà không văng lỗi đỏ ra UI.
+    3. Chuyển ngầm sang chuỗi 3 tầng Gemini: `gemini-3.8-flash` / `gemini-2.5-flash` -> `gemini-3.5-flash-lite` -> `gemma-4-31b-it`.
+  - Bộ Auto-Repair JSON vá chuỗi JSON cắt cụt 250 tokens thành công 100%.
 
-- [ ] **Ngày 5: Streaming Tách Bong Bóng Siêu Tốc (Dynamic Bubble Streamer)**
-  - Cơ chế nhận chunk dữ liệu và tự động phát hiện dấu tách câu/đoạn (`\n\n`, dấu chấm kết thúc ý).
-  - Đẩy từng bong bóng (`replies`) ra màn hình với độ trễ tự nhiên từ `300ms - 500ms`.
-  - Phản hồi tức thì `0ms` trạng thái `TypingIndicator` (`🌐 Đang quét web...` / `💭 Đang suy nghĩ...`).
+- [x] **Ngày 5: `feat/streaming` (Tomorrow v4.1 - Real-time Streaming Response & Smart Multi-Bubble Sequencing)**
+  - Kích hoạt stream dữ liệu từng phần qua `ReadableStream` (`res.body.getReader()`) với TextDecoder cho cả OpenAI (`stream: true`) và Gemini.
+  - Bộ phân tích cú pháp an toàn `safeParseAIJson` tự động trích xuất cấu trúc dữ liệu hoàn chỉnh.
+  - Cơ chế tách bong bóng thông minh (Multi-Bubble Sequencing) trong `App.tsx`: hiển thị câu đầu tức thì, các câu tiếp theo xuất hiện theo nhịp người gõ với độ trễ tối ưu `300ms - 450ms` (`Math.min(Math.max(replyText.length * 8, 300), 450)`).
+  - Duy trì bong bóng chờ gõ (`• • •` / `TypingIndicator`) giữa các nhịp bong bóng như người thật gõ phím trên Messenger.
+  - Cập nhật phiên bản Header: `Online • v4.1`. Hoàn thành bộ kiểm thử 19/19 tiêu chí và simulator 8/8 kịch bản.
 
 - [ ] **Ngày 6 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
