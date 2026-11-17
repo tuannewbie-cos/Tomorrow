@@ -427,6 +427,7 @@ async function callOpenAI(
       max_tokens: 250, // tối ưu hóa tốc độ phản hồi dưới 0.5 giây cho phong cách chat ngắn kiểu Messenger
       response_format: { type: 'json_object' },
       messages: openAiMessages,
+      stream: true, // Kích hoạt luồng nhận dữ liệu từng phần (Streaming Response)
     };
 
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -449,8 +450,69 @@ async function callOpenAI(
       throw new Error(`OpenAI HTTP ${status}: ${errText.slice(0, 100)}`);
     }
 
-    const data = await res.json();
-    const rawText = data?.choices?.[0]?.message?.content;
+    let rawText = '';
+    // Đọc chunk dữ liệu tối ưu qua ReadableStream / response.body.getReader()
+    if (res.body && typeof (res.body as any).getReader === 'function') {
+      const reader = (res.body as any).getReader();
+      const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null;
+      let done = false;
+      let buffer = '';
+
+      while (!done) {
+        const { value, done: readerDone } = await reader.read();
+        done = readerDone;
+        if (value) {
+          const chunkStr = decoder ? decoder.decode(value, { stream: !done }) : String.fromCharCode(...value);
+          buffer += chunkStr;
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('data: ')) {
+              const dataStr = trimmed.slice(6).trim();
+              if (dataStr === '[DONE]') break;
+              try {
+                const chunkJson = JSON.parse(dataStr);
+                const deltaContent = chunkJson?.choices?.[0]?.delta?.content;
+                if (deltaContent) {
+                  rawText += deltaContent;
+                }
+              } catch {
+                // Chunk JSON chưa hoàn chỉnh ở cuối dòng, bỏ qua để tích lũy tiếp
+              }
+            }
+          }
+        }
+      }
+    } else {
+      // Fallback nếu môi trường không có ReadableStream getReader
+      const fullText = await res.text();
+      const lines = fullText.split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith('data: ')) {
+          const dataStr = trimmed.slice(6).trim();
+          if (dataStr === '[DONE]') break;
+          try {
+            const chunkJson = JSON.parse(dataStr);
+            const deltaContent = chunkJson?.choices?.[0]?.delta?.content;
+            if (deltaContent) rawText += deltaContent;
+          } catch {
+            // bỏ qua
+          }
+        }
+      }
+      if (!rawText && fullText) {
+        try {
+          const normalJson = JSON.parse(fullText);
+          rawText = normalJson?.choices?.[0]?.message?.content || fullText;
+        } catch {
+          rawText = fullText;
+        }
+      }
+    }
+
     if (!rawText) throw new Error('OpenAI returned empty message content');
     return rawText;
   } catch (err: any) {
@@ -537,24 +599,61 @@ async function executeApiCall(
     }
 
     if (res.ok) {
-      const data = await res.json();
-      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      const groundingChunks = data?.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-      const groundingSources: WebSource[] = [];
-
-      if (Array.isArray(groundingChunks)) {
-        for (const chunk of groundingChunks) {
-          if (chunk?.web?.uri && chunk?.web?.title) {
-            groundingSources.push({
-              title: chunk.web.title,
-              url: chunk.web.uri,
-              source: 'Google Grounding',
-            });
+      let rawResponse = '';
+      // Tối ưu hóa vòng lặp đọc chunk dữ liệu qua ReadableStream / response.body.getReader()
+      if (res.body && typeof (res.body as any).getReader === 'function') {
+        const reader = (res.body as any).getReader();
+        const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null;
+        let done = false;
+        while (!done) {
+          const { value, done: readerDone } = await reader.read();
+          done = readerDone;
+          if (value) {
+            rawResponse += decoder ? decoder.decode(value, { stream: !done }) : String.fromCharCode(...value);
           }
+        }
+      } else {
+        rawResponse = await res.text();
+      }
+
+      let data: any;
+      try {
+        data = JSON.parse(rawResponse);
+      } catch {
+        const parsed = safeParseAIJson(rawResponse);
+        if (parsed?.replies && parsed.replies.length > 0) {
+          return { text: rawResponse, groundingSources: [] };
         }
       }
 
-      if (text) return { text, groundingSources };
+      if (data) {
+        const candidateObj = Array.isArray(data) ? data[data.length - 1] : data;
+        let text = '';
+        if (Array.isArray(data)) {
+          text = data
+            .map((chunk) => chunk?.candidates?.[0]?.content?.parts?.[0]?.text || '')
+            .join('');
+        } else {
+          text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        }
+
+        const groundingChunks = candidateObj?.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        const groundingSources: WebSource[] = [];
+
+        if (Array.isArray(groundingChunks)) {
+          for (const chunk of groundingChunks) {
+            if (chunk?.web?.uri && chunk?.web?.title) {
+              groundingSources.push({
+                title: chunk.web.title,
+                url: chunk.web.uri,
+                source: 'Google Grounding',
+              });
+            }
+          }
+        }
+
+        if (text) return { text, groundingSources };
+      }
     }
 
     const errStatus = res.status;

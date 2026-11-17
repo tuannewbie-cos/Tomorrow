@@ -337,18 +337,8 @@ export default function App() {
       let currentHistory = [...updatedMessages];
       setTypingStatusText(undefined);
 
+      // HẠNG MỤC 2 (v4.1): TÁCH BONG BÓNG THÔNG MINH THEO NHỊP GÕ NGƯỜI THẬT (Multi-Bubble Sequencing)
       for (const [index, replyText] of replies.entries()) {
-        const typingDuration = Math.min(Math.max(replyText.length * 45, 650), 2200);
-
-        setIsTomorrowTyping(true);
-        setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: true });
-        }, 50);
-
-        await sleep(typingDuration);
-
-        setIsTomorrowTyping(false);
-
         const isLastReply = index === replies.length - 1;
         const aiMsg: ChatMessage = {
           id: `ai-${Date.now()}-${index}`,
@@ -381,12 +371,18 @@ export default function App() {
           flatListRef.current?.scrollToEnd({ animated: true });
         }, 50);
 
-        if (index < replies.length - 1) {
-          await sleep(300);
+        // Trong khoảng thời gian chờ hiển thị bong bóng tiếp theo, giữ nguyên hiệu ứng bong bóng đợi chat (• • • / TypingIndicator)
+        // với độ trễ tối ưu 300ms - 450ms tùy thuộc vào độ dài của câu trước
+        if (!isLastReply) {
           setIsTomorrowTyping(true);
           setTimeout(() => {
             flatListRef.current?.scrollToEnd({ animated: true });
-          }, 50);
+          }, 30);
+
+          const typingDelay = Math.min(Math.max(replyText.length * 8, 300), 450);
+          await sleep(typingDelay);
+        } else {
+          setIsTomorrowTyping(false);
         }
       }
 
@@ -511,7 +507,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.0</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.1</Text>
               </View>
             </View>
           </View>
