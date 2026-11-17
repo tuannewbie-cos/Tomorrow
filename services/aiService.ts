@@ -13,7 +13,7 @@ export { isPlaceholderOrNoiseTitle, getVaultFromProfile, mergeMemoryNoteIntoVaul
 
 // Cấu hình OpenAI API (Bộ não chính siêu tốc gpt-4o-mini)
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
-// Biến trạng thái ngắt mạch (Circuit Breaker): Nếu key OpenAI hết hạn/hết credit trong phiên thì chuyển hẳn sang Gemini
+// Biến trạng thái ngắt mạch (Silent Circuit Breaker): Nếu key OpenAI hết hạn/hết credit trong phiên thì chuyển hẳn sang Gemini
 let isOpenAIUnavailable = false;
 
 // Cấu hình Gemini API Keys (Chuỗi dự phòng ngầm miễn phí xoay vòng)
@@ -358,7 +358,7 @@ function buildSystemPrompt(
 
 /**
  * 2. GỌI OPENAI API (gpt-4o-mini) SIÊU TỐC VỚI CIRCUIT BREAKER & TIMEOUT 7S
- * Tăng max_tokens lên 800 để phục vụ các câu hỏi kiến thức dài ChatGPT/Gemini-grade
+ * Tối ưu hóa tốc độ phản hồi dưới 0.5 giây cho phong cách chat ngắn kiểu Messenger (max_tokens: 250)
  */
 async function callOpenAI(
   systemPrompt: string,
@@ -367,7 +367,7 @@ async function callOpenAI(
   imageBase64?: string
 ): Promise<string> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 7000); // Timeout 7s
+  const timeoutId = setTimeout(() => controller.abort(), 7000); // Timeout cứng đúng 7 giây
 
   try {
     const conversationHistory: any[] = recentChats.slice(-6).map((m) => {
@@ -399,7 +399,6 @@ async function callOpenAI(
         { type: 'text', text: userMessageWithHint },
         {
           type: 'image_url',
-          type_wrapper: 'low',
           image_url: {
             url: cleanBase64,
             detail: 'low',
@@ -417,7 +416,7 @@ async function callOpenAI(
     const payload = {
       model: 'gpt-4o-mini',
       temperature: 0.75,
-      max_tokens: 800, // Tăng lên 800 tokens linh hoạt
+      max_tokens: 250, // tối ưu hóa tốc độ phản hồi dưới 0.5 giây cho phong cách chat ngắn kiểu Messenger
       response_format: { type: 'json_object' },
       messages: openAiMessages,
     };
@@ -436,7 +435,7 @@ async function callOpenAI(
       const status = res.status;
       if (status === 401 || status === 402 || status === 403 || status === 429) {
         isOpenAIUnavailable = true;
-        console.warn('OpenAI key expired or quota reached, switching silently to Gemini');
+        console.warn('[OpenAI Circuit Breaker]: Key expired or quota reached, switching silently to Gemini chain.');
       }
       const errText = await res.text().catch(() => '');
       throw new Error(`OpenAI HTTP ${status}: ${errText.slice(0, 100)}`);
@@ -446,6 +445,11 @@ async function callOpenAI(
     const rawText = data?.choices?.[0]?.message?.content;
     if (!rawText) throw new Error('OpenAI returned empty message content');
     return rawText;
+  } catch (err: any) {
+    if (err?.name === 'AbortError' || controller.signal.aborted) {
+      console.warn('[OpenAI Timeout]: 7s timeout reached, aborting and switching silently to Gemini chain.');
+    }
+    throw err;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -828,6 +832,7 @@ function parseAIResponseJson(
           memory_note: memoryNote,
           memoryNote,
           jarvis_intent: jarvisIntent,
+          sources: webSearchSources || [],
           memoryUpdate: memoryNote
             ? {
                 currentProblem: memoryNote,
@@ -1335,7 +1340,10 @@ export async function sendMessageToTomorrow(
       userStyle.styleHint
     );
 
-    // 1. BỘ NÃO CHÍNH SIÊU TỐC: OPENAI (gpt-4o-mini)
+    // =========================================================================
+    // HẠNG MỤC 3: HYBRID AI ROUTER (Primary OpenAI 7s -> 3 Tầng Gemini Free Chain)
+    // =========================================================================
+    // 1. BỘ NÃO CHÍNH SIÊU TỐC: OPENAI (gpt-4o-mini, 7s timeout, silent circuit breaker)
     if (OPENAI_API_KEY && !isOpenAIUnavailable) {
       try {
         const openAiRaw = await callOpenAI(systemPrompt, finalUserMessage, recentChats, imageBase64);
@@ -1358,7 +1366,7 @@ export async function sendMessageToTomorrow(
       }
     }
 
-    // 2. CHUỖI DỰ PHÒNG NGẦM: GEMINI MODEL FALLBACK CHAIN (MIỄN PHÍ)
+    // 2. CHUỖI DỰ PHÒNG NGẦM: GEMINI MODEL FALLBACK CHAIN (MIỄN PHÍ 3 TẦNG)
     for (let keyIdx = 0; keyIdx < ALL_GEMINI_KEYS.length; keyIdx++) {
       const key = ALL_GEMINI_KEYS[keyIdx];
       try {
