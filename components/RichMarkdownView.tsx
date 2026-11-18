@@ -422,6 +422,21 @@ function formatPython(code: string, indentSize = 4): string {
             }
           }
         } else {
+          if (firstWord === 'def') {
+            // Sibling functions/methods: nếu đang ở trong 1 def trước đó, pop def đó (và các khối con chưa đóng)
+            while (blockStack.length > 0 && blockStack[blockStack.length - 1].type !== 'class' && blockStack[blockStack.length - 1].type !== 'def') {
+              blockStack.pop();
+            }
+            if (blockStack.length > 0 && blockStack[blockStack.length - 1].type === 'def') {
+              blockStack.pop();
+            }
+          } else if (firstWord === 'class') {
+            // Khối class mới nằm ở cấp cao nhất
+            while (blockStack.length > 0) {
+              blockStack.pop();
+            }
+          }
+
           // Normal block starter: if top block was terminated, pop it
           while (blockStack.length > 0 && blockStack[blockStack.length - 1].terminated) {
             blockStack.pop();
@@ -672,7 +687,7 @@ function formatCStyle(code: string, indentSize = 2): string {
  * Giải mã ký tự escape \\r\\n, \\n, \\t an toàn: chỉ unescape bên ngoài chuỗi string literal.
  * Bảo vệ tuyệt đối chuỗi ký tự trong C, C++, Java, Python, JS không bị biến \\n thành newline vật lý.
  */
-function unescapeOutsideQuotes(code: string): string {
+function unescapeOutsideQuotes(code: string, language?: string): string {
   let res = '';
   let i = 0;
   const n = code.length;
@@ -680,6 +695,10 @@ function unescapeOutsideQuotes(code: string): string {
   let stringChar = '';
   let inLineComment = false;
   let inBlockComment = false;
+
+  const normLang = (language || '').toLowerCase().trim();
+  const isHashCommentLang = ['python', 'py', 'sh', 'bash', 'zsh', 'yaml', 'yml', 'ruby', 'rb', 'perl', 'pl', 'r'].includes(normLang);
+  const isCStyleLang = ['c', 'cpp', 'c++', 'cc', 'cxx', 'h', 'hpp', 'java', 'javascript', 'js', 'jsx', 'typescript', 'ts', 'tsx', 'cs', 'csharp', 'go', 'rust', 'rs', 'swift', 'kotlin', 'kt'].includes(normLang);
 
   while (i < n) {
     const ch = code[i];
@@ -699,7 +718,9 @@ function unescapeOutsideQuotes(code: string): string {
         i += 2;
         continue;
       }
-      if (ch === '#') {
+      const isPreprocessor = /^#(include|define|pragma|ifdef|ifndef|endif|if|elif|else|error|warning)\b/.test(code.slice(i));
+      const shouldTreatHashAsComment = isHashCommentLang || (!isCStyleLang && !isPreprocessor && !code.includes('{') && !code.includes(';'));
+      if (ch === '#' && shouldTreatHashAsComment) {
         inLineComment = true;
         res += '#';
         i++;
@@ -770,6 +791,16 @@ function unescapeOutsideQuotes(code: string): string {
       }
       i++;
     } else if (inLineComment) {
+      if (ch === '\\' && (next === 'n' || (next === 'r' && i + 3 < n && code[i + 2] === '\\' && code[i + 3] === 'n'))) {
+        inLineComment = false;
+        res += '\n';
+        if (next === 'n') {
+          i += 2;
+        } else {
+          i += 4;
+        }
+        continue;
+      }
       res += ch;
       if (ch === '\n') {
         inLineComment = false;
@@ -811,7 +842,7 @@ export function formatCodeForDisplay(rawCode: string, language?: string): string
   }
 
   // 1. Phục hồi các ký tự escape bị mã hóa (chỉ bên ngoài chuỗi string literal)
-  const unescaped = unescapeOutsideQuotes(rawCode);
+  const unescaped = unescapeOutsideQuotes(rawCode, language);
 
   const unescapedLines = unescaped.trim().split('\n');
   const isStillCondensed =
@@ -859,11 +890,23 @@ export function formatCodeForDisplay(rawCode: string, language?: string): string
  */
 export function parseMarkdownBlocks(rawText: string): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = [];
-  // Chuẩn hóa các dấu xuống dòng bị escape
-  const normalizedText = (rawText || '')
-    .replace(/\\r\\n/g, '\n')
-    .replace(/\\n/g, '\n')
-    .replace(/\\t/g, '  ');
+  // Chuẩn hóa ký tự escape an toàn:
+  // Tách biệt các khối code fence (```...```) để bảo vệ tuyệt đối chuỗi string literal (như \n trong printf)
+  const parts = (rawText || '').split(/(```[\s\S]*?(?:```|$))/g);
+  const normalizedParts = parts.map((part, index) => {
+    // Chuẩn hóa CRLF (\r\n) thành LF (\n)
+    const crlfNormalized = part.replace(/\r\n/g, '\n');
+    // Chỉ unescape \r\n, \n, \t bên ngoài khối code fence (index chẵn: 0, 2, 4...)
+    if (index % 2 === 0) {
+      return crlfNormalized
+        .replace(/\\r\\n/g, '\n')
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '  ');
+    }
+    // Bên trong code fence (index lẻ: 1, 3, 5...): giữ nguyên vẹn escape sequence để formatCodeForDisplay xử lý
+    return crlfNormalized;
+  });
+  const normalizedText = normalizedParts.join('');
   const lines = normalizedText.split(/\r?\n/);
   let i = 0;
 

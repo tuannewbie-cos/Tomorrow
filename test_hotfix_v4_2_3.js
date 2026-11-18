@@ -470,6 +470,76 @@ runTest('Empty braces {} in C-style code do not jam consecutive method declarati
   assert(!formattedClass.includes('{} handleEvent() {}'), 'Must not jam empty braces together on same line');
 });
 
+// Test 21: parseMarkdownBlocks isolates code fences and preserves string literal \n (Iteration 3 Defect 1)
+runTest('parseMarkdownBlocks isolates code fences without prematurely splitting string literals with \\n', () => {
+  const { execSync } = require('child_process');
+  const parse = richMarkdownView.parseMarkdownBlocks;
+
+  const markdownPayload = JSON.parse(JSON.stringify({
+    reply: '```c\n#include <stdio.h>\nint main() {\n    printf("Starting worker %d\\n", 1);\n    return 0;\n}\n```'
+  }));
+
+  const blocks = parse(markdownPayload.reply);
+  assert.strictEqual(blocks.length, 1, 'Must extract exactly 1 code block');
+  assert.strictEqual(blocks[0].type, 'code');
+  assert.strictEqual(blocks[0].language, 'C');
+  assert(blocks[0].code.includes('printf("Starting worker %d\\n", 1);'), 'String literal with \\n must remain unbroken on single line');
+  assert(!blocks[0].code.includes('printf("Starting worker %d\n'), 'Must not contain physical newline inside string literal');
+
+  // Verify syntax validity with compiler
+  try {
+    execSync('clang -x c -fsyntax-only -', { input: blocks[0].code, stdio: ['pipe', 'pipe', 'pipe'] });
+  } catch (err) {
+    assert.fail(`clang compilation failed on rendered code block: ${err.message}`);
+  }
+});
+
+// Test 22: unescapeOutsideQuotes treats C/C++ # as preprocessor and unescapes \n (Iteration 3 Defect 2)
+runTest('Condensed C code with preprocessor #include unescapes \\n correctly and compiles cleanly', () => {
+  const { execSync } = require('child_process');
+  const format = richMarkdownView.formatCodeForDisplay;
+
+  const cCondensed = '#include <stdio.h>\\nint main() { printf("Hello\\nWorld!\\n"); return 0; }';
+  const formattedC = format(cCondensed, 'c');
+
+  assert(formattedC.includes('#include <stdio.h>\n'), 'Must break line after #include <stdio.h>');
+  assert(formattedC.includes('int main() {'), 'int main() must be on a new line');
+  assert(formattedC.includes('printf("Hello\\nWorld!\\n");'), 'String literal escapes inside printf must be preserved');
+  assert(formattedC.includes('return 0;'), 'return 0 statement must be preserved');
+
+  // Verify compilation with clang
+  try {
+    execSync('clang -x c -fsyntax-only -', { input: formattedC, stdio: ['pipe', 'pipe', 'pipe'] });
+  } catch (err) {
+    assert.fail(`clang compilation failed on formatted C code: ${err.message}`);
+  }
+});
+
+// Test 23: Python sibling methods indentation inside classes without explicit return (Iteration 3 Defect 3)
+runTest('Python sibling methods in classes without explicit return indent at class level 1 (4 spaces)', () => {
+  const { execSync } = require('child_process');
+  const format = richMarkdownView.formatCodeForDisplay;
+
+  const pyClass = 'class Calculator: def __init__(self, val): self.val = val; def add(self, x): return self.val + x; def sub(self, x): return self.val - x;';
+  const formattedPy = format(pyClass, 'python');
+
+  assert(formattedPy.includes('class Calculator:\n'), 'class must open at indent 0');
+  assert(formattedPy.includes('    def __init__(self, val):\n'), '__init__ must be indented 4 spaces (level 1)');
+  assert(formattedPy.includes('        self.val = val\n'), 'self.val assignment must be indented 8 spaces (level 2)');
+  assert(formattedPy.includes('    def add(self, x):\n'), 'sibling method add must be indented 4 spaces (level 1, NOT 8)');
+  assert(formattedPy.includes('        return self.val + x\n'), 'add return must be indented 8 spaces (level 2)');
+  assert(formattedPy.includes('    def sub(self, x):\n'), 'sibling method sub must be indented 4 spaces (level 1, NOT 8)');
+  assert(formattedPy.includes('        return self.val - x'), 'sub return must be indented 8 spaces (level 2)');
+
+  // Verify semantic execution with python3
+  const testScript = `${formattedPy}\n\nc = Calculator(10)\nassert c.add(5) == 15, "add method failed"\nassert c.sub(3) == 7, "sub method failed"\nassert c.val == 10, "init attribute failed"\n`;
+  try {
+    execSync('python3 -', { input: testScript, stdio: ['pipe', 'pipe', 'pipe'] });
+  } catch (err) {
+    assert.fail(`python3 execution failed on formatted class: ${err.message}`);
+  }
+});
+
 console.log('\n================================================================================');
 console.log(`📊 FINAL TEST SUMMARY: ${passedTests}/${totalTests} PASSED (100%)`);
 console.log('================================================================================\n');
