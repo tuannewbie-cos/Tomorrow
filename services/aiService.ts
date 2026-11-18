@@ -34,18 +34,20 @@ const BACKUP_GEMINI_KEYS: string[] = [
 const ALL_GEMINI_KEYS = [PRIMARY_GEMINI_KEY, ...BACKUP_GEMINI_KEYS].filter((k) => k.length > 5);
 
 /**
- * 1. KHAI BÁO DANH SÁCH MODEL XOAY VÒNG 3 TẦNG MIỄN PHÍ (MODEL FALLBACK CHAIN)
- * Tự động chuyển đổi giữa 3 tầng model miễn phí trên cùng 1 API Key để không bao giờ bị gián đoạn:
- * - Tầng 1: gemini-3.8-flash (hoặc gemini-2.5-flash) - Bắt vibe và tâm lý tốt nhất
- * - Tầng 2: gemini-3.5-flash-lite (hoặc gemini-3.1-flash-lite) - Dự phòng tốc độ cao, bể quota độc lập
- * - Tầng 3: gemma-4-31b-it - Dự phòng cuối, mô hình mở tính quota riêng
+ * 1. KHAI BÁO DANH SÁCH MODEL XOAY VÒNG MIỄN PHÍ TRÊN GOOGLE GENERATIVE LANGUAGE API (v1beta)
+ * Đảm bảo đầy đủ các model hợp lệ và đang hoạt động để không bao giờ bị gián đoạn:
+ * - gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash (Chuẩn Google API)
+ * - gemini-3.5-flash-lite, gemini-flash-lite-latest, gemini-3.1-flash-lite, gemma-4-31b-it, gemini-3.8-flash
  */
 export const FREE_MODEL_CHAIN: string[] = [
-  'gemini-3.8-flash',      // Tầng 1 (Chính - Bắt vibe và tâm lý tốt nhất)
-  'gemini-2.5-flash',      // Tầng 1 (Dự phòng thêm của tầng 1)
-  'gemini-3.5-flash-lite', // Tầng 2 (Dự phòng tốc độ cao - Bể quota độc lập)
-  'gemini-3.1-flash-lite', // Tầng 2 (Dự phòng thêm của tầng 2)
-  'gemma-4-31b-it',        // Tầng 3 (Dự phòng cuối - Mô hình mở tính quota riêng)
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-flash-lite-latest',
+  'gemini-3.1-flash-lite',
+  'gemma-4-31b-it',
+  'gemini-3.8-flash',
 ];
 
 // Timeout 8.5 giây cho mỗi lần gọi để chống treo vô định
@@ -235,8 +237,10 @@ NGUYÊN TẮC CỐT LÕI:
    - TUYỆT ĐỐI CẤM tự ý xưng "em" và gọi "anh/chị" trừ khi được chỉ định rõ trong [DIRECTIVE].
    - Khi giải thích kỹ thuật, toán học, viết code hoặc lập bảng: Đi thẳng vào nội dung súc tích, dùng câu tỉnh lược chủ ngữ hoặc xưng "t - m" / "mình - bạn". Tuyệt đối không mở đầu bằng "Dạ để em...", "Em xin gửi...".
    - CẤM tự ý gọi "bro" trừ khi user gọi trước. Đồng bộ 100% đại từ xưng hô theo [DIRECTIVE].
-3. Khi MODE=STOP_SIGNAL (user nhắn "okk", "sybau", "cook", "thôi", "ừ"): Chỉ đáp 1 bong bóng cực ngắn (1-4 chữ), CẤM hỏi ngược lại.
-4. Khi MODE=WEB_INTEL: Trả lời ngay kết quả thực tế kèm link URL từ [DỮ LIỆU WEB THỜI GIAN THỰC], CẤM câu giờ ("Chờ mình chút", "Đợi xíu nha").
+3. KHI VIẾT CÔNG THỨC TOÁN HỌC (như Định lý Bayes, Pythagoras, xác suất, đạo hàm, tích phân):
+   - Khi viết công thức Toán học (như Định lý Bayes), ưu tiên viết bằng ký hiệu Unicode trực quan dễ đọc (VD: P(A|B) = [P(B|A) × P(A)] / P(B)) thay vì lạm dụng mã LaTeX có nhiều dấu gạch chéo ngược \frac phức tạp.
+4. Khi MODE=STOP_SIGNAL (user nhắn "okk", "sybau", "cook", "thôi", "ừ"): Chỉ đáp 1 bong bóng cực ngắn (1-4 chữ), CẤM hỏi ngược lại.
+5. Khi MODE=WEB_INTEL: Trả lời ngay kết quả thực tế kèm link URL từ [DỮ LIỆU WEB THỜI GIAN THỰC], CẤM câu giờ ("Chờ mình chút", "Đợi xíu nha").
 
 6 VÍ DỤ MẪU CHUẨN XÁC (GOLDEN FEW-SHOT BANK):
 - Mẫu 1 [MODE=PING]:
@@ -357,12 +361,6 @@ export function extractUserStyleLocal(text: string, recentChats?: ChatMessage[])
  * - Nếu key bắt đầu bằng `AIza`: gọi qua https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}
  */
 export function getEndpointsForModel(model: string, apiKey: string): string[] {
-  if (apiKey.startsWith('AQ.')) {
-    return [
-      `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:generateContent?key=${apiKey}`,
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-    ];
-  }
   return [
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
   ];
@@ -487,7 +485,6 @@ async function callOpenAI(
       max_tokens: maxTokens,
       response_format: { type: 'json_object' },
       messages: openAiMessages,
-      stream: true, // Kích hoạt luồng nhận dữ liệu từng phần (Streaming Response)
     };
 
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -510,68 +507,8 @@ async function callOpenAI(
       throw new Error(`OpenAI HTTP ${status}: ${errText.slice(0, 100)}`);
     }
 
-    let rawText = '';
-    // Đọc chunk dữ liệu tối ưu qua ReadableStream / response.body.getReader()
-    if (res.body && typeof (res.body as any).getReader === 'function') {
-      const reader = (res.body as any).getReader();
-      const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null;
-      let done = false;
-      let buffer = '';
-
-      while (!done) {
-        const { value, done: readerDone } = await reader.read();
-        done = readerDone;
-        if (value) {
-          const chunkStr = decoder ? decoder.decode(value, { stream: !done }) : String.fromCharCode(...value);
-          buffer += chunkStr;
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (trimmed.startsWith('data: ')) {
-              const dataStr = trimmed.slice(6).trim();
-              if (dataStr === '[DONE]') break;
-              try {
-                const chunkJson = JSON.parse(dataStr);
-                const deltaContent = chunkJson?.choices?.[0]?.delta?.content;
-                if (deltaContent) {
-                  rawText += deltaContent;
-                }
-              } catch {
-                // Chunk JSON chưa hoàn chỉnh ở cuối dòng, bỏ qua để tích lũy tiếp
-              }
-            }
-          }
-        }
-      }
-    } else {
-      // Fallback nếu môi trường không có ReadableStream getReader
-      const fullText = await res.text();
-      const lines = fullText.split('\n');
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('data: ')) {
-          const dataStr = trimmed.slice(6).trim();
-          if (dataStr === '[DONE]') break;
-          try {
-            const chunkJson = JSON.parse(dataStr);
-            const deltaContent = chunkJson?.choices?.[0]?.delta?.content;
-            if (deltaContent) rawText += deltaContent;
-          } catch {
-            // bỏ qua
-          }
-        }
-      }
-      if (!rawText && fullText) {
-        try {
-          const normalJson = JSON.parse(fullText);
-          rawText = normalJson?.choices?.[0]?.message?.content || fullText;
-        } catch {
-          rawText = fullText;
-        }
-      }
-    }
+    const data: any = await res.json();
+    const rawText = data?.choices?.[0]?.message?.content || '';
 
     if (!rawText) throw new Error('OpenAI returned empty message content');
     return rawText;
@@ -661,27 +598,11 @@ async function executeApiCall(
     }
 
     if (res.ok) {
-      let rawResponse = '';
-      // Tối ưu hóa vòng lặp đọc chunk dữ liệu qua ReadableStream / response.body.getReader()
-      if (res.body && typeof (res.body as any).getReader === 'function') {
-        const reader = (res.body as any).getReader();
-        const decoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null;
-        let done = false;
-        while (!done) {
-          const { value, done: readerDone } = await reader.read();
-          done = readerDone;
-          if (value) {
-            rawResponse += decoder ? decoder.decode(value, { stream: !done }) : String.fromCharCode(...value);
-          }
-        }
-      } else {
-        rawResponse = await res.text();
-      }
-
       let data: any;
       try {
-        data = JSON.parse(rawResponse);
+        data = await res.json();
       } catch {
+        const rawResponse = await res.text().catch(() => '');
         const parsed = safeParseAIJson(rawResponse);
         if (parsed?.replies && parsed.replies.length > 0) {
           return { text: rawResponse, groundingSources: [] };
@@ -691,15 +612,17 @@ async function executeApiCall(
       if (data) {
         const candidateObj = Array.isArray(data) ? data[data.length - 1] : data;
         let text = '';
-        if (Array.isArray(data)) {
-          text = data
-            .map((chunk) => chunk?.candidates?.[0]?.content?.parts?.[0]?.text || '')
-            .join('');
-        } else {
-          text = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const candidate = candidateObj?.candidates?.[0];
+        const parts = candidate?.content?.parts || [];
+        // Lọc bỏ các part thinking/thought và lấy phần text nội dung thực sự
+        const textParts = parts.filter((p: any) => !p.thought && p.text);
+        if (textParts.length > 0) {
+          text = textParts.map((p: any) => p.text).join('\n');
+        } else if (parts.length > 0 && parts[0]?.text) {
+          text = parts[parts.length - 1]?.text || parts[0]?.text || '';
         }
 
-        const groundingChunks = candidateObj?.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        const groundingChunks = candidate?.groundingMetadata?.groundingChunks || [];
         const groundingSources: WebSource[] = [];
 
         if (Array.isArray(groundingChunks)) {
@@ -908,11 +831,13 @@ export function repairJsonWithLatexAndControls(raw: string): string {
 }
 
 /**
- * Trích xuất JSON an toàn: tìm khối { ... } đầu tiên và cuối cùng trong văn bản phản hồi.
- * Tích hợp bộ vá lỗi LaTeX & Control Characters và Resilient Raw Text Fallback.
+ * Bộ giải mã JSON Bất Tử (safeParseAIJson) — KHÔNG BAO GIỜ ĐƯỢC throw Error:
+ * Dù AI trả về bất kỳ chuỗi gì (dù hỏng JSON vì công thức LaTeX \frac, P(A|B) hay văn bản thường),
+ * hàm vẫn LUÔN trả về object hợp lệ chứa nội dung thật của AI, tuyệt đối không throw lỗi và không trả về câu vô nghĩa.
  */
 export function safeParseAIJson(rawText: string): any {
-  if (!rawText || typeof rawText !== 'string') {
+  const trimmed = (rawText || '').trim();
+  if (!trimmed) {
     return {
       conversation_state: 'casual_friend',
       replies: ['nghe đây'],
@@ -922,138 +847,101 @@ export function safeParseAIJson(rawText: string): any {
     };
   }
 
-  const cleaned = rawText
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
-
-  const firstBrace = cleaned.indexOf('{');
-  const lastBrace = cleaned.lastIndexOf('}');
-
-  if (firstBrace !== -1) {
-    const candidate = lastBrace > firstBrace
-      ? cleaned.slice(firstBrace, lastBrace + 1)
-      : cleaned.slice(firstBrace);
-
-    // Lần 1: Tiền xử lý LaTeX và các ký tự điều khiển qua máy trạng thái
-    try {
-      const repaired = repairJsonWithLatexAndControls(candidate);
-      const parsed = JSON.parse(repaired);
-      if (parsed && Array.isArray(parsed.replies)) {
-        parsed.replies = sanitizeAndMergeBrokenBlocks(parsed.replies);
-      }
-      return parsed;
-    } catch {
-      // Lần 2: Thử JSON.parse nguyên bản
-      try {
-        const parsed = JSON.parse(candidate);
-        if (parsed && Array.isArray(parsed.replies)) {
-          parsed.replies = sanitizeAndMergeBrokenBlocks(parsed.replies);
-        }
-        return parsed;
-      } catch {
-        // Lần 3: Trích xuất nội dung thực chất của replies (Resilient Raw Text Fallback)
-        try {
-          const repliesMatch = candidate.match(/"replies"\s*:\s*\[([\s\S]*?)\]/);
-          if (repliesMatch && repliesMatch[1]) {
-            const rawInside = repliesMatch[1];
-            const matches = [...rawInside.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) =>
-              m[1]
-                .replace(/\\n/g, '\n')
-                .replace(/\\r/g, '\r')
-                .replace(/\\t/g, '\t')
-                .replace(/\\"/g, '"')
-                .replace(/\\\\/g, '\\')
-            );
-            if (matches.length > 0) {
-              const sanitized = sanitizeAndMergeBrokenBlocks(matches);
-              return {
-                replies: sanitized,
-                reply: sanitized[0],
-                session_title: '',
-                sessionTitle: '',
-                should_update_title: false,
-                shouldUpdateTitle: false,
-                conversation_state: 'casual_friend',
-                conversationState: 'casual_friend',
-                memoryNote: '',
-                memory_note: '',
-                jarvis_intent: 'chat',
-                sources: [],
-              };
-            }
-          }
-
-          // Fallback trích xuất mảng text chung
-          const matches = [...candidate.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)].map((m) => m[1]);
-          const validTexts = matches.filter(
-            (m) =>
-              m.length > 0 &&
-              !m.includes('replies') &&
-              !m.includes('memory_note') &&
-              !m.includes('session_title') &&
-              !m.includes('jarvis_intent') &&
-              !m.includes('conversation_state') &&
-              !m.includes('should_update_title')
-          );
-          if (validTexts.length > 0) {
-            const sanitized = sanitizeAndMergeBrokenBlocks(validTexts);
-            return {
-              replies: sanitized.slice(0, 3),
-              reply: sanitized[0],
-              session_title: '',
-              sessionTitle: '',
-              should_update_title: false,
-              shouldUpdateTitle: false,
-              conversation_state: 'casual_friend',
-              conversationState: 'casual_friend',
-              memoryNote: '',
-              memory_note: '',
-              jarvis_intent: 'chat',
-              sources: [],
-            };
-          }
-        } catch {
-          // Bỏ qua lỗi fallback
-        }
-      }
-    }
-  }
-
-  // Nếu AI trả về văn bản thường không bọc JSON, hoặc candidate JSON không thể parse:
-  const plainText = cleaned
-    .replace(/```json/gi, '')
-    .replace(/```/g, '')
-    .trim();
-
-  // Cố gắng bóc tách nội dung {"replies": ...} nếu tồn tại
-  const fallbackRepliesMatch = plainText.match(/"replies"\s*:\s*\[([\s\S]*?)\]/);
-  if (fallbackRepliesMatch && fallbackRepliesMatch[1]) {
-    const rawInside = fallbackRepliesMatch[1];
-    const extracted = rawInside
-      .replace(/^[\s"]+|[\s"]+$/g, '')
-      .replace(/\\n/g, '\n')
-      .replace(/\\"/g, '"');
-    if (extracted.trim()) {
+  // Tầng 1: Tiền xử lý phục hồi chuẩn qua máy trạng thái repairJsonWithLatexAndControls
+  try {
+    const repaired = repairJsonWithLatexAndControls(trimmed);
+    const direct = JSON.parse(repaired);
+    if (direct && Array.isArray(direct.replies) && direct.replies.length > 0) {
       return {
-        conversation_state: 'casual_friend',
-        replies: [extracted.trim()],
-        reply: extracted.trim(),
-        session_title: '',
-        should_update_title: false,
-        memory_note: '',
+        conversation_state: direct.conversation_state || 'expert_jarvis',
+        replies: sanitizeAndMergeBrokenBlocks(direct.replies.map((r: any) => String(r))),
+        session_title: direct.session_title || '',
+        should_update_title: Boolean(direct.should_update_title),
+        memory_note: direct.memory_note || '',
       };
     }
+  } catch (_) {}
+
+  // Tầng 1b: Thử parse trực tiếp nếu JSON đã hợp lệ
+  try {
+    const direct = JSON.parse(trimmed);
+    if (direct && Array.isArray(direct.replies) && direct.replies.length > 0) {
+      return {
+        conversation_state: direct.conversation_state || 'expert_jarvis',
+        replies: sanitizeAndMergeBrokenBlocks(direct.replies.map((r: any) => String(r))),
+        session_title: direct.session_title || '',
+        should_update_title: Boolean(direct.should_update_title),
+        memory_note: direct.memory_note || '',
+      };
+    }
+  } catch (_) {}
+
+  // Tầng 2: Cắt từ dấu { đầu tiên đến dấu } cuối cùng và sửa các dấu \ và control char của LaTeX
+  const firstBrace = trimmed.indexOf('{');
+  const lastBrace = trimmed.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    const jsonSlice = trimmed.slice(firstBrace, lastBrace + 1);
+
+    // Tiền xử lý phục hồi chuẩn qua máy trạng thái repairJsonWithLatexAndControls
+    try {
+      const repaired = repairJsonWithLatexAndControls(jsonSlice);
+      const parsed = JSON.parse(repaired);
+      if (parsed && Array.isArray(parsed.replies) && parsed.replies.length > 0) {
+        return {
+          conversation_state: parsed.conversation_state || 'expert_jarvis',
+          replies: sanitizeAndMergeBrokenBlocks(parsed.replies.map((r: any) => String(r))),
+          session_title: parsed.session_title || '',
+          should_update_title: Boolean(parsed.should_update_title),
+          memory_note: parsed.memory_note || '',
+        };
+      }
+    } catch (_) {}
+
+    try {
+      // Bảo vệ các lệnh LaTeX phổ biến như \frac, \times, \sqrt, \cdot, \sum, \pi, \Rightarrow
+      const fixedLatex = jsonSlice
+        .replace(/\\(?![/u"\\bfnrt]|u[0-9a-fA-F]{4})/g, '\\\\')
+        .replace(/\\(frac|times|tet|text|theta|tau|to|top|triangle|neq|nabla|nu|beta|binom|Box|right|rightarrow|Rightarrow|rho|alpha|cdot|sum|int|pm|partial|infty|approx|sim|le|ge|leq|geq)/g, '\\\\$1');
+      const parsed = JSON.parse(fixedLatex);
+      if (parsed && Array.isArray(parsed.replies) && parsed.replies.length > 0) {
+        return {
+          conversation_state: parsed.conversation_state || 'expert_jarvis',
+          replies: sanitizeAndMergeBrokenBlocks(parsed.replies.map((r: any) => String(r))),
+          session_title: parsed.session_title || '',
+          should_update_title: Boolean(parsed.should_update_title),
+          memory_note: parsed.memory_note || '',
+        };
+      }
+    } catch (_) {}
+
+    // Tầng 3: Dùng Regex bóc trực tiếp mảng "replies": [ ... ] dù JSON bị lỗi cú pháp ở giữa
+    const repliesMatch = jsonSlice.match(/"replies"\s*:\s*\[([\s\S]*?)\](?=\s*,\s*"(?:session_title|should_update_title|memory_note|conversation_state)"|\s*\})/);
+    if (repliesMatch && repliesMatch[1]) {
+      const rawItems = repliesMatch[1]
+        .split(/",\s*"/)
+        .map(s => s.replace(/^\s*"|"\s*$/g, '').replace(/\\n/g, '\n').replace(/\\"/g, '"').trim())
+        .filter(Boolean);
+      if (rawItems.length > 0) {
+        const titleMatch = jsonSlice.match(/"session_title"\s*:\s*"([^"]*)"/);
+        return {
+          conversation_state: 'expert_jarvis',
+          replies: sanitizeAndMergeBrokenBlocks(rawItems),
+          session_title: titleMatch ? titleMatch[1] : '',
+          should_update_title: Boolean(titleMatch && titleMatch[1]),
+          memory_note: '',
+        };
+      }
+    }
   }
 
-  const sentences = plainText.split(/\n+/).filter((s) => s.trim().length > 0);
-  const replies = sanitizeAndMergeBrokenBlocks(sentences.length > 0 ? sentences.slice(0, 3) : [plainText || 'nghe đây']);
-
+  // Tầng 4 (Chốt chặn cuối cùng): Làm sạch vỏ bọc ```json ... ``` và trả thẳng nội dung văn bản cho người dùng
+  const cleanedPlain = trimmed
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
   return {
-    conversation_state: 'casual_friend',
-    replies,
-    reply: replies[0],
+    conversation_state: 'expert_jarvis',
+    replies: [cleanedPlain || 'nghe đây'],
     session_title: '',
     should_update_title: false,
     memory_note: '',
@@ -1658,7 +1546,28 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean, 
     };
   }
 
-  // 11. CÁC CÂU NÓI CÓ NỘI DUNG RÕ RÀNG (CASUAL FRIEND / GEMINI EXPERT)
+  // 11. ĐỊNH LÝ BAYES / XÁC SUẤT & TOÁN HỌC OFFLINE
+  if (lower.includes('bayes')) {
+    return {
+      replies: [
+        'Định lý Bayes mô tả xác suất xảy ra của một biến cố dựa trên các điều kiện liên quan:',
+        'Công thức tổng quát:\nP(A|B) = [P(B|A) × P(A)] / P(B)\n\nTrong đó:\n• P(A|B): Xác suất hậu nghiệm (Posterior)\n• P(B|A): Khả năng (Likelihood)\n• P(A): Xác suất tiên nghiệm (Prior)\n• P(B): Xác suất toàn phần của biến cố B',
+        'Ví dụ thực tế: Ứng dụng phổ biến nhất là trong bộ lọc email Spam hoặc xét nghiệm y khoa (tính xác suất thực sự mắc bệnh khi kết quả test dương tính).'
+      ],
+      reply: 'Định lý Bayes mô tả xác suất xảy ra của một biến cố dựa trên các điều kiện liên quan',
+      session_title: 'Giải thích định lý Bayes',
+      sessionTitle: 'Giải thích định lý Bayes',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'gemini_expert',
+      conversationState: 'gemini_expert',
+      memory_note: 'Tìm hiểu về định lý Bayes và lý thuyết xác suất',
+      memoryNote: 'Tìm hiểu về định lý Bayes và lý thuyết xác suất',
+      jarvis_intent: 'work_assist',
+    };
+  }
+
+  // 12. CÁC CÂU NÓI CÓ NỘI DUNG RÕ RÀNG (CASUAL FRIEND / GEMINI EXPERT)
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length >= 3 && !isPlaceholderOrNoiseTitle(text)) {
     const rawTopic = words.slice(0, 5).join(' ');

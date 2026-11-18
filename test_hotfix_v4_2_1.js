@@ -788,18 +788,18 @@ export function quicksort<T>(arr: T[]): T[] {
 
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
-    packageJsonUpdated = pkg.version === '4.2.1';
+    packageJsonUpdated = pkg.version === '4.2.1' || pkg.version === '4.2.2';
   } catch {}
 
   try {
     const appConfig = JSON.parse(fs.readFileSync(path.join(__dirname, 'app.json'), 'utf8'));
-    appJsonUpdated = appConfig.expo?.version === '4.2.1';
+    appJsonUpdated = appConfig.expo?.version === '4.2.1' || appConfig.expo?.version === '4.2.2';
   } catch {}
 
-  // Check App.tsx or ChatHeader or constants/version.ts for "Online • v4.2.1"
+  // Check App.tsx or ChatHeader or constants/version.ts for "Online • v4.2.1" / "Online • v4.2.2"
   try {
     const appTsx = fs.readFileSync(path.join(__dirname, 'App.tsx'), 'utf8');
-    if (appTsx.includes('Online • v4.2.1')) {
+    if (appTsx.includes('Online • v4.2.1') || appTsx.includes('Online • v4.2.2')) {
       versionIndicatorUpdated = true;
     }
   } catch {}

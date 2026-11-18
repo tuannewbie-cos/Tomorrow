@@ -113,6 +113,11 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
   const handleKeyPress = (e: any) => {
     if (Platform.OS === 'web') {
       const nativeEvent = e.nativeEvent;
+      // BẢO VỆ TUYỆT ĐỐI CHO CMD+C, CMD+V, CMD+A, CMD+X, CMD+Z:
+      // Nếu e.metaKey hoặc e.ctrlKey đang được nhấn, TUYỆT ĐỐI KHÔNG can thiệp để WKWebView/Browser copy/paste bình thường
+      if (nativeEvent?.metaKey || nativeEvent?.ctrlKey) {
+        return;
+      }
       if (nativeEvent?.key === 'Enter' && !nativeEvent?.shiftKey) {
         if (typeof e.preventDefault === 'function') {
           e.preventDefault();
