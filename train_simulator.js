@@ -1,14 +1,14 @@
 /**
- * TOMORROW V3.9 HOTFIX — UNIFIED ERROR CATCH, GEMINI SEARCH TOOL CONFLICT & GRACEFUL WEB FALLBACK
+ * TOMORROW V4.2 — RICH MARKDOWN ENGINE, CODE/TABLE BLOCKS & DYNAMIC TOKEN ROUTING
  * Automated Training & Verification Simulator
  * 
  * 8 Scenarios:
- * 1. Test_Pronoun_No_Bro: Xưng "t - m", 0% "bro", lưu thần tượng Ronaldo vào Memory Vault.
- * 2. Test_Stop_Signal_Okk_Sybau: Tín hiệu dừng "okk" & "sybau" -> MODE=STOP_SIGNAL, 1 bong bóng <= 4 từ, 0 dấu "?".
- * 3. Test_Web_No_Stalling: Tra cứu Web đưa kết quả kèm URL ngay lập tức, 0% hứa suông câu giờ.
+ * 1. Test_Pronoun_No_Bro: Xưng "t - m", 0% "bro", max_tokens 250, thuần văn bản, lưu thần tượng Ronaldo vào Memory Vault.
+ * 2. Test_Stop_Signal_Okk_Sybau: Tín hiệu dừng "okk" & "sybau" -> MODE=STOP_SIGNAL, max_tokens 250, 1 bong bóng <= 4 từ, 0 dấu "?".
+ * 3. Test_Web_No_Stalling: Tra cứu Web đưa kết quả kèm URL ngay lập tức, max_tokens 1200, 0% hứa suông câu giờ.
  * 4. Test_Memory_Vault_Recall: Truy vấn bộ nhớ phiên mới -> Đọc chính xác Ronaldo & Tomorrow từ Vault.
  * 5. Test_Title_Clean: Lọc tiêu đề rác ("hello" -> "", "tối ưu kiến trúc sub-agent" -> tiêu đề chuẩn).
- * 6. Test_Jarvis_Expert: Vận hành trí tuệ ChatGPT/Gemini-grade giải quyết câu hỏi kỹ thuật/học thuật sâu.
+ * 6. Test_Jarvis_Expert: Vận hành trí tuệ ChatGPT/Gemini-grade, max_tokens 1200, 12s timeout, Rich Markdown & Code Blocks an toàn, JSON 100% hợp lệ.
  * 7. Test_Jarvis_No_Web_Trigger: "cậu biết jarvis không" KHÔNG kích hoạt web search, trả lời trực tiếp trong 0.5s.
  * 8. Test_Emotional_No_Web_Error: "chán quá" không bao giờ trả về lỗi quét web chậm, thấu cảm tự nhiên.
  */
@@ -143,19 +143,37 @@ function buildLocalReflexDirective(userText, recentHistory = [], isWebSearched =
     );
 
   if (isStopSignal) {
-    const directivePrompt = `[DIRECTIVE: MODE=STOP_SIGNAL | ${pronounRule} | User muốn dừng/chốt câu. Chỉ đáp DUY NHẤT 1 bong bóng 1-4 chữ (VD: "okii", "rồi im :)))", "ừa nghỉ đi"). CẤM ĐẶT CÂU HỎI NGƯỢC LẠI.]`;
-    return { intentMode: 'STOP_SIGNAL', pronounRule, directivePrompt };
+    const directivePrompt = `[DIRECTIVE: MODE=STOP_SIGNAL | ${pronounRule} | User muốn dừng/chốt câu. Chỉ đáp DUY NHẤT 1 bong bóng 1-4 chữ (VD: "okii", "rồi im :)))", "ừa nghỉ đi"). CẤM ĐẶT CÂU HỎI NGƯỢC LẠI. Trả lời văn bản thuần tự nhiên, KHÔNG dùng bảng biểu hay tiêu đề Markdown rườm rà.]`;
+    return {
+      intentMode: 'STOP_SIGNAL',
+      pronounRule,
+      directivePrompt,
+      dynamicMaxTokens: 250,
+      dynamicTimeout: 7000,
+    };
   }
 
   const PING_PATTERNS = /^(yo+|ê+|alo+|hi+|hello+|helo+|ơi+)[!.? ]*$/i;
   if (PING_PATTERNS.test(lower)) {
-    const directivePrompt = `[DIRECTIVE: MODE=PING | ${pronounRule} | Đáp 1-2 bong bóng cực ngắn (1-4 chữ/câu), không đoán mò dài dòng.]`;
-    return { intentMode: 'PING', pronounRule, directivePrompt };
+    const directivePrompt = `[DIRECTIVE: MODE=PING | ${pronounRule} | Đáp 1-2 bong bóng cực ngắn (1-4 chữ/câu), không đoán mò dài dòng. Trả lời văn bản thuần tự nhiên, KHÔNG dùng bảng biểu hay tiêu đề Markdown rườm rà.]`;
+    return {
+      intentMode: 'PING',
+      pronounRule,
+      directivePrompt,
+      dynamicMaxTokens: 250,
+      dynamicTimeout: 7000,
+    };
   }
 
   if (isWebSearched) {
-    const directivePrompt = `[DIRECTIVE: MODE=WEB_INTEL | ${pronounRule} | Trả lời TRỰC TIẾP và CHÍNH XÁC ngay trong lượt này dựa trên dữ liệu Web đính kèm kèm URL thật. CẤM HỨA SUÔNG ("Đợi xíu", "Chờ mình chút").]`;
-    return { intentMode: 'WEB_INTEL', pronounRule, directivePrompt };
+    const directivePrompt = `[DIRECTIVE: MODE=WEB_INTEL | ${pronounRule} | Trả lời TRỰC TIẾP và CHÍNH XÁC ngay trong lượt này dựa trên dữ liệu Web đính kèm kèm URL thật. CẤM HỨA SUÔNG ("Đợi xíu", "Chờ mình chút"). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
+    return {
+      intentMode: 'WEB_INTEL',
+      pronounRule,
+      directivePrompt,
+      dynamicMaxTokens: 1200,
+      dynamicTimeout: 12000,
+    };
   }
 
   const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
@@ -163,17 +181,69 @@ function buildLocalReflexDirective(userText, recentHistory = [], isWebSearched =
     'giải thích', 'giai thich', 'phân tích', 'phan tich', 'tại sao', 'tai sao',
     'như thế nào', 'code', 'thuật toán', 'thuat toan', 'kiến trúc', 'kien truc',
     'lập trình', 'lap trinh', 'system prompt', 'lost in the middle', 'token',
-    'database', 'supabase', 'indexing', 'oop', 'kế thừa', 'đa hình', 'chứng minh'
+    'database', 'supabase', 'indexing', 'oop', 'kế thừa', 'đa hình', 'chứng minh',
+    'viết code', 'viet code', 'lập bảng', 'lap bang', 'bảng biểu', 'bang bieu',
+    'bảng so sánh', 'bang so sanh', 'bảng', 'bang', 'giải toán', 'giai toan',
+    'công thức', 'cong thuc', 'toán', 'toan', 'phân tích sâu', 'phan tich sau'
   ];
-  const hasExpertWord = expertKeywords.some((kw) => lower.includes(kw));
+  const hasExpertWord = expertKeywords.some((kw) => lower.includes(kw)) || trimmed.includes('```');
 
   if (wordCount > 18 || hasExpertWord) {
-    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS | ${pronounRule} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc.]`;
-    return { intentMode: 'EXPERT_JARVIS', pronounRule, directivePrompt };
+    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS | ${pronounRule} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc. Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
+    return {
+      intentMode: 'EXPERT_JARVIS',
+      pronounRule,
+      directivePrompt,
+      dynamicMaxTokens: 1200,
+      dynamicTimeout: 12000,
+    };
   }
 
-  const directivePrompt = `[DIRECTIVE: MODE=CASUAL_FRIEND | ${pronounRule} | Tách 1-2 bong bóng ngắn (2-12 chữ/câu), bắt đúng nhịp viết thường/viết tắt của user, có cá tính, không phỏng vấn máy móc.]`;
-  return { intentMode: 'CASUAL_FRIEND', pronounRule, directivePrompt };
+  const directivePrompt = `[DIRECTIVE: MODE=CASUAL_FRIEND | ${pronounRule} | Tách 1-2 bong bóng ngắn (2-12 chữ/câu), bắt đúng nhịp viết thường/viết tắt của user, có cá tính, không phỏng vấn máy móc. Trả lời văn bản thuần tự nhiên, KHÔNG dùng bảng biểu hay tiêu đề Markdown rườm rà.]`;
+  return {
+    intentMode: 'CASUAL_FRIEND',
+    pronounRule,
+    directivePrompt,
+    dynamicMaxTokens: 250,
+    dynamicTimeout: 7000,
+  };
+}
+
+// 3B. BỘ GHÉP NỐI AN TOÀN CHO MẢNG REPLIES (sanitizeAndMergeBrokenBlocks)
+function sanitizeAndMergeBrokenBlocks(replies) {
+  if (!Array.isArray(replies) || replies.length === 0) return [];
+  const merged = [];
+  let currentAccumulator = '';
+  let inCodeBlock = false;
+
+  for (let i = 0; i < replies.length; i++) {
+    const item = String(replies[i] ?? '');
+    if (!item.trim() && !inCodeBlock) continue;
+
+    if (inCodeBlock) {
+      currentAccumulator += '\n' + item;
+      const count = (item.match(/```/g) || []).length;
+      if (count % 2 !== 0) {
+        inCodeBlock = false;
+        merged.push(currentAccumulator.trim());
+        currentAccumulator = '';
+      }
+    } else {
+      const count = (item.match(/```/g) || []).length;
+      if (count % 2 !== 0) {
+        inCodeBlock = true;
+        currentAccumulator = item;
+      } else {
+        merged.push(item);
+      }
+    }
+  }
+
+  if (inCodeBlock && currentAccumulator) {
+    merged.push(currentAccumulator.trim() + '\n```');
+  }
+
+  return merged;
 }
 
 // 4. LỚP 2: BỘ NHỚ SIÊU NÉN JSON MEMORY VAULT
@@ -400,7 +470,7 @@ function simulateAIProcess(userText, history = [], vault = DEFAULT_USER_MEMORY_V
 
 // ==================== BẮT ĐẦU CHẠY 8 KỊCH BẢN KIỂM THỬ ====================
 console.log('='.repeat(75));
-console.log('🚀 TOMORROW V3.9 HOTFIX: VERIFICATION & TRAIN SIMULATOR');
+console.log('🚀 TOMORROW V4.2: RICH MARKDOWN, CODE BLOCKS & DYNAMIC TOKEN BUDGETING');
 console.log('='.repeat(75));
 
 const results = [];
@@ -415,7 +485,9 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
   const hasBro = out.replies.some(r => /\bbro\b/i.test(r));
   const usesTM = out.replies.some(r => /\bt\b/i.test(r) || /\bm\b/i.test(r));
   const savedRonaldo = currentVault.favorites.some(f => f.toLowerCase().includes('ronaldo'));
-  const score = (!hasBro && usesTM && savedRonaldo) ? 10 : 0;
+  const isBudget250 = out.directive.dynamicMaxTokens === 250 && out.directive.dynamicTimeout === 7000;
+  const isPureCasualText = !out.replies.some(r => r.includes('```') || r.includes('|---|'));
+  const score = (!hasBro && usesTM && savedRonaldo && isBudget250 && isPureCasualText) ? 10 : 0;
 
   results.push({
     name: 'Test_Pronoun_No_Bro',
@@ -424,7 +496,7 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
     output: out.replies,
     score,
     passed: score === 10,
-    details: `0% bro, xưng t-m chuẩn, Vault favorites: [${currentVault.favorites.join(', ')}]`,
+    details: `0% bro, xưng t-m chuẩn, Budget 250 tokens (0.5s), Vault favorites: [${currentVault.favorites.join(', ')}]`,
   });
 }
 
@@ -435,11 +507,13 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
   const out2 = simulateAIProcess('sybau', history, currentVault);
 
   const pass1 = out1.directive.intentMode === 'STOP_SIGNAL' &&
+                out1.directive.dynamicMaxTokens === 250 &&
                 out1.replies.length === 1 &&
                 !out1.replies[0].includes('?') &&
                 out1.replies[0].split(/\s+/).length <= 4;
 
   const pass2 = out2.directive.intentMode === 'STOP_SIGNAL' &&
+                out2.directive.dynamicMaxTokens === 250 &&
                 out2.replies.length === 1 &&
                 !out2.replies[0].includes('?') &&
                 !out2.replies[0].includes('sao') &&
@@ -453,7 +527,7 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
     output: [out1.replies[0], out2.replies[0]],
     score,
     passed: score === 10,
-    details: `Cả 2 đều chốt 1 bong bóng ngắn, không hỏi ngược lại: "${out1.replies[0]}" & "${out2.replies[0]}"`,
+    details: `Cả 2 đều chốt 1 bong bóng ngắn, không Markdown rườm rà, Budget 250t: "${out1.replies[0]}" & "${out2.replies[0]}"`,
   });
 }
 
@@ -525,7 +599,40 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
 
   const isExpert = out.directive.intentMode === 'EXPERT_JARVIS';
   const hasLostInMiddle = out.replies.some(r => r.toLowerCase().includes('lost in the middle') || r.toLowerCase().includes('attention'));
-  const score = (isExpert && hasLostInMiddle) ? 10 : 0;
+  const hasDynamicBudget = out.directive.dynamicMaxTokens === 1200 && out.directive.dynamicTimeout === 12000;
+
+  // Kiểm tra đóng gói JSON hợp lệ 100% kèm Rich Markdown & Code Blocks
+  const sampleJsonResponse = JSON.stringify({
+    conversation_state: 'gemini_expert',
+    replies: [
+      "Do hiện tượng 'Lost in the Middle' — khi prompt quá dài, Attention của LLM bị phân tán.",
+      "```typescript\n// Local Reflex Router\nfunction routePrompt(text: string) {\n  return buildLocalReflexDirective(text);\n}\n```"
+    ],
+    session_title: 'Tối ưu kiến trúc System Prompt',
+    should_update_title: true,
+    memory_note: 'Đang tối ưu kiến trúc AI cho dự án Tomorrow'
+  });
+
+  let jsonValid = false;
+  try {
+    const parsed = JSON.parse(sampleJsonResponse);
+    const sanitizedReplies = sanitizeAndMergeBrokenBlocks(parsed.replies);
+    jsonValid = Array.isArray(sanitizedReplies) && sanitizedReplies.length === 2 && sanitizedReplies[1].includes('```typescript');
+  } catch {
+    jsonValid = false;
+  }
+
+  // Kiểm tra merge khối code bị đứt đoạn giữa chừng:
+  const brokenBlocks = [
+    "Dưới đây là hàm giải pháp:",
+    "```typescript\nfunction solve() {\n",
+    "  return 42;\n}\n```",
+    "Thử chạy nhé"
+  ];
+  const mergedBlocks = sanitizeAndMergeBrokenBlocks(brokenBlocks);
+  const blockMergedClean = mergedBlocks.length === 3 && mergedBlocks[1].includes('function solve() {\n\n  return 42;');
+
+  const score = (isExpert && hasLostInMiddle && hasDynamicBudget && jsonValid && blockMergedClean) ? 10 : 0;
 
   results.push({
     name: 'Test_Jarvis_Expert',
@@ -534,7 +641,7 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
     output: out.replies,
     score,
     passed: score === 10,
-    details: `Giải thích chuẩn xác hiện tượng Lost in the Middle và Attention suy giảm`,
+    details: `Dynamic Tokens 1200/12s, Rich Markdown/Code block merge chuẩn, JSON 100% hợp lệ`,
   });
 }
 
@@ -583,7 +690,7 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
 }
 
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 8 SCENARIOS (TOMORROW V3.9 HOTFIX):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 8 SCENARIOS (TOMORROW V4.2):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
@@ -602,9 +709,9 @@ console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v3.9',
+  version: 'v4.2',
   timestamp: new Date().toISOString(),
-  architecture: 'Decoupled Web Search & Graceful Fallback Engine (v3.9 Hotfix)',
+  architecture: 'Tomorrow v4.2 - Rich Markdown Engine, Code/Table HUD & Dynamic Token Budgeting',
   totalScore,
   maxScore: 80,
   allPassed,

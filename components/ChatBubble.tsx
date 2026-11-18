@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, Image, Pressable, useWindowDimensions, Platform, Linking } from 'react-native';
 import { ChatMessage } from '../types/chat';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
 import { Globe, ExternalLink } from 'lucide-react-native';
+import { RichMarkdownView, copyToClipboard } from './RichMarkdownView';
 
 interface ChatBubbleProps {
   message: ChatMessage;
@@ -21,6 +22,8 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
   const isDesktop = propIsDesktop ?? width >= 768;
   const isAI = message.role === 'model' || message.sender === 'ai';
 
+  const [bubbleCopied, setBubbleCopied] = useState(false);
+
   const formatTime = (ts: number) => {
     const d = new Date(ts);
     return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
@@ -30,6 +33,17 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
   const textColor = isAI ? theme.textAI : theme.textUser;
   const borderColor = isAI ? theme.borderAI : 'transparent';
   const timestampColor = isAI ? theme.textMuted : 'rgba(255, 255, 255, 0.8)';
+
+  // 1. Kiểm tra nhanh nội dung có chứa khối Rich Markdown không (Code block, Table, Math, Heading)
+  const messageText = message.text || '';
+  const hasRichBlock = /```|\n\|.*\|.*\n|^#{1,3}\s|\$\$/.test(messageText);
+
+  // 2. Tính toán Dual-Width Bubble:
+  // - Nếu hasRichBlock === false: maxWidth gọn gàng (75% desktop, 85% mobile), padding Messenger chuẩn
+  // - Nếu hasRichBlock === true: maxWidth rộng rãi (tối đa 760px desktop, 92% mobile) chuẩn J.A.R.V.I.S HUD
+  const bubbleMaxWidth = hasRichBlock
+    ? (isDesktop ? 760 : '92%')
+    : (isDesktop ? '75%' : '85%');
 
   const getDomainName = (url: string, sourceName?: string): string => {
     if (sourceName && !['Google News', 'Web Search', 'Google Grounding'].includes(sourceName)) {
@@ -53,47 +67,19 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
     }
   };
 
-  const renderMessageWithLinks = (text: string, defaultColor: string) => {
-    const URL_REGEX = /(https?:\/\/[^\s)]+)/g;
-    const parts = text.split(URL_REGEX);
-
-    if (parts.length === 1) {
-      return (
-        <Text style={[styles.messageText, { color: defaultColor }]}>
-          {text}
-        </Text>
-      );
+  // Nút Quick Copy toàn bộ phản hồi của bong bóng
+  const handleCopyBubble = async () => {
+    if (!messageText) return;
+    const ok = await copyToClipboard(messageText);
+    if (ok) {
+      setBubbleCopied(true);
+      setTimeout(() => setBubbleCopied(false), 2000);
     }
-
-    const linkColor = theme.mode === 'dark' ? '#60A5FA' : '#2563EB';
-
-    return (
-      <Text style={[styles.messageText, { color: defaultColor }]}>
-        {parts.map((part, idx) => {
-          if (URL_REGEX.test(part)) {
-            return (
-              <Text
-                key={`link-${idx}`}
-                style={{
-                  color: linkColor,
-                  textDecorationLine: 'underline',
-                  fontWeight: '600',
-                }}
-                onPress={() => handleOpenUrl(part)}
-              >
-                {part}
-              </Text>
-            );
-          }
-          return part;
-        })}
-      </Text>
-    );
   };
 
   return (
     <View style={[styles.container, isAI ? styles.containerAI : styles.containerUser]}>
-      {/* Khung bong bóng chat phong cách Messenger & Fluid MacBook */}
+      {/* Khung bong bóng chat thích ứng kép (Dual-Width Bubble) phong cách Messenger & J.A.R.V.I.S HUD */}
       <View
         style={[
           styles.bubble,
@@ -101,7 +87,9 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
             backgroundColor: bubbleBg,
             borderColor: borderColor,
             borderWidth: isAI ? 1 : 0,
-            maxWidth: isDesktop ? '76%' : '85%',
+            maxWidth: bubbleMaxWidth,
+            paddingHorizontal: hasRichBlock ? 18 : 16,
+            paddingVertical: hasRichBlock ? 12 : 10,
             shadowOpacity: theme.mode === 'light' ? 0.05 : 0.12,
           },
           isAI ? styles.bubbleAI : styles.bubbleUser,
@@ -121,18 +109,49 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
           </Pressable>
         )}
 
-        {/* Nội dung bong bóng tin nhắn text với font chữ thanh thoát và link bấm được trực tiếp */}
-        {message.text ? renderMessageWithLinks(message.text, textColor) : null}
+        {/* Nội dung tin nhắn Rich Markdown (Code Blocks, Data Tables, Math, Headings, Links, Lists) */}
+        {messageText ? (
+          <RichMarkdownView
+            content={messageText}
+            theme={theme}
+            defaultTextColor={textColor}
+            onOpenUrl={handleOpenUrl}
+          />
+        ) : null}
 
-        {/* Dấu thời gian tinh tế */}
-        <Text style={[styles.timestamp, { color: timestampColor }]}>
-          {formatTime(message.timestamp)}
-        </Text>
+        {/* Footer của bong bóng: Nút Sao chép toàn bộ câu trả lời + Dấu thời gian */}
+        <View style={styles.bubbleFooter}>
+          {isAI && (messageText.length > 120 || hasRichBlock) && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.copyBubbleBtn,
+                pressed && { opacity: 0.7 },
+                Platform.OS === 'web' && ({ cursor: 'pointer', transition: 'all 0.15s ease' } as any),
+              ]}
+              onPress={handleCopyBubble}
+              hitSlop={6}
+            >
+              <Text
+                style={[
+                  styles.copyBubbleText,
+                  { color: bubbleCopied ? '#10B981' : theme.textMuted },
+                  bubbleCopied && { fontWeight: '700' },
+                ]}
+              >
+                {bubbleCopied ? '✓ Đã chép' : '📋 Sao chép'}
+              </Text>
+            </Pressable>
+          )}
+
+          <Text style={[styles.timestamp, { color: timestampColor }]}>
+            {formatTime(message.timestamp)}
+          </Text>
+        </View>
       </View>
 
       {/* Danh sách các thẻ Nguồn trích dẫn (Source Pills) khi có tra cứu Web */}
       {isAI && message.sources && message.sources.length > 0 && (
-        <View style={[styles.sourcesContainer, { maxWidth: isDesktop ? '76%' : '90%' }]}>
+        <View style={[styles.sourcesContainer, { maxWidth: isDesktop ? 760 : '90%' }]}>
           <Text style={[styles.sourcesHeader, { color: theme.textMuted }]}>
             Nguồn trích dẫn ({message.sources.length})
           </Text>
@@ -204,8 +223,6 @@ const styles = StyleSheet.create({
   },
   bubble: {
     borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.08,
@@ -218,26 +235,31 @@ const styles = StyleSheet.create({
   bubbleUser: {
     borderTopRightRadius: 4,
   },
-  messageText: {
-    fontSize: 15.5,
-    lineHeight: 23,
-    letterSpacing: -0.1,
-    fontWeight: '400',
-    fontFamily:
-      Platform.OS === 'web'
-        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif"
-        : undefined,
-  },
   messageImage: {
     width: 260,
     height: 195,
     borderRadius: 14,
     marginBottom: 8,
   },
+  bubbleFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    marginTop: 5,
+    gap: 8,
+  },
+  copyBubbleBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  copyBubbleText: {
+    fontSize: 10.5,
+    fontWeight: '500',
+  },
   timestamp: {
     fontSize: 10.5,
-    marginTop: 4,
-    alignSelf: 'flex-end',
     fontWeight: '500',
   },
   sourcesContainer: {

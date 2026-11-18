@@ -87,11 +87,15 @@ export interface ReflexDirective {
   intentMode: 'STOP_SIGNAL' | 'PING' | 'WEB_INTEL' | 'EXPERT_JARVIS' | 'CASUAL_FRIEND';
   pronounRule: string;
   directivePrompt: string;
+  dynamicMaxTokens: number;
+  dynamicTimeout: number;
 }
 
 /**
  * LỚP 1 — PHẢN XẠ CỤC BỘ TRÊN MÁY (buildLocalReflexDirective)
  * Chạy cục bộ 0.001s trước khi gọi API để xuất ra ĐÚNG 1 NHÃN CHỈ ĐẠO DUY NHẤT ([DIRECTIVE])
+ * Tự động tính toán dynamicMaxTokens (250 cho chat ngắn, 1200 cho code/bảng/chuyên sâu)
+ * và dynamicTimeout (7000ms cho chat ngắn, 12000ms cho chuyên sâu).
  */
 export function buildLocalReflexDirective(
   userText: string,
@@ -135,21 +139,39 @@ export function buildLocalReflexDirective(
     );
 
   if (isStopSignal) {
-    const directivePrompt = `[DIRECTIVE: MODE=STOP_SIGNAL | ${pronounRule} | User muốn dừng/chốt câu. Chỉ đáp DUY NHẤT 1 bong bóng 1-4 chữ (VD: "okii", "rồi im :)))", "ừa nghỉ đi"). CẤM ĐẶT CÂU HỎI NGƯỢC LẠI.]`;
-    return { intentMode: 'STOP_SIGNAL', pronounRule, directivePrompt };
+    const directivePrompt = `[DIRECTIVE: MODE=STOP_SIGNAL | ${pronounRule} | User muốn dừng/chốt câu. Chỉ đáp DUY NHẤT 1 bong bóng 1-4 chữ (VD: "okii", "rồi im :)))", "ừa nghỉ đi"). CẤM ĐẶT CÂU HỎI NGƯỢC LẠI. Trả lời văn bản thuần tự nhiên, KHÔNG dùng bảng biểu hay tiêu đề Markdown rườm rà.]`;
+    return {
+      intentMode: 'STOP_SIGNAL',
+      pronounRule,
+      directivePrompt,
+      dynamicMaxTokens: 250,
+      dynamicTimeout: 7000,
+    };
   }
 
   // B. PING
   const PING_PATTERNS = /^(yo+|ê+|alo+|hi+|hello+|helo+|ơi+)[!.? ]*$/i;
   if (PING_PATTERNS.test(lower)) {
-    const directivePrompt = `[DIRECTIVE: MODE=PING | ${pronounRule} | Đáp 1-2 bong bóng cực ngắn (1-4 chữ/câu), không đoán mò dài dòng.]`;
-    return { intentMode: 'PING', pronounRule, directivePrompt };
+    const directivePrompt = `[DIRECTIVE: MODE=PING | ${pronounRule} | Đáp 1-2 bong bóng cực ngắn (1-4 chữ/câu), không đoán mò dài dòng. Trả lời văn bản thuần tự nhiên, KHÔNG dùng bảng biểu hay tiêu đề Markdown rườm rà.]`;
+    return {
+      intentMode: 'PING',
+      pronounRule,
+      directivePrompt,
+      dynamicMaxTokens: 250,
+      dynamicTimeout: 7000,
+    };
   }
 
   // C. WEB_INTEL
   if (isWebSearched) {
-    const directivePrompt = `[DIRECTIVE: MODE=WEB_INTEL | ${pronounRule} | Trả lời TRỰC TIẾP và CHÍNH XÁC ngay trong lượt này dựa trên dữ liệu Web đính kèm kèm URL thật. CẤM HỨA SUÔNG ("Đợi xíu", "Chờ mình chút").]`;
-    return { intentMode: 'WEB_INTEL', pronounRule, directivePrompt };
+    const directivePrompt = `[DIRECTIVE: MODE=WEB_INTEL | ${pronounRule} | Trả lời TRỰC TIẾP và CHÍNH XÁC ngay trong lượt này dựa trên dữ liệu Web đính kèm kèm URL thật. CẤM HỨA SUÔNG ("Đợi xíu", "Chờ mình chút"). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
+    return {
+      intentMode: 'WEB_INTEL',
+      pronounRule,
+      directivePrompt,
+      dynamicMaxTokens: 1200,
+      dynamicTimeout: 12000,
+    };
   }
 
   // D. EXPERT_JARVIS
@@ -158,18 +180,33 @@ export function buildLocalReflexDirective(
     'giải thích', 'giai thich', 'phân tích', 'phan tich', 'tại sao', 'tai sao',
     'như thế nào', 'code', 'thuật toán', 'thuat toan', 'kiến trúc', 'kien truc',
     'lập trình', 'lap trinh', 'system prompt', 'lost in the middle', 'token',
-    'database', 'supabase', 'indexing', 'oop', 'kế thừa', 'đa hình', 'chứng minh'
+    'database', 'supabase', 'indexing', 'oop', 'kế thừa', 'đa hình', 'chứng minh',
+    'viết code', 'viet code', 'lập bảng', 'lap bang', 'bảng biểu', 'bang bieu',
+    'bảng so sánh', 'bang so sanh', 'bảng', 'bang', 'giải toán', 'giai toan',
+    'công thức', 'cong thuc', 'toán', 'toan', 'phân tích sâu', 'phan tich sau'
   ];
-  const hasExpertWord = expertKeywords.some((kw) => lower.includes(kw));
+  const hasExpertWord = expertKeywords.some((kw) => lower.includes(kw)) || trimmed.includes('```');
 
   if (wordCount > 18 || hasExpertWord) {
-    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS | ${pronounRule} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc.]`;
-    return { intentMode: 'EXPERT_JARVIS', pronounRule, directivePrompt };
+    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS | ${pronounRule} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc. Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
+    return {
+      intentMode: 'EXPERT_JARVIS',
+      pronounRule,
+      directivePrompt,
+      dynamicMaxTokens: 1200,
+      dynamicTimeout: 12000,
+    };
   }
 
   // E. CASUAL_FRIEND (Mặc định)
-  const directivePrompt = `[DIRECTIVE: MODE=CASUAL_FRIEND | ${pronounRule} | Tách 1-2 bong bóng ngắn (2-12 chữ/câu), bắt đúng nhịp viết thường/viết tắt của user, có cá tính, không phỏng vấn máy móc.]`;
-  return { intentMode: 'CASUAL_FRIEND', pronounRule, directivePrompt };
+  const directivePrompt = `[DIRECTIVE: MODE=CASUAL_FRIEND | ${pronounRule} | Tách 1-2 bong bóng ngắn (2-12 chữ/câu), bắt đúng nhịp viết thường/viết tắt của user, có cá tính, không phỏng vấn máy móc. Trả lời văn bản thuần tự nhiên, KHÔNG dùng bảng biểu hay tiêu đề Markdown rườm rà.]`;
+  return {
+    intentMode: 'CASUAL_FRIEND',
+    pronounRule,
+    directivePrompt,
+    dynamicMaxTokens: 250,
+    dynamicTimeout: 7000,
+  };
 }
 
 /**
@@ -365,17 +402,20 @@ function buildSystemPrompt(
 }
 
 /**
- * 2. GỌI OPENAI API (gpt-4o-mini) SIÊU TỐC VỚI CIRCUIT BREAKER & TIMEOUT 7S
- * Tối ưu hóa tốc độ phản hồi dưới 0.5 giây cho phong cách chat ngắn kiểu Messenger (max_tokens: 250)
+ * 2. GỌI OPENAI API (gpt-4o-mini) SIÊU TỐC VỚI CIRCUIT BREAKER & DYNAMIC TIMEOUT
+ * Cấp phát động max_tokens (250 cho chat ngắn, 1200 cho code/bảng/chuyên sâu)
+ * và timeout (7000ms cho chat ngắn, 12000ms cho chuyên sâu).
  */
 async function callOpenAI(
   systemPrompt: string,
   userMessageWithHint: string,
   recentChats: ChatMessage[],
-  imageBase64?: string
+  imageBase64?: string,
+  maxTokens: number = 250,
+  timeoutMs: number = 7000
 ): Promise<string> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 7000); // Timeout cứng đúng 7 giây
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const conversationHistory: any[] = recentChats.slice(-6).map((m) => {
@@ -424,7 +464,7 @@ async function callOpenAI(
     const payload = {
       model: 'gpt-4o-mini',
       temperature: 0.75,
-      max_tokens: 250, // tối ưu hóa tốc độ phản hồi dưới 0.5 giây cho phong cách chat ngắn kiểu Messenger
+      max_tokens: maxTokens,
       response_format: { type: 'json_object' },
       messages: openAiMessages,
       stream: true, // Kích hoạt luồng nhận dữ liệu từng phần (Streaming Response)
@@ -517,7 +557,7 @@ async function callOpenAI(
     return rawText;
   } catch (err: any) {
     if (err?.name === 'AbortError' || controller.signal.aborted) {
-      console.warn('[OpenAI Timeout]: 7s timeout reached, aborting and switching silently to Gemini chain.');
+      console.warn(`[OpenAI Timeout]: ${timeoutMs}ms timeout reached, aborting and switching silently to Gemini chain.`);
     }
     throw err;
   } finally {
@@ -531,18 +571,20 @@ interface ExecuteApiCallResult {
 }
 
 /**
- * Thực hiện 1 lượt gọi API tới 1 URL cụ thể kèm timeout 10 giây qua AbortController
- * Tăng maxOutputTokens lên 800 tokens và hỗ trợ trích xuất Google Search Grounding metadata
+ * Thực hiện 1 lượt gọi API tới 1 URL cụ thể kèm dynamic timeout qua AbortController
+ * maxOutputTokens linh hoạt (800 / 1200) và hỗ trợ trích xuất Google Search Grounding metadata
  */
 async function executeApiCall(
   url: string,
   systemPrompt: string,
   userMessageWithHint: string,
   imageBase64?: string,
-  enableGrounding: boolean = false
+  enableGrounding: boolean = false,
+  maxTokens: number = 800,
+  timeoutMs: number = TIMEOUT_MS
 ): Promise<ExecuteApiCallResult> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const parts: any[] = [{ text: userMessageWithHint }];
@@ -559,7 +601,7 @@ async function executeApiCall(
 
     const generationConfig: any = {
       temperature: 0.7,
-      maxOutputTokens: 800, // Tăng lên 800 tokens
+      maxOutputTokens: maxTokens,
     };
 
     const payload: any = {
@@ -672,7 +714,9 @@ async function callModelFallbackChain(
   systemPrompt: string,
   userMessageWithHint: string,
   imageBase64?: string,
-  enableGrounding: boolean = false
+  enableGrounding: boolean = false,
+  maxTokens: number = 800,
+  timeoutMs: number = TIMEOUT_MS
 ): Promise<ExecuteApiCallResult> {
   let lastError: any = null;
 
@@ -681,7 +725,7 @@ async function callModelFallbackChain(
 
     for (const url of endpoints) {
       try {
-        const result = await executeApiCall(url, systemPrompt, userMessageWithHint, imageBase64, enableGrounding);
+        const result = await executeApiCall(url, systemPrompt, userMessageWithHint, imageBase64, enableGrounding, maxTokens, timeoutMs);
         if (result && result.text) {
           return result;
         }
@@ -694,6 +738,52 @@ async function callModelFallbackChain(
   }
 
   throw lastError || new Error('Tất cả model trong Free Model Chain đều tạm thời bận.');
+}
+
+/**
+ * Bộ ghép nối an toàn cho mảng replies (sanitizeAndMergeBrokenBlocks):
+ * Tự động kiểm tra nếu có phần tử nào mở dấu ``` mà chưa đóng dấu ``` ở cùng phần tử đó
+ * -> tự động nối gộp với phần tử kế tiếp để khối code luôn nguyên vẹn 100%.
+ */
+export function sanitizeAndMergeBrokenBlocks(replies: string[]): string[] {
+  if (!Array.isArray(replies) || replies.length === 0) return [];
+
+  const merged: string[] = [];
+  let currentAccumulator = '';
+  let inCodeBlock = false;
+
+  for (let i = 0; i < replies.length; i++) {
+    const rawItem = replies[i];
+    const item = typeof rawItem === 'string' ? rawItem : String(rawItem ?? '');
+    if (!item.trim() && !inCodeBlock) continue;
+
+    if (inCodeBlock) {
+      currentAccumulator += '\n' + item;
+      const count = (item.match(/```/g) || []).length;
+      if (count % 2 !== 0) {
+        // Đã đóng khối code bị ngắt
+        inCodeBlock = false;
+        merged.push(currentAccumulator.trim());
+        currentAccumulator = '';
+      }
+    } else {
+      const count = (item.match(/```/g) || []).length;
+      if (count % 2 !== 0) {
+        // Mở dấu ``` nhưng chưa đóng dấu ``` ở cùng phần tử đó
+        inCodeBlock = true;
+        currentAccumulator = item;
+      } else {
+        merged.push(item);
+      }
+    }
+  }
+
+  if (inCodeBlock && currentAccumulator) {
+    // Nếu hết danh sách mà vẫn chưa đóng, tự động bổ sung ``` để khối code trọn vẹn
+    merged.push(currentAccumulator.trim() + '\n```');
+  }
+
+  return merged;
 }
 
 /**
@@ -726,7 +816,11 @@ export function safeParseAIJson(rawText: string): any {
       : cleaned.slice(firstBrace);
 
     try {
-      return JSON.parse(candidate);
+      const parsed = JSON.parse(candidate);
+      if (parsed && Array.isArray(parsed.replies)) {
+        parsed.replies = sanitizeAndMergeBrokenBlocks(parsed.replies);
+      }
+      return parsed;
     } catch {
       // Tự động vá nếu chuỗi JSON bị cắt cụt đuôi (VD: do max_tokens: 250)
       try {
@@ -750,7 +844,11 @@ export function safeParseAIJson(rawText: string): any {
         if (openBraces > closeBraces) {
           repaired += '}'.repeat(openBraces - closeBraces);
         }
-        return JSON.parse(repaired);
+        const parsedRepaired = JSON.parse(repaired);
+        if (parsedRepaired && Array.isArray(parsedRepaired.replies)) {
+          parsedRepaired.replies = sanitizeAndMergeBrokenBlocks(parsedRepaired.replies);
+        }
+        return parsedRepaired;
       } catch {
         // Fallback trích xuất mảng text
         const matches = [...candidate.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)].map((m) => m[1]);
@@ -765,9 +863,10 @@ export function safeParseAIJson(rawText: string): any {
             !m.includes('should_update_title')
         );
         if (validTexts.length > 0) {
+          const sanitized = sanitizeAndMergeBrokenBlocks(validTexts);
           return {
-            replies: validTexts.slice(0, 3),
-            reply: validTexts[0],
+            replies: sanitized.slice(0, 3),
+            reply: sanitized[0],
             session_title: '',
             sessionTitle: '',
             should_update_title: false,
@@ -791,7 +890,7 @@ export function safeParseAIJson(rawText: string): any {
     .trim();
 
   const sentences = plainText.split(/\n+/).filter((s) => s.trim().length > 0);
-  const replies = sentences.length > 0 ? sentences.slice(0, 3) : [plainText || 'nghe đây'];
+  const replies = sanitizeAndMergeBrokenBlocks(sentences.length > 0 ? sentences.slice(0, 3) : [plainText || 'nghe đây']);
 
   return {
     conversation_state: 'casual_friend',
@@ -825,6 +924,8 @@ function parseAIResponseJson(
       } else if (typeof parsed.reply === 'string' && parsed.reply.trim().length > 0) {
         replies = [parsed.reply.trim()];
       }
+
+      replies = sanitizeAndMergeBrokenBlocks(replies);
 
       if (replies.length > 0) {
         const memoryNote = (parsed.memory_note || parsed.memoryNote || '').trim();
@@ -1462,12 +1563,21 @@ export async function sendMessageToTomorrow(
     );
 
     // =========================================================================
-    // HẠNG MỤC 3: HYBRID AI ROUTER (Primary OpenAI 7s -> 3 Tầng Gemini Free Chain)
+    // HẠNG MỤC 3: HYBRID AI ROUTER (Primary OpenAI -> 3 Tầng Gemini Free Chain)
+    // Cấp phát Token Động & Dynamic Timeout: 250 tokens / 7s cho chat ngắn;
+    // 1200 tokens / 12s cho code, bảng biểu, công thức và phân tích chuyên sâu.
     // =========================================================================
-    // 1. BỘ NÃO CHÍNH SIÊU TỐC: OPENAI (gpt-4o-mini, 7s timeout, silent circuit breaker)
+    // 1. BỘ NÃO CHÍNH SIÊU TỐC: OPENAI (gpt-4o-mini, dynamic tokens/timeout, silent circuit breaker)
     if (OPENAI_API_KEY && !isOpenAIUnavailable) {
       try {
-        const openAiRaw = await callOpenAI(systemPrompt, finalUserMessage, recentChats, imageBase64);
+        const openAiRaw = await callOpenAI(
+          systemPrompt,
+          finalUserMessage,
+          recentChats,
+          imageBase64,
+          directive.dynamicMaxTokens,
+          directive.dynamicTimeout
+        );
         const parsed = parseAIResponseJson(openAiRaw, userText, recentChats, webSearchContext.sources);
         if (parsed && parsed.replies && parsed.replies.length > 0) {
           if (parsed.memory_note) {
@@ -1491,7 +1601,15 @@ export async function sendMessageToTomorrow(
     for (let keyIdx = 0; keyIdx < ALL_GEMINI_KEYS.length; keyIdx++) {
       const key = ALL_GEMINI_KEYS[keyIdx];
       try {
-        const rawRes = await callModelFallbackChain(key, systemPrompt, finalUserMessage, imageBase64, webSearchContext.searched);
+        const rawRes = await callModelFallbackChain(
+          key,
+          systemPrompt,
+          finalUserMessage,
+          imageBase64,
+          webSearchContext.searched,
+          directive.dynamicMaxTokens,
+          directive.dynamicTimeout
+        );
         const parsed = parseAIResponseJson(rawRes.text, userText, recentChats, webSearchContext.sources);
         if (parsed && parsed.replies && parsed.replies.length > 0) {
           if (parsed.memory_note) {

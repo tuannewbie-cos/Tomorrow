@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 60-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.1` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.2` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 60 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -71,7 +71,21 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 60 ngày của
   - Duy trì bong bóng chờ gõ (`• • •` / `TypingIndicator`) giữa các nhịp bong bóng như người thật gõ phím trên Messenger.
   - Cập nhật phiên bản Header: `Online • v4.1`. Hoàn thành bộ kiểm thử 19/19 tiêu chí và simulator 8/8 kịch bản.
 
-- [ ] **Ngày 6 – 15: Hoàn thiện Phase 1**
+- [x] **Ngày 6: `ui/rich-markdown-and-code` (Tomorrow v4.2 - Rich Markdown Engine, 1-Click Copy Code/Table HUD, Scientific Math Formatter & Dynamic Token Budgeting)**
+  - Cơ chế cấp phát Token & Timeout động (`dynamicMaxTokens`: 250 tokens / 7s cho chat ngắn, 1200 tokens / 12s cho `EXPERT_JARVIS` / `WEB_INTEL` / code blocks / bảng biểu).
+  - Bộ ghép nối an toàn `sanitizeAndMergeBrokenBlocks` bảo vệ 100% khối code không bao giờ bị cắt cụt hay gãy đôi sang hai bong bóng khác nhau.
+  - Bộ Render Rich Markdown tự chủ `RichMarkdownView.tsx` thuần TypeScript/React Native:
+    + Khung Code macOS Terminal (3 chấm tròn macOS, nhãn ngôn ngữ + số dòng, cuộn ngang, syntax highlighting, số dòng mờ).
+    + Nút Copy 1 chạm cho khối code (`📋 Sao chép` -> `✓ Đã chép` trong 2000ms).
+    + Bảng biểu Grid chuẩn Markdown kèm nút `📋 Copy bảng` xuất dữ liệu TSV dán ngay vào Excel, Google Sheets, Notion.
+    + Bộ định dạng toán học LaTeX Unicode (`convertLatexToUnicode`) hiển thị công thức sắc nét cho cả khối `$$...$$` (hộp căn giữa viền Indigo `#6366F1`) và `$..$` nội dòng.
+    + Định dạng văn bản phong phú: H1, H2, H3, bold, italic, inline code pill `#F472B6`, blockquote thanh dọc `#3B82F6`, bullet & numbered lists, clickable links.
+  - Bố cục Bong bóng Thích ứng Kép (Dual-Width Bubble): Gọn gàng 75% cho casual chat, mở rộng 760px (92% trên mobile) cho Rich HUD.
+  - Nút Quick Copy phản hồi ở góc dưới bên phải cho tin nhắn AI >120 ký tự hoặc có rich block.
+  - Khung nhập liệu co giãn đa dòng tự động `44px - 160px` (`FloatingInputBar.tsx`), phím `Enter` gửi ngay thu về `44px`, `Shift + Enter` xuống dòng.
+  - Cập nhật phiên bản Header: `Online • v4.2`. Bộ kiểm thử 8/8 kịch bản đạt 80/80 điểm tuyệt đối.
+
+- [ ] **Ngày 7 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
   - Tìm kiếm toàn văn (Full-text search) trên danh sách phiên trò chuyện trong Sidebar.
   - Đóng gói chuẩn ứng dụng Desktop macOS thông qua WebKit / Electron / PWA Wrapper nâng cao.

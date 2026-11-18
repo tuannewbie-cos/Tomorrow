@@ -36,6 +36,7 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
   const isDesktop = width >= 768;
 
   const [inputText, setInputText] = useState('');
+  const [inputHeight, setInputHeight] = useState(44);
   const [selectedImage, setSelectedImage] = useState<{ uri: string; base64?: string } | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [forceWebSearch, setForceWebSearch] = useState(false);
@@ -81,9 +82,31 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
 
     onSendMessage(trimmed, selectedImage?.base64, selectedImage?.uri, forceWebSearch);
     setInputText('');
+    setInputHeight(44); // Thu chiều cao ô nhập về 44px ngay lập tức khi gửi
     setSelectedImage(null);
     setShowEmojiPicker(false);
     setForceWebSearch(false);
+  };
+
+  const handleTextChange = (text: string) => {
+    setInputText(text);
+    if (!text.trim()) {
+      setInputHeight(44);
+      return;
+    }
+    if (Platform.OS === 'web') {
+      const lines = text.split('\n').length;
+      const estimated = Math.min(Math.max(44, lines * 22 + 16), 160);
+      setInputHeight(estimated);
+    }
+  };
+
+  const handleContentSizeChange = (e: any) => {
+    const h = e.nativeEvent?.contentSize?.height;
+    if (h && typeof h === 'number') {
+      const clamped = Math.min(Math.max(44, Math.round(h)), 160);
+      setInputHeight(clamped);
+    }
   };
 
   // Phím tắt macOS: Enter để gửi (ngăn xuống dòng), Shift + Enter để xuống dòng
@@ -154,13 +177,15 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
         </View>
       )}
 
-      {/* Floating Pill Input Bar căn giữa đối xứng hoàn hảo, không bị tràn lề */}
+      {/* Floating Pill Input Bar co giãn đa dòng tự động (minHeight: 44, maxHeight: 160) */}
       <View
         style={[
           styles.pillContainer,
           {
             backgroundColor: theme.inputBg,
             borderColor: theme.inputBorder,
+            alignItems: inputHeight > 48 ? 'flex-end' : 'center',
+            paddingBottom: inputHeight > 48 ? 8 : 6,
           },
         ]}
       >
@@ -205,26 +230,30 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
           <Globe size={19} color={forceWebSearch ? '#FFFFFF' : theme.textSecondary} />
         </Pressable>
 
-        {/* TextInput đa dòng hỗ trợ phím tắt macOS & xóa viền outline xanh mặc định */}
+        {/* TextInput co giãn đa dòng mượt mà theo nội dung (minHeight: 44, maxHeight: 160) */}
         <TextInput
           style={[
             styles.input,
-            { color: theme.inputText },
+            {
+              color: theme.inputText,
+              height: Math.min(Math.max(44, inputHeight), 160),
+            },
             Platform.OS === 'web' &&
               ({
                 outlineStyle: 'none',
                 boxSizing: 'border-box',
                 resize: 'none',
+                overflowY: inputHeight >= 155 ? 'auto' : 'hidden',
               } as any),
           ]}
           placeholder="Nhắn cho Tomorrow..."
           placeholderTextColor={theme.placeholderText}
           value={inputText}
-          onChangeText={setInputText}
+          onChangeText={handleTextChange}
+          onContentSizeChange={handleContentSizeChange}
           onKeyPress={handleKeyPress}
           multiline
-          numberOfLines={1}
-          maxLength={1000}
+          maxLength={4000}
           editable={!isLoading && !disabled}
         />
 
@@ -350,10 +379,11 @@ const styles = StyleSheet.create({
     minWidth: 0,
     fontSize: 15.5,
     lineHeight: 22,
-    maxHeight: 120,
+    minHeight: 44,
+    maxHeight: 160,
     paddingHorizontal: 10,
-    paddingTop: Platform.OS === 'web' ? 6 : 4,
-    paddingBottom: Platform.OS === 'web' ? 6 : 4,
+    paddingTop: Platform.OS === 'web' ? 10 : 8,
+    paddingBottom: Platform.OS === 'web' ? 10 : 8,
     fontFamily:
       Platform.OS === 'web'
         ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
