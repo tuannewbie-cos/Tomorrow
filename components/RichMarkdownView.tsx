@@ -255,6 +255,12 @@ export function splitMarkdownTableRow(rowText: string): string[] {
   return cells;
 }
 
+interface PythonBlock {
+  type: string;
+  indent: number;
+  terminated: boolean;
+}
+
 /**
  * Tự động căn lề và định dạng code Python (4 khoảng trắng)
  * Bảo vệ an toàn chuỗi ký tự, comment và cấu trúc lồng nhau
@@ -273,6 +279,8 @@ function formatPython(code: string, indentSize = 4): string {
   let i = 0;
   const n = code.length;
   let currentLine = '';
+
+  const blockStack: PythonBlock[] = [];
 
   const getIndent = (lvl = indentLevel) => indentStr.repeat(Math.max(0, lvl));
 
@@ -369,9 +377,63 @@ function formatPython(code: string, indentSize = 4): string {
 
       if (isStarter) {
         let lineIndent = indentLevel;
-        if (dedentStarters.includes(firstWord) && indentLevel > 0) {
-          lineIndent = indentLevel - 1;
+
+        if (dedentStarters.includes(firstWord)) {
+          // Look for matching compound starter on stack
+          if (firstWord === 'except') {
+            while (blockStack.length > 0 && !['try', 'except'].includes(blockStack[blockStack.length - 1].type)) {
+              blockStack.pop();
+            }
+            if (blockStack.length > 0) {
+              lineIndent = blockStack[blockStack.length - 1].indent;
+              blockStack[blockStack.length - 1] = { type: 'except', indent: lineIndent, terminated: false };
+            } else {
+              lineIndent = Math.max(0, indentLevel - 1);
+            }
+          } else if (firstWord === 'finally') {
+            while (blockStack.length > 0 && !['try', 'except', 'finally'].includes(blockStack[blockStack.length - 1].type)) {
+              blockStack.pop();
+            }
+            if (blockStack.length > 0) {
+              lineIndent = blockStack[blockStack.length - 1].indent;
+              blockStack[blockStack.length - 1] = { type: 'finally', indent: lineIndent, terminated: false };
+            } else {
+              lineIndent = Math.max(0, indentLevel - 1);
+            }
+          } else if (firstWord === 'elif') {
+            while (blockStack.length > 0 && !['if', 'elif'].includes(blockStack[blockStack.length - 1].type)) {
+              blockStack.pop();
+            }
+            if (blockStack.length > 0) {
+              lineIndent = blockStack[blockStack.length - 1].indent;
+              blockStack[blockStack.length - 1] = { type: 'elif', indent: lineIndent, terminated: false };
+            } else {
+              lineIndent = Math.max(0, indentLevel - 1);
+            }
+          } else if (firstWord === 'else') {
+            while (blockStack.length > 0 && !['if', 'elif', 'for', 'while', 'try'].includes(blockStack[blockStack.length - 1].type)) {
+              blockStack.pop();
+            }
+            if (blockStack.length > 0) {
+              lineIndent = blockStack[blockStack.length - 1].indent;
+              blockStack[blockStack.length - 1] = { type: 'else', indent: lineIndent, terminated: false };
+            } else {
+              lineIndent = Math.max(0, indentLevel - 1);
+            }
+          }
+        } else {
+          // Normal block starter: if top block was terminated, pop it
+          while (blockStack.length > 0 && blockStack[blockStack.length - 1].terminated) {
+            blockStack.pop();
+          }
+          if (blockStack.length > 0) {
+            lineIndent = blockStack[blockStack.length - 1].indent + 1;
+          } else {
+            lineIndent = 0;
+          }
+          blockStack.push({ type: firstWord, indent: lineIndent, terminated: false });
         }
+
         pushLine(lineIndent);
         indentLevel = lineIndent + 1;
       }
@@ -386,8 +448,18 @@ function formatPython(code: string, indentSize = 4): string {
       pushLine();
 
       if (/^(return\b|break\b|continue\b|pass\b|raise\b)/.test(lineTrim)) {
-        if (indentLevel > 1) {
+        if (blockStack.length > 0) {
+          blockStack[blockStack.length - 1].terminated = true;
+          indentLevel = blockStack[blockStack.length - 1].indent;
+        } else if (indentLevel > 1) {
           indentLevel--;
+        }
+      } else {
+        while (blockStack.length > 0 && blockStack[blockStack.length - 1].terminated) {
+          blockStack.pop();
+          if (blockStack.length > 0) {
+            indentLevel = blockStack[blockStack.length - 1].indent + 1;
+          }
         }
       }
 
@@ -504,7 +576,11 @@ function formatCStyle(code: string, indentSize = 2): string {
 
     // 3. Opening Brace '{'
     if (ch === '{') {
-      if (currentLine.trim().startsWith('import') || currentLine.trim().startsWith('export')) {
+      const lineTrim = currentLine.trim();
+      const isImportClause = lineTrim.startsWith('import');
+      const isExportClause = /^export(\s+type)?\s*$/.test(lineTrim);
+
+      if (isImportClause || isExportClause) {
         currentLine += ch;
         i++;
         continue;
@@ -513,8 +589,17 @@ function formatCStyle(code: string, indentSize = 2): string {
       let peek = i + 1;
       while (peek < n && (code[peek] === ' ' || code[peek] === '\t')) peek++;
       if (peek < n && code[peek] === '}') {
-        currentLine += ' {}';
+        currentLine = currentLine.trimEnd() + ' {}';
         i = peek + 1;
+        while (i < n && (code[i] === ' ' || code[i] === '\t')) i++;
+        if (i < n && code[i] === ';') {
+          currentLine += ';';
+          i++;
+          while (i < n && (code[i] === ' ' || code[i] === '\t')) i++;
+        }
+        if (parenDepth === 0) {
+          pushLine();
+        }
         continue;
       }
 
@@ -528,7 +613,12 @@ function formatCStyle(code: string, indentSize = 2): string {
 
     // 4. Closing Brace '}'
     if (ch === '}') {
-      if (currentLine.includes('{') && (currentLine.trim().startsWith('import') || currentLine.trim().startsWith('export'))) {
+      const lineTrim = currentLine.trim();
+      const isImportExportClause =
+        currentLine.includes('{') &&
+        (lineTrim.startsWith('import') || /^export(\s+type)?\s*\{/.test(lineTrim));
+
+      if (isImportExportClause) {
         currentLine += ch;
         i++;
         continue;
@@ -579,6 +669,128 @@ function formatCStyle(code: string, indentSize = 2): string {
 }
 
 /**
+ * Giải mã ký tự escape \\r\\n, \\n, \\t an toàn: chỉ unescape bên ngoài chuỗi string literal.
+ * Bảo vệ tuyệt đối chuỗi ký tự trong C, C++, Java, Python, JS không bị biến \\n thành newline vật lý.
+ */
+function unescapeOutsideQuotes(code: string): string {
+  let res = '';
+  let i = 0;
+  const n = code.length;
+  let inString = false;
+  let stringChar = '';
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  while (i < n) {
+    const ch = code[i];
+    const next = i + 1 < n ? code[i + 1] : '';
+    const next2 = i + 2 < n ? code[i + 2] : '';
+
+    if (!inString && !inLineComment && !inBlockComment) {
+      if (ch === '/' && next === '/') {
+        inLineComment = true;
+        res += '//';
+        i += 2;
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        inBlockComment = true;
+        res += '/*';
+        i += 2;
+        continue;
+      }
+      if (ch === '#') {
+        inLineComment = true;
+        res += '#';
+        i++;
+        continue;
+      }
+      if ((ch === '"' || ch === "'") && next === ch && next2 === ch) {
+        inString = true;
+        stringChar = ch + ch + ch;
+        res += stringChar;
+        i += 3;
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === '`') {
+        inString = true;
+        stringChar = ch;
+        res += ch;
+        i++;
+        continue;
+      }
+
+      // Outside strings & comments: unescape \r\n, \n, \t
+      if (ch === '\\') {
+        if (next === 'r' && i + 3 < n && code[i + 2] === '\\' && code[i + 3] === 'n') {
+          res += '\n';
+          i += 4;
+          continue;
+        }
+        if (next === 'n') {
+          res += '\n';
+          i += 2;
+          continue;
+        }
+        if (next === 't') {
+          res += '    ';
+          i += 2;
+          continue;
+        }
+        if (next === 'r') {
+          i += 2;
+          continue;
+        }
+      }
+
+      if (ch === '\t') {
+        res += '    ';
+        i++;
+        continue;
+      }
+
+      res += ch;
+      i++;
+    } else if (inString) {
+      res += ch;
+      if (ch === '\\' && next) {
+        res += next;
+        i += 2;
+        continue;
+      }
+      if (stringChar.length === 3) {
+        if (ch === stringChar[0] && next === stringChar[0] && next2 === stringChar[0]) {
+          res += stringChar[0] + stringChar[0];
+          inString = false;
+          i += 3;
+          continue;
+        }
+      } else if (ch === stringChar) {
+        inString = false;
+      }
+      i++;
+    } else if (inLineComment) {
+      res += ch;
+      if (ch === '\n') {
+        inLineComment = false;
+      }
+      i++;
+    } else if (inBlockComment) {
+      res += ch;
+      if (ch === '*' && next === '/') {
+        res += '/';
+        inBlockComment = false;
+        i += 2;
+        continue;
+      }
+      i++;
+    }
+  }
+
+  return res;
+}
+
+/**
  * Tự động giải mã ký tự escape và tái cấu trúc định dạng thụt lề thông minh cho code block
  * Hỗ trợ: Python (4 spaces), TypeScript/JavaScript (2 spaces), C, Java, C++ (4 spaces)
  * Bảo vệ tuyệt đối chuỗi string literal và comment không bị phá vỡ
@@ -586,22 +798,28 @@ function formatCStyle(code: string, indentSize = 2): string {
 export function formatCodeForDisplay(rawCode: string, language?: string): string {
   if (!rawCode) return '';
 
-  // 1. Phục hồi các ký tự escape bị mã hóa: \r\n, \n, \t
-  const unescaped = rawCode
-    .replace(/\\r\\n/g, '\n')
-    .replace(/\\n/g, '\n')
-    .replace(/\\t/g, '    ')
-    .replace(/\t/g, '    ');
-
-  const rawLines = unescaped.trim().split('\n');
+  const rawLines = rawCode.trim().split(/\r?\n/);
   const isSingleLine = rawLines.length === 1;
-  const isLongSingleLine = isSingleLine && rawLines[0].trim().length > 55;
+  const isLongSingleLine = isSingleLine && (rawLines[0].trim().length > 55 || rawLines[0].includes('\\n'));
 
   // Kiểm tra xem có phải khối code dồn cục (>55 ký tự trên 1 dòng chứa dấu phân tách lệnh) hay không
   const isCondensed = isLongSingleLine || (rawLines.length <= 2 && rawLines.some(l => l.trim().length > 55 && (/[:;{]/.test(l))));
 
   // Nếu code đã được định dạng nhiều dòng rõ ràng, giữ nguyên 100% để không làm xáo trộn format gốc
-  if (!isCondensed) {
+  if (!isCondensed && rawLines.length > 2) {
+    return rawCode.replace(/\t/g, '    ');
+  }
+
+  // 1. Phục hồi các ký tự escape bị mã hóa (chỉ bên ngoài chuỗi string literal)
+  const unescaped = unescapeOutsideQuotes(rawCode);
+
+  const unescapedLines = unescaped.trim().split('\n');
+  const isStillCondensed =
+    unescapedLines.length === 1
+      ? (unescapedLines[0].trim().length > 55)
+      : (unescapedLines.length <= 2 && unescapedLines.some(l => l.trim().length > 55 && /[:;{]/.test(l)));
+
+  if (!isStillCondensed && !isCondensed) {
     return unescaped;
   }
 

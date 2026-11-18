@@ -375,6 +375,101 @@ runTest('components/ChatBubble re-exports formatCodeForDisplay', () => {
   assert(chatBubbleSource.includes('export { formatCodeForDisplay }'), 'ChatBubble must re-export formatCodeForDisplay');
 });
 
+// Test 17: Multi-line string literal preservation (Defect 1)
+runTest('Multi-line code preserves \\n inside string literals without splitting strings', () => {
+  const format = richMarkdownView.formatCodeForDisplay;
+
+  // Multi-line C code
+  const cMultiLine = `#include <stdio.h>
+#define MAX_SIZE 1024
+
+int main(int argc, char** argv) {
+    printf("Starting worker %d\\n", argc);
+    return 0;
+}`;
+  const formattedC = format(cMultiLine, 'c');
+  assert(formattedC.includes('printf("Starting worker %d\\n", argc);'), 'C printf string literal must NOT split \\n into newline');
+  assert(!formattedC.includes('printf("Starting worker %d\n'), 'Must not contain unescaped newline inside string literal');
+
+  // Multi-line Python code
+  const pyMultiLine = `def print_banner():
+    print("Header\\n------\\nBody")
+    return True`;
+  const formattedPy = format(pyMultiLine, 'python');
+  assert(formattedPy.includes('print("Header\\n------\\nBody")'), 'Python print string literal must retain \\n escape intact');
+});
+
+// Test 18: Python try-except-finally & nested if-elif-else compound indentation (Defect 2)
+runTest('Python compound statements (except, finally, elif, else) do not double de-indent', () => {
+  const format = richMarkdownView.formatCodeForDisplay;
+
+  // Scenario A: try-except-finally
+  const pyTryExcept = 'def safe_run(): try: val = 10 / 0; return val; except ZeroDivisionError as e: print(f"Error: {e}"); return None; finally: print("Cleanup: done");';
+  const formattedTry = format(pyTryExcept, 'python');
+  const tryLines = formattedTry.split('\n');
+
+  assert(formattedTry.includes('    try:'), 'try must be indented by 4 spaces');
+  assert(formattedTry.includes('        val = 10 / 0'), 'body must be indented by 8 spaces');
+  assert(formattedTry.includes('        return val'), 'return must be indented by 8 spaces');
+  assert(formattedTry.includes('    except ZeroDivisionError as e:'), 'except must be indented by 4 spaces (NOT 0)');
+  assert(formattedTry.includes('        return None'), 'return None must be indented by 8 spaces');
+  assert(formattedTry.includes('    finally:'), 'finally must be indented by 4 spaces (NOT 0)');
+  assert(formattedTry.includes('        print("Cleanup: done")'), 'finally body must be indented by 8 spaces');
+
+  // Scenario B: nested if-else with elif
+  const pyNested = 'def evaluate(x, y): if x > 0: if y > 0: return x + y; else: return x - y; elif x == 0: return 0; else: return -1;';
+  const formattedNested = format(pyNested, 'python');
+
+  assert(formattedNested.includes('    if x > 0:'), 'outer if must be 4 spaces');
+  assert(formattedNested.includes('        if y > 0:'), 'inner if must be 8 spaces');
+  assert(formattedNested.includes('            return x + y'), 'inner return must be 12 spaces');
+  assert(formattedNested.includes('        else:'), 'inner else must be 8 spaces');
+  assert(formattedNested.includes('            return x - y'), 'inner else return must be 12 spaces');
+  assert(formattedNested.includes('    elif x == 0:'), 'outer elif must be 4 spaces (NOT 0)');
+  assert(formattedNested.includes('        return 0'), 'outer elif return must be 8 spaces');
+  assert(formattedNested.includes('    else:'), 'outer else must be 4 spaces (NOT 0)');
+  assert(formattedNested.includes('        return -1'), 'outer else return must be 8 spaces');
+});
+
+// Test 19: Exported TS/JS function brace formatting (Defect 3)
+runTest('Exported TS/JS functions format braces correctly while preserving import/export clauses', () => {
+  const format = richMarkdownView.formatCodeForDisplay;
+
+  // Exported arrow function with nested closures (>55 chars)
+  const tsExported = 'export const processMatrix = (matrix: number[][]): number[][] => { return matrix.map((row: number[]) => { return row.filter((val: number) => { return val > 0; }); }); };';
+  const formattedTS = format(tsExported, 'typescript');
+  const tsLines = formattedTS.split('\n');
+
+  assert(tsLines.length >= 5, `Exported function must be formatted into multiple lines, got ${tsLines.length}`);
+  assert(formattedTS.includes('export const processMatrix = (matrix: number[][]): number[][] => {'), 'Must have opening brace line');
+  assert(formattedTS.includes('  return matrix.map((row: number[]) => {'), 'Must indent map callback');
+  assert(formattedTS.includes('    return row.filter((val: number) => {'), 'Must indent filter callback');
+  assert(formattedTS.includes('      return val > 0;'), 'Must indent inner return');
+
+  // Named export & import clauses should remain intact
+  const namedExport = 'export { foo, bar };';
+  assert.strictEqual(format(namedExport, 'typescript'), 'export { foo, bar };');
+
+  const namedImport = 'import { useState, useEffect } from "react";';
+  assert.strictEqual(format(namedImport, 'typescript'), 'import { useState, useEffect } from "react";');
+});
+
+// Test 20: Empty braces {} separation in C-style format (Defect 4)
+runTest('Empty braces {} in C-style code do not jam consecutive method declarations', () => {
+  const format = richMarkdownView.formatCodeForDisplay;
+
+  const classWithEmpty = 'class EmptyHandler { constructor() {} handleEvent() {} fallback() { return false; } }';
+  const formattedClass = format(classWithEmpty, 'typescript');
+  const classLines = formattedClass.split('\n');
+
+  assert(classLines.length >= 5, `Class with empty braces must be split into at least 5 lines, got ${classLines.length}`);
+  assert(formattedClass.includes('  constructor() {}'), 'constructor() {} must be on its own line');
+  assert(formattedClass.includes('  handleEvent() {}'), 'handleEvent() {} must be on its own line');
+  assert(formattedClass.includes('  fallback() {'), 'fallback() must be on its own line');
+  assert(formattedClass.includes('    return false;'), 'return false must be indented in fallback');
+  assert(!formattedClass.includes('{} handleEvent() {}'), 'Must not jam empty braces together on same line');
+});
+
 console.log('\n================================================================================');
 console.log(`📊 FINAL TEST SUMMARY: ${passedTests}/${totalTests} PASSED (100%)`);
 console.log('================================================================================\n');
