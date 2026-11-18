@@ -1,6 +1,6 @@
 /**
  * Tomorrow Version Definition
- * Online • v4.2.2: Enable macOS Cmd+C/Cmd+V Edit menu, fix window titlebar overlap, and bulletproof Bayes math parser
+ * Online • v4.2.3: Multi-turn chat history normalization, verified Gemini model fallback, code block newline preservation, and smart UI auto-indentation
  */
-export const APP_VERSION = 'Online • v4.2.2';
-export const APP_VERSION_NUMBER = '4.2.2';
+export const APP_VERSION = 'Online • v4.2.3';
+export const APP_VERSION_NUMBER = '4.2.3';

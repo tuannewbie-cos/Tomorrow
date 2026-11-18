@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, Image, Pressable, useWindowDimensions, Platform
 import { ChatMessage } from '../types/chat';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
 import { Globe, ExternalLink } from 'lucide-react-native';
-import { RichMarkdownView, copyToClipboard } from './RichMarkdownView';
+import { RichMarkdownView, copyToClipboard, formatCodeForDisplay } from './RichMarkdownView';
+export { formatCodeForDisplay };
 
 interface ChatBubbleProps {
   message: ChatMessage;

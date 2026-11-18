@@ -35,19 +35,14 @@ const ALL_GEMINI_KEYS = [PRIMARY_GEMINI_KEY, ...BACKUP_GEMINI_KEYS].filter((k) =
 
 /**
  * 1. KHAI BÁO DANH SÁCH MODEL XOAY VÒNG MIỄN PHÍ TRÊN GOOGLE GENERATIVE LANGUAGE API (v1beta)
- * Đảm bảo đầy đủ các model hợp lệ và đang hoạt động để không bao giờ bị gián đoạn:
- * - gemini-2.5-flash, gemini-2.0-flash, gemini-1.5-flash (Chuẩn Google API)
- * - gemini-3.5-flash-lite, gemini-flash-lite-latest, gemini-3.1-flash-lite, gemma-4-31b-it, gemini-3.8-flash
+ * Đảm bảo chỉ dùng các model chính thức, hợp lệ và đang hoạt động để không bao giờ bị gián đoạn:
+ * - gemini-2.5-flash, gemini-2.0-flash, gemini-2.0-flash-lite, gemini-1.5-flash (Chuẩn Google API)
  */
 export const FREE_MODEL_CHAIN: string[] = [
   'gemini-2.5-flash',
   'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
   'gemini-1.5-flash',
-  'gemini-3.5-flash-lite',
-  'gemini-flash-lite-latest',
-  'gemini-3.1-flash-lite',
-  'gemma-4-31b-it',
-  'gemini-3.8-flash',
 ];
 
 // Timeout 8.5 giây cho mỗi lần gọi để chống treo vô định
@@ -169,7 +164,7 @@ export function buildLocalReflexDirective(
 
   // C. WEB_INTEL
   if (isWebSearched) {
-    const directivePrompt = `[DIRECTIVE: MODE=WEB_INTEL | ${pronounRule} | Trả lời TRỰC TIẾP và CHÍNH XÁC ngay trong lượt này dựa trên dữ liệu Web đính kèm kèm URL thật. CẤM HỨA SUÔNG ("Đợi xíu", "Chờ mình chút"). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
+    const directivePrompt = `[DIRECTIVE: MODE=WEB_INTEL | ${pronounRule} | Trả lời TRỰC TIẾP và CHÍNH XÁC ngay trong lượt này dựa trên dữ liệu Web đính kèm kèm URL thật. CẤM HỨA SUÔNG ("Đợi xíu", "Chờ mình chút"). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng và thụt lề chuẩn (4 spaces Python, 2 spaces TS/JS). Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
     return {
       intentMode: 'WEB_INTEL',
       pronounRule,
@@ -203,7 +198,7 @@ export function buildLocalReflexDirective(
   const hasExpertWord = expertKeywords.some((kw) => lower.includes(kw)) || trimmed.includes('```');
 
   if (wordCount > 18 || hasExpertWord) {
-    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS | ${pronounRule} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc. Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
+    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS | ${pronounRule} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc. Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng (explicit line breaks), thụt lề chuẩn (4 spaces cho Python, 2 spaces cho TS/JS), CẤM viết dồn 1 dòng. Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
     return {
       intentMode: 'EXPERT_JARVIS',
       pronounRule,
@@ -225,7 +220,7 @@ export function buildLocalReflexDirective(
 }
 
 /**
- * 2. SYSTEM_INSTRUCTION: TOMORROW V4.2.1 — 3-LAYER REFLEX & FEW-SHOT DISTILLATION
+ * 2. SYSTEM_INSTRUCTION: TOMORROW V4.2.3 — 3-LAYER REFLEX & FEW-SHOT DISTILLATION
  * Tinh gọn dưới 450 từ với 6 Few-Shot Examples chuẩn xác tuyệt đối (Golden Few-Shot Bank)
  */
 export const SYSTEM_INSTRUCTION = `Bạn là "Tomorrow" — người bạn tri kỷ đời thường kết hợp trí tuệ sắc bén của J.A.R.V.I.S. / Gemini.
@@ -241,6 +236,10 @@ NGUYÊN TẮC CỐT LÕI:
    - Khi viết công thức Toán học (như Định lý Bayes), ưu tiên viết bằng ký hiệu Unicode trực quan dễ đọc (VD: P(A|B) = [P(B|A) × P(A)] / P(B)) thay vì lạm dụng mã LaTeX có nhiều dấu gạch chéo ngược \frac phức tạp.
 4. Khi MODE=STOP_SIGNAL (user nhắn "okk", "sybau", "cook", "thôi", "ừ"): Chỉ đáp 1 bong bóng cực ngắn (1-4 chữ), CẤM hỏi ngược lại.
 5. Khi MODE=WEB_INTEL: Trả lời ngay kết quả thực tế kèm link URL từ [DỮ LIỆU WEB THỜI GIAN THỰC], CẤM câu giờ ("Chờ mình chút", "Đợi xíu nha").
+6. QUY TẮC ĐỊNH DẠNG CODE VÀ BẢNG BIỂU:
+   - Khi viết code (Python, TypeScript, JavaScript, C, Java, C++,...), BẮT BUỘC xuống dòng rõ ràng cho từng câu lệnh (explicit line breaks \n). TUYỆT ĐỐI CẤM viết dồn code thành 1 dòng (condensed single-line code).
+   - Tuân thủ thụt lề chuẩn: 4 khoảng trắng (4 spaces) cho Python; 2 khoảng trắng (2 spaces) cho TypeScript/JavaScript/JSON; thụt lề chuẩn theo scope cho C/C++/Java.
+   - Đặt trọn vẹn toàn bộ khối code \`\`\`lang ... \`\`\` trong cùng một tin nhắn (bong bóng chat).
 
 6 VÍ DỤ MẪU CHUẨN XÁC (GOLDEN FEW-SHOT BANK):
 - Mẫu 1 [MODE=PING]:
@@ -419,6 +418,147 @@ function buildSystemPrompt(
   return prompt;
 }
 
+export interface NormalizedChatMessage {
+  role: 'user' | 'model' | 'assistant';
+  text: string;
+  imageBase64?: string;
+}
+
+/**
+ * Phát hiện các câu thông báo lỗi mạng / ngắt kết nối để lọc bỏ khỏi lịch sử trò chuyện
+ */
+export function isNetworkErrorMessage(text: string): boolean {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  return (
+    lower.includes('mạng bên t đang hơi lag') ||
+    lower.includes('mạng bên mình đang hơi lag') ||
+    lower.includes('hơi lag chút') ||
+    lower.includes('trục trặc kết nối mạng') ||
+    lower.includes('gián đoạn kết nối') ||
+    lower.includes('kết nối mạng một chút') ||
+    lower.includes('bị gián đoạn kết nối') ||
+    lower.includes('mạng chập chờn') ||
+    lower.includes('kiểm tra kết nối') ||
+    lower.includes('watchdog_timeout') ||
+    lower.includes('network error')
+  );
+}
+
+/**
+ * Chuẩn hóa lịch sử hội thoại nhiều lượt (Multi-turn History Normalization):
+ * - Lọc bỏ thông báo lỗi mạng cũ và tin nhắn rỗng.
+ * - Loại bỏ tin nhắn người dùng cuối bị trùng lặp nếu recentChats đã chứa tin nhắn hiện tại.
+ * - Đảm bảo tin nhắn đầu tiên gửi đến API LUÔN có role 'user'.
+ * - Gộp các tin nhắn liên tiếp cùng role bằng 2 dấu xuống dòng (\n\n).
+ * - Đảm bảo danh sách luân phiên nghiêm ngặt giữa user và model/assistant.
+ */
+export function normalizeChatHistory(
+  recentChats: ChatMessage[] = [],
+  currentText: string = '',
+  currentImageBase64?: string,
+  target: 'gemini' | 'openai' = 'gemini'
+): NormalizedChatMessage[] {
+  // 1. Lọc bỏ các tin nhắn lỗi mạng và tin nhắn hoàn toàn rỗng
+  const valid = (recentChats || []).filter((m) => {
+    if (!m) return false;
+    if (isNetworkErrorMessage(m.text || '')) return false;
+    if (!m.text?.trim() && !m.imageBase64 && !m.imageUri) return false;
+    return true;
+  });
+
+  // 2. Tránh trùng lặp tin nhắn cuối nếu recentChats đã chứa tin nhắn người dùng của lượt hiện tại
+  if (valid.length > 0 && currentText.trim()) {
+    const last = valid[valid.length - 1];
+    const isUser = last.role === 'user' || last.sender === 'user';
+    if (isUser && last.text) {
+      const lastTrim = last.text.trim();
+      const currTrim = currentText.trim();
+      if (lastTrim === currTrim || currTrim.startsWith(lastTrim)) {
+        valid.pop();
+      }
+    }
+  }
+
+  // 3. Chuyển đổi role theo target API
+  const mapped: NormalizedChatMessage[] = valid.map((m) => {
+    const isUser = m.role === 'user' || m.sender === 'user';
+    return {
+      role: isUser ? 'user' : (target === 'gemini' ? 'model' : 'assistant'),
+      text: m.text || '',
+      imageBase64: m.imageBase64,
+    };
+  });
+
+  // 4. Đảm bảo tin nhắn đầu tiên LUÔN là role 'user' (loại bỏ các tin chào/model ở đầu)
+  while (mapped.length > 0 && mapped[0].role !== 'user') {
+    mapped.shift();
+  }
+
+  // 5. Gộp các tin nhắn liên tiếp cùng role bằng 2 dấu xuống dòng (\n\n)
+  const merged: NormalizedChatMessage[] = [];
+  for (const msg of mapped) {
+    if (merged.length === 0) {
+      merged.push({ ...msg });
+    } else {
+      const prev = merged[merged.length - 1];
+      if (prev.role === msg.role) {
+        prev.text = prev.text ? `${prev.text}\n\n${msg.text}` : msg.text;
+        if (msg.imageBase64 && !prev.imageBase64) {
+          prev.imageBase64 = msg.imageBase64;
+        }
+      } else {
+        merged.push({ ...msg });
+      }
+    }
+  }
+
+  // 6. Đính kèm tin nhắn hiện tại của người dùng vào cuối
+  if (currentText.trim() || currentImageBase64) {
+    const userRole: 'user' = 'user';
+    if (merged.length > 0 && merged[merged.length - 1].role === userRole) {
+      merged[merged.length - 1].text = merged[merged.length - 1].text
+        ? `${merged[merged.length - 1].text}\n\n${currentText}`
+        : currentText;
+      if (currentImageBase64 && !merged[merged.length - 1].imageBase64) {
+        merged[merged.length - 1].imageBase64 = currentImageBase64;
+      }
+    } else {
+      merged.push({
+        role: userRole,
+        text: currentText,
+        imageBase64: currentImageBase64,
+      });
+    }
+  }
+
+  return merged;
+}
+
+/**
+ * Làm sạch văn bản đàm thoại nhưng bảo toàn tuyệt đối 100% các khối code ```lang ... ```
+ * Không bao giờ áp dụng gom khoảng trắng \s{2,} hoặc xóa từ bên trong khối code.
+ * Ở ngoài khối code, chỉ gom các khoảng trắng ngang liên tiếp [^\S\r\n]{2,} thành ' ',
+ * bảo toàn nguyên vẹn tất cả dấu xuống dòng \n và \r.
+ */
+export function cleanReplyPreservingCode(rep: string, cleanerFn: (text: string) => string): string {
+  if (!rep) return '';
+  const parts = rep.split(/(```[\s\S]*?```)/g);
+  return parts
+    .map((part, index) => {
+      // Index lẻ là các khối code được chụp bởi regex -> BẢO TOÀN NGUYÊN VẸN 100%
+      if (index % 2 === 1) {
+        return part;
+      }
+      // Index chẵn là văn bản trò chuyện thông thường:
+      let text = cleanerFn(part);
+      // Chỉ gộp khoảng trắng ngang (spaces, tabs), TUYỆT ĐỐI KHÔNG nuốt \n hoặc \r
+      text = text.replace(/[^\S\r\n]{2,}/g, ' ');
+      return text;
+    })
+    .join('');
+}
+
 /**
  * 2. GỌI OPENAI API (gpt-4o-mini) SIÊU TỐC VỚI CIRCUIT BREAKER & DYNAMIC TIMEOUT
  * Cấp phát động max_tokens (250 cho chat ngắn, 1200 cho code/bảng/chuyên sâu)
@@ -432,51 +572,33 @@ async function callOpenAI(
   maxTokens: number = 250,
   timeoutMs: number = 7000
 ): Promise<string> {
+  const effectiveTimeout = Math.min(timeoutMs, 5000);
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
   try {
-    const conversationHistory: any[] = recentChats.slice(-6).map((m) => {
-      const role = (m.role === 'user' || m.sender === 'user') ? 'user' : 'assistant';
-      if (role === 'user' && m.imageBase64) {
-        const clean = m.imageBase64.startsWith('data:')
-          ? m.imageBase64
-          : `data:image/jpeg;base64,${m.imageBase64}`;
-        return {
-          role,
-          content: [
-            { type: 'text', text: m.text },
-            { type: 'image_url', image_url: { url: clean, detail: 'low' } },
-          ],
-        };
-      }
-      return {
-        role,
-        content: m.text,
-      };
-    });
-
-    let currentContent: any = userMessageWithHint;
-    if (imageBase64) {
-      const cleanBase64 = imageBase64.startsWith('data:')
-        ? imageBase64
-        : `data:image/jpeg;base64,${imageBase64}`;
-      currentContent = [
-        { type: 'text', text: userMessageWithHint },
-        {
-          type: 'image_url',
-          image_url: {
-            url: cleanBase64,
-            detail: 'low',
-          },
-        },
-      ];
-    }
+    const normalizedHistory = normalizeChatHistory(recentChats, userMessageWithHint, imageBase64, 'openai');
 
     const openAiMessages = [
       { role: 'system', content: systemPrompt },
-      ...conversationHistory,
-      { role: 'user', content: currentContent },
+      ...normalizedHistory.map((m) => {
+        if (m.imageBase64) {
+          const clean = m.imageBase64.startsWith('data:')
+            ? m.imageBase64
+            : `data:image/jpeg;base64,${m.imageBase64}`;
+          return {
+            role: m.role,
+            content: [
+              { type: 'text', text: m.text },
+              { type: 'image_url', image_url: { url: clean, detail: 'low' } },
+            ],
+          };
+        }
+        return {
+          role: m.role,
+          content: m.text,
+        };
+      }),
     ];
 
     const payload = {
@@ -499,10 +621,8 @@ async function callOpenAI(
 
     if (!res.ok) {
       const status = res.status;
-      if (status === 401 || status === 402 || status === 403 || status === 429) {
-        isOpenAIUnavailable = true;
-        console.warn('[OpenAI Circuit Breaker]: Key expired or quota reached, switching silently to Gemini chain.');
-      }
+      isOpenAIUnavailable = true;
+      console.warn(`[OpenAI Circuit Breaker]: HTTP ${status}, switching silently to Gemini chain.`);
       const errText = await res.text().catch(() => '');
       throw new Error(`OpenAI HTTP ${status}: ${errText.slice(0, 100)}`);
     }
@@ -514,7 +634,8 @@ async function callOpenAI(
     return rawText;
   } catch (err: any) {
     if (err?.name === 'AbortError' || controller.signal.aborted) {
-      console.warn(`[OpenAI Timeout]: ${timeoutMs}ms timeout reached, aborting and switching silently to Gemini chain.`);
+      isOpenAIUnavailable = true;
+      console.warn(`[OpenAI Timeout]: ${effectiveTimeout}ms timeout reached, aborting and switching silently to Gemini chain.`);
     }
     throw err;
   } finally {
@@ -538,23 +659,31 @@ async function executeApiCall(
   imageBase64?: string,
   enableGrounding: boolean = false,
   maxTokens: number = 800,
-  timeoutMs: number = TIMEOUT_MS
+  timeoutMs: number = TIMEOUT_MS,
+  recentChats: ChatMessage[] = []
 ): Promise<ExecuteApiCallResult> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const parts: any[] = [{ text: userMessageWithHint }];
+    const normalized = normalizeChatHistory(recentChats, userMessageWithHint, imageBase64, 'gemini');
 
-    if (imageBase64) {
-      const cleanBase64 = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-      parts.push({
-        inline_data: {
-          mime_type: 'image/jpeg',
-          data: cleanBase64,
-        },
-      });
-    }
+    const geminiContents = normalized.map((m) => {
+      const parts: any[] = [{ text: m.text }];
+      if (m.imageBase64) {
+        const cleanBase64 = m.imageBase64.replace(/^data:image\/\w+;base64,/, '');
+        parts.unshift({
+          inline_data: {
+            mime_type: 'image/jpeg',
+            data: cleanBase64,
+          },
+        });
+      }
+      return {
+        role: m.role as 'user' | 'model',
+        parts,
+      };
+    });
 
     const generationConfig: any = {
       temperature: 0.7,
@@ -565,7 +694,7 @@ async function executeApiCall(
       systemInstruction: {
         parts: [{ text: systemPrompt }],
       },
-      contents: [{ parts }],
+      contents: geminiContents,
     };
 
     // QUY TẮC SỐNG CÒN: Google Gemini API ném lỗi 400 Bad Request nếu bật cả google_search VÀ responseMimeType: 'application/json' cùng lúc!
@@ -659,7 +788,8 @@ async function callModelFallbackChain(
   imageBase64?: string,
   enableGrounding: boolean = false,
   maxTokens: number = 800,
-  timeoutMs: number = TIMEOUT_MS
+  timeoutMs: number = TIMEOUT_MS,
+  recentChats: ChatMessage[] = []
 ): Promise<ExecuteApiCallResult> {
   let lastError: any = null;
 
@@ -668,7 +798,16 @@ async function callModelFallbackChain(
 
     for (const url of endpoints) {
       try {
-        const result = await executeApiCall(url, systemPrompt, userMessageWithHint, imageBase64, enableGrounding, maxTokens, timeoutMs);
+        const result = await executeApiCall(
+          url,
+          systemPrompt,
+          userMessageWithHint,
+          imageBase64,
+          enableGrounding,
+          maxTokens,
+          timeoutMs,
+          recentChats
+        );
         if (result && result.text) {
           return result;
         }
@@ -1049,33 +1188,31 @@ export function parseAIResponseJson(
 
         if (!userExplicitlyUsedBro || isTMMode) {
           replies = replies.map((rep) =>
-            rep
-              .replace(/\bbro\b/gi, '')
-              .replace(/\s{2,}/g, ' ')
-              .trim()
+            cleanReplyPreservingCode(rep, (t) => t.replace(/\bbro\b/gi, '')).trim()
           );
         }
 
-        // 3.5. BỘ LỌC KHÓA ĐẠI TỪ & DỌN SẠCH TÀN DƯ LỄ PHÉP ("Dạ để em...", "anh/chị")
+        // 3.5. BỘ LỌC KHÓA ĐẠI TỪ & DỌN SẠCH TÀN DƯ LỄ PHÉP (BẢO TOÀN KHỐI CODE)
         const cleanedAllUserText = allUserText.replace(/\b(chi tiết|chi phi|chi phí|thu chi|chi nhánh|chi tiêu|chi trả|anh em|anh hùng|tiếng anh|anh văn)\b/gi, ' ');
         const userPronounTokens = cleanedAllUserText.split(/[\s,.;!?:~]+/).filter(Boolean);
         const isExplicitAnhChiMode = !isTMMode && userPronounTokens.some((w) => ['anh', 'chị'].includes(w));
 
         replies = replies.map((rep) => {
-          let clean = rep;
-          // Xóa các cụm mở đầu lễ phép: "Dạ, để em...", "Dạ để em...", "Dạ em...", "Dạ...", "Vâng để em..."
-          clean = clean.replace(/^(dạ\s*,?\s*(để\s*em|em\s*xin|em\s*lập|em\s*gửi|em)?\s*)/iu, '');
-          clean = clean.replace(/^(vâng\s*,?\s*(để\s*em|em\s*xin|em\s*lập|em\s*gửi|em)?\s*)/iu, '');
-          // Xóa các từ 'dạ', 'ạ' lọt giữa câu hoặc cuối câu bằng Unicode Lookaround
-          clean = clean.replace(/(?<!\p{L})(dạ|ạ)(?!\p{L})/giu, '');
+          return cleanReplyPreservingCode(rep, (text) => {
+            let clean = text;
+            // Xóa các cụm mở đầu lễ phép: "Dạ, để em...", "Dạ để em...", "Dạ em...", "Dạ...", "Vâng để em..."
+            clean = clean.replace(/^(dạ\s*,?\s*(để\s*em|em\s*xin|em\s*lập|em\s*gửi|em)?\s*)/iu, '');
+            clean = clean.replace(/^(vâng\s*,?\s*(để\s*em|em\s*xin|em\s*lập|em\s*gửi|em)?\s*)/iu, '');
+            // Xóa các từ 'dạ', 'ạ' lọt giữa câu hoặc cuối câu bằng Unicode Lookaround
+            clean = clean.replace(/(?<!\p{L})(dạ|ạ)(?!\p{L})/giu, '');
 
-          // Khóa đại từ: Nếu không phải chế độ anh-em rõ ràng, chuyển hóa thành bạn bè hoặc t-m
-          if (!isExplicitAnhChiMode) {
-            clean = clean.replace(/(?<!\p{L})(anh\/chị|anh\s+chị)(?!\p{L})/giu, isTMMode ? 'm' : 'bạn');
-            clean = clean.replace(/(?<!\p{L})(em)(?!\p{L})/giu, isTMMode ? 't' : 'mình');
-          }
-
-          return clean.replace(/\s{2,}/g, ' ').trim();
+            // Khóa đại từ: Nếu không phải chế độ anh-em rõ ràng, chuyển hóa thành bạn bè hoặc t-m
+            if (!isExplicitAnhChiMode) {
+              clean = clean.replace(/(?<!\p{L})(anh\/chị|anh\s+chị)(?!\p{L})/giu, isTMMode ? 'm' : 'bạn');
+              clean = clean.replace(/(?<!\p{L})(em)(?!\p{L})/giu, isTMMode ? 't' : 'mình');
+            }
+            return clean;
+          }).trim();
         });
 
         // 4. BỘ LỌC CHẶN CÂU GIỜ / HỨA SUÔNG (ANTI-STALLING FILTER)
@@ -1699,7 +1836,8 @@ export async function sendMessageToTomorrow(
           imageBase64,
           webSearchContext.searched,
           directive.dynamicMaxTokens,
-          directive.dynamicTimeout
+          directive.dynamicTimeout,
+          recentChats
         );
         const parsed = parseAIResponseJson(rawRes.text, userText, recentChats, webSearchContext.sources);
         if (parsed && parsed.replies && parsed.replies.length > 0) {

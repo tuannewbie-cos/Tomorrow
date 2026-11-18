@@ -256,6 +256,387 @@ export function splitMarkdownTableRow(rowText: string): string[] {
 }
 
 /**
+ * Tự động căn lề và định dạng code Python (4 khoảng trắng)
+ * Bảo vệ an toàn chuỗi ký tự, comment và cấu trúc lồng nhau
+ */
+function formatPython(code: string, indentSize = 4): string {
+  const indentStr = ' '.repeat(indentSize);
+  let res = '';
+  let indentLevel = 0;
+  let inString = false;
+  let stringChar = '';
+  let isTriple = false;
+  let inComment = false;
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  let braceDepth = 0;
+  let i = 0;
+  const n = code.length;
+  let currentLine = '';
+
+  const getIndent = (lvl = indentLevel) => indentStr.repeat(Math.max(0, lvl));
+
+  const pushLine = (overrideIndent: number | null = null) => {
+    const trimmed = currentLine.trim();
+    if (trimmed.length > 0) {
+      if (res.length > 0 && !res.endsWith('\n')) res += '\n';
+      const lvl = overrideIndent !== null ? overrideIndent : indentLevel;
+      res += getIndent(lvl) + trimmed + '\n';
+    }
+    currentLine = '';
+  };
+
+  const blockStarters = [
+    'def', 'class', 'if', 'elif', 'else', 'for', 'while',
+    'try', 'except', 'finally', 'with', 'match', 'case', 'async'
+  ];
+  const dedentStarters = ['elif', 'else', 'except', 'finally'];
+
+  while (i < n) {
+    const ch = code[i];
+    const next = i + 1 < n ? code[i + 1] : '';
+    const next2 = i + 2 < n ? code[i + 2] : '';
+
+    // 1. Comments & Strings Shielding
+    if (!inString && !inComment) {
+      if (ch === '#') {
+        inComment = true;
+        currentLine += '#';
+        i++;
+        continue;
+      }
+      if ((ch === '"' || ch === "'") && next === ch && next2 === ch) {
+        inString = true;
+        isTriple = true;
+        stringChar = ch;
+        currentLine += ch + ch + ch;
+        i += 3;
+        continue;
+      }
+      if (ch === '"' || ch === "'") {
+        inString = true;
+        isTriple = false;
+        stringChar = ch;
+        currentLine += ch;
+        i++;
+        continue;
+      }
+    } else if (inString) {
+      currentLine += ch;
+      if (ch === '\\' && next) {
+        currentLine += next;
+        i += 2;
+        continue;
+      }
+      if (isTriple) {
+        if (ch === stringChar && next === stringChar && next2 === stringChar) {
+          currentLine += stringChar + stringChar;
+          inString = false;
+          i += 3;
+          continue;
+        }
+      } else {
+        if (ch === stringChar) {
+          inString = false;
+        }
+      }
+      i++;
+      continue;
+    } else if (inComment) {
+      currentLine += ch;
+      if (ch === '\n') {
+        inComment = false;
+        pushLine();
+      }
+      i++;
+      continue;
+    }
+
+    // 2. Depth Tracking (Shielding slices, comprehensions, dicts, tuples)
+    if (ch === '(') { parenDepth++; currentLine += ch; i++; continue; }
+    if (ch === ')') { if (parenDepth > 0) parenDepth--; currentLine += ch; i++; continue; }
+    if (ch === '[') { bracketDepth++; currentLine += ch; i++; continue; }
+    if (ch === ']') { if (bracketDepth > 0) bracketDepth--; currentLine += ch; i++; continue; }
+    if (ch === '{') { braceDepth++; currentLine += ch; i++; continue; }
+    if (ch === '}') { if (braceDepth > 0) braceDepth--; currentLine += ch; i++; continue; }
+
+    // 3. Colon Block Introducer at Depth 0
+    if (ch === ':' && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) {
+      currentLine += ':';
+      const lineTrim = currentLine.trim();
+      const firstWord = lineTrim.replace(/[:(].*$/, '').trim().split(/\s+/)[0];
+      const isStarter = blockStarters.includes(firstWord);
+
+      if (isStarter) {
+        let lineIndent = indentLevel;
+        if (dedentStarters.includes(firstWord) && indentLevel > 0) {
+          lineIndent = indentLevel - 1;
+        }
+        pushLine(lineIndent);
+        indentLevel = lineIndent + 1;
+      }
+      i++;
+      while (i < n && (code[i] === ' ' || code[i] === '\t')) i++;
+      continue;
+    }
+
+    // 4. Semicolon Statement Delimiter at Depth 0
+    if (ch === ';' && parenDepth === 0 && bracketDepth === 0 && braceDepth === 0) {
+      const lineTrim = currentLine.trim();
+      pushLine();
+
+      if (/^(return\b|break\b|continue\b|pass\b|raise\b)/.test(lineTrim)) {
+        if (indentLevel > 1) {
+          indentLevel--;
+        }
+      }
+
+      i++;
+      while (i < n && (code[i] === ' ' || code[i] === '\t')) i++;
+      continue;
+    }
+
+    if (ch === '\n') {
+      pushLine();
+      i++;
+      continue;
+    }
+
+    currentLine += ch;
+    i++;
+  }
+
+  pushLine();
+  return res.trim();
+}
+
+/**
+ * Tự động căn lề và định dạng code dạng C-style (TS, JS: 2 spaces; C, Java, C++: 4 spaces)
+ * Bảo vệ an toàn chuỗi ký tự, comment và các cặp ngoặc lồng nhau
+ */
+function formatCStyle(code: string, indentSize = 2): string {
+  const indentStr = ' '.repeat(indentSize);
+  let res = '';
+  let indentLevel = 0;
+  let inString = false;
+  let stringChar = '';
+  let inLineComment = false;
+  let inBlockComment = false;
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  let i = 0;
+  const n = code.length;
+  let currentLine = '';
+
+  const getIndent = () => indentStr.repeat(Math.max(0, indentLevel));
+
+  const pushLine = () => {
+    const trimmed = currentLine.trim();
+    if (trimmed.length > 0) {
+      if (res.length > 0 && !res.endsWith('\n')) res += '\n';
+      res += getIndent() + trimmed + '\n';
+    }
+    currentLine = '';
+  };
+
+  while (i < n) {
+    const ch = code[i];
+    const next = i + 1 < n ? code[i + 1] : '';
+
+    // 1. Comments & Strings Shielding
+    if (!inString && !inLineComment && !inBlockComment) {
+      if (ch === '/' && next === '/') {
+        inLineComment = true;
+        currentLine += '//';
+        i += 2;
+        continue;
+      }
+      if (ch === '/' && next === '*') {
+        inBlockComment = true;
+        currentLine += '/*';
+        i += 2;
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === '`') {
+        inString = true;
+        stringChar = ch;
+        currentLine += ch;
+        i++;
+        continue;
+      }
+    } else if (inString) {
+      currentLine += ch;
+      if (ch === '\\' && next) {
+        currentLine += next;
+        i += 2;
+        continue;
+      }
+      if (ch === stringChar) {
+        inString = false;
+      }
+      i++;
+      continue;
+    } else if (inLineComment) {
+      currentLine += ch;
+      if (ch === '\n') {
+        inLineComment = false;
+        pushLine();
+      }
+      i++;
+      continue;
+    } else if (inBlockComment) {
+      currentLine += ch;
+      if (ch === '*' && next === '/') {
+        currentLine += '*/';
+        inBlockComment = false;
+        i += 2;
+        continue;
+      }
+      i++;
+      continue;
+    }
+
+    // 2. Depth Tracking
+    if (ch === '(') { parenDepth++; currentLine += ch; i++; continue; }
+    if (ch === ')') { if (parenDepth > 0) parenDepth--; currentLine += ch; i++; continue; }
+    if (ch === '[') { bracketDepth++; currentLine += ch; i++; continue; }
+    if (ch === ']') { if (bracketDepth > 0) bracketDepth--; currentLine += ch; i++; continue; }
+
+    // 3. Opening Brace '{'
+    if (ch === '{') {
+      if (currentLine.trim().startsWith('import') || currentLine.trim().startsWith('export')) {
+        currentLine += ch;
+        i++;
+        continue;
+      }
+
+      let peek = i + 1;
+      while (peek < n && (code[peek] === ' ' || code[peek] === '\t')) peek++;
+      if (peek < n && code[peek] === '}') {
+        currentLine += ' {}';
+        i = peek + 1;
+        continue;
+      }
+
+      currentLine = currentLine.trimEnd() + ' {';
+      pushLine();
+      indentLevel++;
+      i++;
+      while (i < n && (code[i] === ' ' || code[i] === '\t')) i++;
+      continue;
+    }
+
+    // 4. Closing Brace '}'
+    if (ch === '}') {
+      if (currentLine.includes('{') && (currentLine.trim().startsWith('import') || currentLine.trim().startsWith('export'))) {
+        currentLine += ch;
+        i++;
+        continue;
+      }
+
+      pushLine();
+      if (indentLevel > 0) indentLevel--;
+      currentLine = '}';
+
+      let peek = i + 1;
+      while (peek < n && (code[peek] === ' ' || code[peek] === '\t')) peek++;
+
+      if (peek < n && (code[peek] === ';' || code[peek] === ',')) {
+        currentLine += code[peek];
+        i = peek;
+      } else if (peek + 4 <= n && code.slice(peek, peek + 4) === 'else') {
+        currentLine += ' else';
+        i = peek + 3;
+      }
+
+      pushLine();
+      i++;
+      while (i < n && (code[i] === ' ' || code[i] === '\t')) i++;
+      continue;
+    }
+
+    // 5. Semicolon ';' at parenDepth === 0 (preserves for-loop semicolons)
+    if (ch === ';' && parenDepth === 0) {
+      currentLine += ';';
+      pushLine();
+      i++;
+      while (i < n && (code[i] === ' ' || code[i] === '\t')) i++;
+      continue;
+    }
+
+    if (ch === '\n') {
+      pushLine();
+      i++;
+      continue;
+    }
+
+    currentLine += ch;
+    i++;
+  }
+
+  pushLine();
+  return res.trim();
+}
+
+/**
+ * Tự động giải mã ký tự escape và tái cấu trúc định dạng thụt lề thông minh cho code block
+ * Hỗ trợ: Python (4 spaces), TypeScript/JavaScript (2 spaces), C, Java, C++ (4 spaces)
+ * Bảo vệ tuyệt đối chuỗi string literal và comment không bị phá vỡ
+ */
+export function formatCodeForDisplay(rawCode: string, language?: string): string {
+  if (!rawCode) return '';
+
+  // 1. Phục hồi các ký tự escape bị mã hóa: \r\n, \n, \t
+  const unescaped = rawCode
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '    ')
+    .replace(/\t/g, '    ');
+
+  const rawLines = unescaped.trim().split('\n');
+  const isSingleLine = rawLines.length === 1;
+  const isLongSingleLine = isSingleLine && rawLines[0].trim().length > 55;
+
+  // Kiểm tra xem có phải khối code dồn cục (>55 ký tự trên 1 dòng chứa dấu phân tách lệnh) hay không
+  const isCondensed = isLongSingleLine || (rawLines.length <= 2 && rawLines.some(l => l.trim().length > 55 && (/[:;{]/.test(l))));
+
+  // Nếu code đã được định dạng nhiều dòng rõ ràng, giữ nguyên 100% để không làm xáo trộn format gốc
+  if (!isCondensed) {
+    return unescaped;
+  }
+
+  const normLang = (language || '').toLowerCase().trim();
+  const isPython =
+    ['python', 'py'].includes(normLang) ||
+    (!normLang && (/\bdef\s+\w+\s*\(/.test(unescaped) || /\bclass\s+\w+.*:/.test(unescaped)));
+
+  const isJs = ['javascript', 'js', 'jsx'].includes(normLang);
+  const isTs = ['typescript', 'ts', 'tsx'].includes(normLang);
+  const isC = ['c'].includes(normLang);
+  const isCpp = ['cpp', 'c++', 'cc', 'cxx'].includes(normLang);
+  const isJava = ['java'].includes(normLang);
+
+  if (isPython) {
+    return formatPython(unescaped, 4);
+  }
+
+  if (isTs || isJs) {
+    return formatCStyle(unescaped, 2);
+  }
+
+  if (isC || isCpp || isJava) {
+    return formatCStyle(unescaped, 4);
+  }
+
+  // Mặc định: nếu phát hiện cú pháp Python dùng formatPython (4 spaces), ngược lại dùng formatCStyle (2 spaces)
+  if (/\bdef\s+\w+\s*\(/.test(unescaped) || (/\bimport\s+\w+/.test(unescaped) && !unescaped.includes('{'))) {
+    return formatPython(unescaped, 4);
+  }
+
+  return formatCStyle(unescaped, 2);
+}
+
+/**
  * Bộ phân tích cú pháp khối Markdown tự chủ (Zero External Bundler Dependencies)
  */
 export function parseMarkdownBlocks(rawText: string): MarkdownBlock[] {
@@ -272,21 +653,40 @@ export function parseMarkdownBlocks(rawText: string): MarkdownBlock[] {
     const line = lines[i];
     const trimmed = line.trim();
 
-    // 1. Khối Code: ```lang ... ```
+    // 1. Khối Code: ```lang ... ``` (hỗ trợ cả multi-line lẫn single-line ```lang code```)
     if (trimmed.startsWith('```')) {
-      const langMatch = trimmed.match(/^```([a-zA-Z0-9_-]*)/);
-      const language = langMatch && langMatch[1] ? langMatch[1] : '';
-      const codeLines: string[] = [];
-      i++;
-      while (i < lines.length && !lines[i].trim().startsWith('```')) {
-        codeLines.push(lines[i]);
+      const rest = trimmed.slice(3);
+      const singleLineClose = rest.indexOf('```');
+      let language = '';
+      let rawCode = '';
+
+      if (singleLineClose !== -1) {
+        // Single-line block: ```lang code```
+        const content = rest.slice(0, singleLineClose).trim();
+        const langMatch = content.match(/^([a-zA-Z0-9_-]*)\s*/);
+        language = langMatch && langMatch[1] ? langMatch[1] : '';
+        rawCode = content.slice(language.length).trim();
         i++;
+      } else {
+        const langMatch = trimmed.match(/^```([a-zA-Z0-9_-]*)/);
+        language = langMatch && langMatch[1] ? langMatch[1] : '';
+        const codeLines: string[] = [];
+        i++;
+        while (i < lines.length && !lines[i].trim().startsWith('```')) {
+          codeLines.push(lines[i]);
+          i++;
+        }
+        if (i < lines.length && lines[i].trim().startsWith('```')) {
+          i++; // Bỏ qua dòng đóng ```
+        }
+        rawCode = codeLines.join('\n');
       }
-      if (i < lines.length && lines[i].trim().startsWith('```')) {
-        i++; // Bỏ qua dòng đóng ```
-      }
-      const code = codeLines.join('\n') + '\n';
+
+      // Tự động giải mã escape và format đa dòng thông minh (R3)
+      const formatted = formatCodeForDisplay(rawCode, language);
+      const code = formatted.endsWith('\n') ? formatted : formatted + '\n';
       const actualLines = code.split('\n');
+
       blocks.push({
         type: 'code',
         language: language.toUpperCase() || 'CODE',
