@@ -111,16 +111,19 @@ export function buildLocalReflexDirective(
     .slice(-4)
     .map((m) => (m.text || '').toLowerCase());
   const combinedUserText = [...recentUserTexts, lower].join(' ');
-  const sessionTokens = combinedUserText.split(/[\s,.;!?:~]+/).filter(Boolean);
+  const cleanedWithoutCompounds = combinedUserText
+    .replace(/\b(chi tiết|chi phi|chi phí|thu chi|chi nhánh|chi tiêu|chi trả|anh em|anh hùng|tiếng anh|anh văn)\b/gi, ' ');
+  const sessionTokens = cleanedWithoutCompounds.split(/[\s,.;!?:~]+/).filter(Boolean);
 
   const hasTM = sessionTokens.some((w) => ['t', 'm', 'tao', 'mày', 'may'].includes(w));
-  const hasAnhChi = sessionTokens.some((w) => ['anh', 'chị', 'chi', 'em'].includes(w));
+  // Chỉ nhận diện anh/chị khi có 'anh' hoặc 'chị', TUYỆT ĐỐI LOẠI BỎ 'chi' không dấu
+  const hasAnhChi = sessionTokens.some((w) => ['anh', 'chị'].includes(w));
   const hasTui = sessionTokens.some((w) => ['tui', 'tớ', 'to'].includes(w));
   const hasBacChau = sessionTokens.some((w) => ['bác', 'bac', 'cháu', 'chau'].includes(w));
 
-  let pronounRule = 'Bạn bè tự nhiên ("mình - bạn" hoặc câu tỉnh lược chủ ngữ, CẤM tự ý gọi "bro")';
+  let pronounRule = 'Bạn bè tự nhiên ("mình - bạn" hoặc câu tỉnh lược chủ ngữ, TUYỆT ĐỐI CẤM xưng "em", CẤM gọi "anh/chị", CẤM dùng từ "dạ", "vâng", "ạ", CẤM tự ý gọi "bro")';
   if (hasTM) {
-    pronounRule = 'Xưng "t" - gọi "m" (Bạn thân ngang hàng, CẤM TUYỆT ĐỐI dùng từ "bro")';
+    pronounRule = 'Xưng "t" - gọi "m" (Bạn thân ngang hàng, TUYỆT ĐỐI CẤM xưng "em", CẤM gọi "anh/chị", CẤM gọi "bro", CẤM "dạ/vâng/ạ")';
   } else if (hasAnhChi) {
     pronounRule = 'Đồng bộ đúng cặp đại từ của user ("anh/chị - em")';
   } else if (hasBacChau) {
@@ -169,7 +172,7 @@ export function buildLocalReflexDirective(
       intentMode: 'WEB_INTEL',
       pronounRule,
       directivePrompt,
-      dynamicMaxTokens: 1200,
+      dynamicMaxTokens: 1400,
       dynamicTimeout: 12000,
     };
   }
@@ -183,7 +186,17 @@ export function buildLocalReflexDirective(
     'database', 'supabase', 'indexing', 'oop', 'kế thừa', 'đa hình', 'chứng minh',
     'viết code', 'viet code', 'lập bảng', 'lap bang', 'bảng biểu', 'bang bieu',
     'bảng so sánh', 'bang so sanh', 'bảng', 'bang', 'giải toán', 'giai toan',
-    'công thức', 'cong thuc', 'toán', 'toan', 'phân tích sâu', 'phan tich sau'
+    'công thức', 'cong thuc', 'toán', 'toan', 'phân tích sâu', 'phan tich sau',
+    // Bổ sung toàn diện từ khóa Toán học, Khoa học & Định lý
+    'định lý', 'dinh ly', 'định luật', 'dinh luat', 'bayes', 'pythagoras',
+    'đạo hàm', 'dao ham', 'tích phân', 'tich phan', 'nguyên hàm', 'nguyen ham',
+    'ma trận', 'ma tran', 'xác suất', 'xac suat', 'thống kê', 'thong ke',
+    'phương trình', 'phuong trinh', 'hệ phương trình', 'bất đẳng thức', 'hình học',
+    'đại số', 'giải tích', 'vật lý', 'vat ly', 'hóa học', 'hoa hoc', 'khoa học', 'khoa hoc',
+    'newton', 'euler', 'gauss', 'vectơ', 'vector',
+    'giới hạn', 'gioi han', 'cấu trúc dữ liệu', 'cau truc du lieu',
+    'thuyết tương đối', 'thuyet tuong doi', 'độ phức tạp', 'do phuc tap',
+    'vận tốc', 'van toc', 'gia tốc', 'gia toc'
   ];
   const hasExpertWord = expertKeywords.some((kw) => lower.includes(kw)) || trimmed.includes('```');
 
@@ -193,7 +206,7 @@ export function buildLocalReflexDirective(
       intentMode: 'EXPERT_JARVIS',
       pronounRule,
       directivePrompt,
-      dynamicMaxTokens: 1200,
+      dynamicMaxTokens: 1400,
       dynamicTimeout: 12000,
     };
   }
@@ -210,14 +223,18 @@ export function buildLocalReflexDirective(
 }
 
 /**
- * 2. SYSTEM_INSTRUCTION: TOMORROW V3.8 — 3-LAYER REFLEX & FEW-SHOT DISTILLATION
+ * 2. SYSTEM_INSTRUCTION: TOMORROW V4.2.1 — 3-LAYER REFLEX & FEW-SHOT DISTILLATION
  * Tinh gọn dưới 450 từ với 6 Few-Shot Examples chuẩn xác tuyệt đối (Golden Few-Shot Bank)
  */
 export const SYSTEM_INSTRUCTION = `Bạn là "Tomorrow" — người bạn tri kỷ đời thường kết hợp trí tuệ sắc bén của J.A.R.V.I.S. / Gemini.
 
 NGUYÊN TẮC CỐT LÕI:
 1. Tuân thủ tuyệt đối nhãn [DIRECTIVE] và hồ sơ [MEMORY VAULT] được đính kèm ở mỗi tin nhắn.
-2. CẤM tự ý gọi "bro" trừ khi user gọi trước. Đồng bộ 100% đại từ xưng hô ("t - m", "mình - bạn", "anh - em") và cách viết tắt của user.
+2. KHÓA CHẶT ĐẠI TỪ & CẤM DẠ THƯA KIỂU TỔNG ĐÀI:
+   - Bạn là bạn bè ngang hàng / tri kỷ thông minh, TUYỆT ĐỐI CẤM dùng từ "Dạ", "vâng", "ạ".
+   - TUYỆT ĐỐI CẤM tự ý xưng "em" và gọi "anh/chị" trừ khi được chỉ định rõ trong [DIRECTIVE].
+   - Khi giải thích kỹ thuật, toán học, viết code hoặc lập bảng: Đi thẳng vào nội dung súc tích, dùng câu tỉnh lược chủ ngữ hoặc xưng "t - m" / "mình - bạn". Tuyệt đối không mở đầu bằng "Dạ để em...", "Em xin gửi...".
+   - CẤM tự ý gọi "bro" trừ khi user gọi trước. Đồng bộ 100% đại từ xưng hô theo [DIRECTIVE].
 3. Khi MODE=STOP_SIGNAL (user nhắn "okk", "sybau", "cook", "thôi", "ừ"): Chỉ đáp 1 bong bóng cực ngắn (1-4 chữ), CẤM hỏi ngược lại.
 4. Khi MODE=WEB_INTEL: Trả lời ngay kết quả thực tế kèm link URL từ [DỮ LIỆU WEB THỜI GIAN THỰC], CẤM câu giờ ("Chờ mình chút", "Đợi xíu nha").
 
@@ -285,16 +302,19 @@ export function extractUserStyleLocal(text: string, recentChats?: ChatMessage[])
   const combinedUserText = [...userPastTexts, lower].join(' ');
 
   const currentTokens = lower.split(/[\s,.;!?:~]+/).filter(Boolean);
-  const sessionTokens = combinedUserText.split(/[\s,.;!?:~]+/).filter(Boolean);
+  const cleanedWithoutCompounds = combinedUserText
+    .replace(/\b(chi tiết|chi phi|chi phí|thu chi|chi nhánh|chi tiêu|chi trả|anh em|anh hùng|tiếng anh|anh văn)\b/gi, ' ');
+  const sessionTokens = cleanedWithoutCompounds.split(/[\s,.;!?:~]+/).filter(Boolean);
 
   const hasTM = sessionTokens.some((w) => ['t', 'm', 'tao', 'mày', 'may'].includes(w));
   const hasTui = sessionTokens.some((w) => ['tui', 'tớ', 'to'].includes(w));
   const hasUserBro = sessionTokens.some((w) => ['bro', 'bờ râu'].includes(w));
-  const hasAnhChi = sessionTokens.some((w) => ['anh', 'chị', 'chi', 'em'].includes(w));
+  // Chỉ nhận diện anh/chị khi có 'anh' hoặc 'chị', loại bỏ hoàn toàn 'chi' không dấu
+  const hasAnhChi = sessionTokens.some((w) => ['anh', 'chị'].includes(w));
 
   let detectedPronoun = '';
   if (hasTM) {
-    detectedPronoun = 'Xưng "t" - gọi "m" (Bạn thân ngang hàng, TUYỆT ĐỐI CẤM dùng từ "bro")';
+    detectedPronoun = 'Xưng "t" - gọi "m" (Bạn thân ngang hàng, TUYỆT ĐỐI CẤM xưng "em", CẤM gọi "anh/chị", CẤM gọi "bro", CẤM "dạ/vâng/ạ")';
   } else if (hasTui) {
     detectedPronoun = 'Xưng "tui" - gọi tương ứng ("ông", "bà", "bạn")';
   } else if (hasAnhChi) {
@@ -302,7 +322,7 @@ export function extractUserStyleLocal(text: string, recentChats?: ChatMessage[])
   } else if (hasUserBro) {
     detectedPronoun = 'User chủ động gọi "bro", bạn có thể gọi lại "bro" hoặc bạn bè';
   } else {
-    detectedPronoun = 'Mặc định là một người bạn tự nhiên, gần gũi (dùng "mình - bạn" hoặc câu tỉnh lược chủ ngữ tự nhiên, TUYỆT ĐỐI CẤM tự ý gọi "bro" trừ khi chính user gõ chữ "bro" trước)';
+    detectedPronoun = 'Mặc định là bạn bè tự nhiên, gần gũi (dùng "mình - bạn" hoặc câu tỉnh lược chủ ngữ tự nhiên, TUYỆT ĐỐI CẤM xưng "em", CẤM gọi "anh/chị", CẤM "dạ/vâng/ạ", TUYỆT ĐỐI CẤM tự ý gọi "bro" trừ khi chính user gõ chữ "bro" trước)';
   }
 
   // 2. PHÁT HIỆN TÍN HIỆU KẾT THÚC / CHỐT CÂU / TIẾNG LÓNG ĐUỔI KHÉO (isClosingSignal)
@@ -787,8 +807,109 @@ export function sanitizeAndMergeBrokenBlocks(replies: string[]): string[] {
 }
 
 /**
+ * Bộ tiền xử lý chuẩn hóa ký tự LaTeX & JSON Auto-Repair theo máy trạng thái (State Machine).
+ * 1. Bảo vệ các từ khóa LaTeX bắt đầu bằng ký tự điều khiển JSON (\frac -> \f, \times -> \t, \begin -> \b, \right -> \r, etc.).
+ * 2. Tự động double-escape các dấu \ không hợp lệ trong chuỗi JSON (\sqrt, \alpha, \sum, \int, \cdot, etc.).
+ * 3. Chuyển đổi ký tự điều khiển raw (\n, \r, \t) bên trong chuỗi kép thành escape an toàn.
+ * 4. Tự động đóng ngoặc kép, ngoặc vuông, ngoặc nhọn nếu chuỗi bị cắt cụt đuôi (truncated tokens).
+ */
+export function repairJsonWithLatexAndControls(raw: string): string {
+  if (!raw || typeof raw !== 'string') return raw;
+
+  // 1. Bảo vệ các từ khóa LaTeX dễ bị JSON.parse nuốt thành control characters
+  let str = raw.replace(
+    /(?<!\\)\\(frac|times|text|textbf|textit|mathrm|mathbf|theta|tau|tan|to|tilde|begin|beta|bar|bf|right|rho|rangle|nabla|neq|nu|forall)\b/g,
+    '\\\\$1'
+  );
+
+  let inString = false;
+  let result = '';
+  let i = 0;
+
+  while (i < str.length) {
+    const ch = str[i];
+
+    if (!inString) {
+      if (ch === '"') inString = true;
+      result += ch;
+      i++;
+      continue;
+    }
+
+    // Đang ở trong chuỗi kép
+    if (ch === '"') {
+      inString = false;
+      result += ch;
+      i++;
+      continue;
+    }
+
+    if (ch === '\\') {
+      const next = str[i + 1];
+      if (next === undefined) {
+        result += '\\\\';
+        i++;
+        continue;
+      }
+      if (next === '\\') {
+        result += '\\\\';
+        i += 2;
+        continue;
+      }
+      const isValidSingle = ['"', '\\', '/', 'b', 'f', 'n', 'r', 't'].includes(next);
+      const isUnicode = next === 'u' && /^[0-9a-fA-F]{4}$/.test(str.slice(i + 2, i + 6));
+      if (isValidSingle || isUnicode) {
+        result += '\\' + next;
+        i += next === 'u' ? 6 : 2;
+      } else {
+        result += '\\\\';
+        i++;
+      }
+      continue;
+    }
+
+    if (ch === '\n') {
+      result += '\\n';
+      i++;
+      continue;
+    }
+    if (ch === '\r') {
+      result += '\\r';
+      i++;
+      continue;
+    }
+    if (ch === '\t') {
+      result += '\\t';
+      i++;
+      continue;
+    }
+
+    result += ch;
+    i++;
+  }
+
+  if (inString) {
+    result += '"';
+  }
+
+  let repaired = result.trim().replace(/,\s*$/, '');
+  const openBrackets = (repaired.match(/\[/g) || []).length;
+  const closeBrackets = (repaired.match(/\]/g) || []).length;
+  if (openBrackets > closeBrackets) {
+    repaired += ']'.repeat(openBrackets - closeBrackets);
+  }
+  const openBraces = (repaired.match(/\{/g) || []).length;
+  const closeBraces = (repaired.match(/\}/g) || []).length;
+  if (openBraces > closeBraces) {
+    repaired += '}'.repeat(openBraces - closeBraces);
+  }
+
+  return repaired;
+}
+
+/**
  * Trích xuất JSON an toàn: tìm khối { ... } đầu tiên và cuối cùng trong văn bản phản hồi.
- * Nếu AI trả về văn bản thường không bọc JSON, tự động bọc thành object chuẩn không bao giờ ném lỗi.
+ * Tích hợp bộ vá lỗi LaTeX & Control Characters và Resilient Raw Text Fallback.
  */
 export function safeParseAIJson(rawText: string): any {
   if (!rawText || typeof rawText !== 'string') {
@@ -815,79 +936,116 @@ export function safeParseAIJson(rawText: string): any {
       ? cleaned.slice(firstBrace, lastBrace + 1)
       : cleaned.slice(firstBrace);
 
+    // Lần 1: Tiền xử lý LaTeX và các ký tự điều khiển qua máy trạng thái
     try {
-      const parsed = JSON.parse(candidate);
+      const repaired = repairJsonWithLatexAndControls(candidate);
+      const parsed = JSON.parse(repaired);
       if (parsed && Array.isArray(parsed.replies)) {
         parsed.replies = sanitizeAndMergeBrokenBlocks(parsed.replies);
       }
       return parsed;
     } catch {
-      // Tự động vá nếu chuỗi JSON bị cắt cụt đuôi (VD: do max_tokens: 250)
+      // Lần 2: Thử JSON.parse nguyên bản
       try {
-        let repaired = candidate.trim().replace(/,\s*$/, '');
-        // Đếm số dấu ngoặc kép chưa đóng (bỏ qua dấu đã escape \")
-        const quoteMatches = repaired.match(/(^|[^\\])"/g);
-        const quoteCount = quoteMatches ? quoteMatches.length : 0;
-        if (quoteCount % 2 !== 0) {
-          repaired += '"';
+        const parsed = JSON.parse(candidate);
+        if (parsed && Array.isArray(parsed.replies)) {
+          parsed.replies = sanitizeAndMergeBrokenBlocks(parsed.replies);
         }
-        repaired = repaired.replace(/,\s*$/, '');
-        // Đếm số ngoặc vuông [ và ]
-        const openBrackets = (repaired.match(/\[/g) || []).length;
-        const closeBrackets = (repaired.match(/\]/g) || []).length;
-        if (openBrackets > closeBrackets) {
-          repaired += ']'.repeat(openBrackets - closeBrackets);
-        }
-        // Đếm số ngoặc nhọn { và }
-        const openBraces = (repaired.match(/\{/g) || []).length;
-        const closeBraces = (repaired.match(/\}/g) || []).length;
-        if (openBraces > closeBraces) {
-          repaired += '}'.repeat(openBraces - closeBraces);
-        }
-        const parsedRepaired = JSON.parse(repaired);
-        if (parsedRepaired && Array.isArray(parsedRepaired.replies)) {
-          parsedRepaired.replies = sanitizeAndMergeBrokenBlocks(parsedRepaired.replies);
-        }
-        return parsedRepaired;
+        return parsed;
       } catch {
-        // Fallback trích xuất mảng text
-        const matches = [...candidate.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)].map((m) => m[1]);
-        const validTexts = matches.filter(
-          (m) =>
-            m.length > 0 &&
-            !m.includes('replies') &&
-            !m.includes('memory_note') &&
-            !m.includes('session_title') &&
-            !m.includes('jarvis_intent') &&
-            !m.includes('conversation_state') &&
-            !m.includes('should_update_title')
-        );
-        if (validTexts.length > 0) {
-          const sanitized = sanitizeAndMergeBrokenBlocks(validTexts);
-          return {
-            replies: sanitized.slice(0, 3),
-            reply: sanitized[0],
-            session_title: '',
-            sessionTitle: '',
-            should_update_title: false,
-            shouldUpdateTitle: false,
-            conversation_state: 'casual_friend',
-            conversationState: 'casual_friend',
-            memoryNote: '',
-            memory_note: '',
-            jarvis_intent: 'chat',
-            sources: [],
-          };
+        // Lần 3: Trích xuất nội dung thực chất của replies (Resilient Raw Text Fallback)
+        try {
+          const repliesMatch = candidate.match(/"replies"\s*:\s*\[([\s\S]*?)\]/);
+          if (repliesMatch && repliesMatch[1]) {
+            const rawInside = repliesMatch[1];
+            const matches = [...rawInside.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) =>
+              m[1]
+                .replace(/\\n/g, '\n')
+                .replace(/\\r/g, '\r')
+                .replace(/\\t/g, '\t')
+                .replace(/\\"/g, '"')
+                .replace(/\\\\/g, '\\')
+            );
+            if (matches.length > 0) {
+              const sanitized = sanitizeAndMergeBrokenBlocks(matches);
+              return {
+                replies: sanitized,
+                reply: sanitized[0],
+                session_title: '',
+                sessionTitle: '',
+                should_update_title: false,
+                shouldUpdateTitle: false,
+                conversation_state: 'casual_friend',
+                conversationState: 'casual_friend',
+                memoryNote: '',
+                memory_note: '',
+                jarvis_intent: 'chat',
+                sources: [],
+              };
+            }
+          }
+
+          // Fallback trích xuất mảng text chung
+          const matches = [...candidate.matchAll(/"([^"\\]*(?:\\.[^"\\]*)*)"/g)].map((m) => m[1]);
+          const validTexts = matches.filter(
+            (m) =>
+              m.length > 0 &&
+              !m.includes('replies') &&
+              !m.includes('memory_note') &&
+              !m.includes('session_title') &&
+              !m.includes('jarvis_intent') &&
+              !m.includes('conversation_state') &&
+              !m.includes('should_update_title')
+          );
+          if (validTexts.length > 0) {
+            const sanitized = sanitizeAndMergeBrokenBlocks(validTexts);
+            return {
+              replies: sanitized.slice(0, 3),
+              reply: sanitized[0],
+              session_title: '',
+              sessionTitle: '',
+              should_update_title: false,
+              shouldUpdateTitle: false,
+              conversation_state: 'casual_friend',
+              conversationState: 'casual_friend',
+              memoryNote: '',
+              memory_note: '',
+              jarvis_intent: 'chat',
+              sources: [],
+            };
+          }
+        } catch {
+          // Bỏ qua lỗi fallback
         }
       }
     }
   }
 
-  // Nếu AI trả về văn bản thường không bọc JSON:
+  // Nếu AI trả về văn bản thường không bọc JSON, hoặc candidate JSON không thể parse:
   const plainText = cleaned
     .replace(/```json/gi, '')
     .replace(/```/g, '')
     .trim();
+
+  // Cố gắng bóc tách nội dung {"replies": ...} nếu tồn tại
+  const fallbackRepliesMatch = plainText.match(/"replies"\s*:\s*\[([\s\S]*?)\]/);
+  if (fallbackRepliesMatch && fallbackRepliesMatch[1]) {
+    const rawInside = fallbackRepliesMatch[1];
+    const extracted = rawInside
+      .replace(/^[\s"]+|[\s"]+$/g, '')
+      .replace(/\\n/g, '\n')
+      .replace(/\\"/g, '"');
+    if (extracted.trim()) {
+      return {
+        conversation_state: 'casual_friend',
+        replies: [extracted.trim()],
+        reply: extracted.trim(),
+        session_title: '',
+        should_update_title: false,
+        memory_note: '',
+      };
+    }
+  }
 
   const sentences = plainText.split(/\n+/).filter((s) => s.trim().length > 0);
   const replies = sanitizeAndMergeBrokenBlocks(sentences.length > 0 ? sentences.slice(0, 3) : [plainText || 'nghe đây']);
@@ -905,7 +1063,7 @@ export function safeParseAIJson(rawText: string): any {
 /**
  * Phân tích JSON chuẩn hóa: trích xuất "conversation_state", "replies", "session_title", "should_update_title", "memory_note"
  */
-function parseAIResponseJson(
+export function parseAIResponseJson(
   raw: string,
   userText?: string,
   recentChats?: ChatMessage[],
@@ -1009,6 +1167,28 @@ function parseAIResponseJson(
               .trim()
           );
         }
+
+        // 3.5. BỘ LỌC KHÓA ĐẠI TỪ & DỌN SẠCH TÀN DƯ LỄ PHÉP ("Dạ để em...", "anh/chị")
+        const cleanedAllUserText = allUserText.replace(/\b(chi tiết|chi phi|chi phí|thu chi|chi nhánh|chi tiêu|chi trả|anh em|anh hùng|tiếng anh|anh văn)\b/gi, ' ');
+        const userPronounTokens = cleanedAllUserText.split(/[\s,.;!?:~]+/).filter(Boolean);
+        const isExplicitAnhChiMode = !isTMMode && userPronounTokens.some((w) => ['anh', 'chị'].includes(w));
+
+        replies = replies.map((rep) => {
+          let clean = rep;
+          // Xóa các cụm mở đầu lễ phép: "Dạ, để em...", "Dạ để em...", "Dạ em...", "Dạ...", "Vâng để em..."
+          clean = clean.replace(/^(dạ\s*,?\s*(để\s*em|em\s*xin|em\s*lập|em\s*gửi|em)?\s*)/iu, '');
+          clean = clean.replace(/^(vâng\s*,?\s*(để\s*em|em\s*xin|em\s*lập|em\s*gửi|em)?\s*)/iu, '');
+          // Xóa các từ 'dạ', 'ạ' lọt giữa câu hoặc cuối câu bằng Unicode Lookaround
+          clean = clean.replace(/(?<!\p{L})(dạ|ạ)(?!\p{L})/giu, '');
+
+          // Khóa đại từ: Nếu không phải chế độ anh-em rõ ràng, chuyển hóa thành bạn bè hoặc t-m
+          if (!isExplicitAnhChiMode) {
+            clean = clean.replace(/(?<!\p{L})(anh\/chị|anh\s+chị)(?!\p{L})/giu, isTMMode ? 'm' : 'bạn');
+            clean = clean.replace(/(?<!\p{L})(em)(?!\p{L})/giu, isTMMode ? 't' : 'mình');
+          }
+
+          return clean.replace(/\s{2,}/g, ' ').trim();
+        });
 
         // 4. BỘ LỌC CHẶN CÂU GIỜ / HỨA SUÔNG (ANTI-STALLING FILTER)
         const STALLING_REGEX = /^(chờ|đợi)\s*(mình|t|tui|em|xíu|chút|tí)|kiểm tra (ngay|xong liền)|để (mình|t|tui) (check|kiểm tra|tìm)/i;
@@ -1483,9 +1663,10 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean, 
   if (words.length >= 3 && !isPlaceholderOrNoiseTitle(text)) {
     const rawTopic = words.slice(0, 5).join(' ');
     const formattedTopic = rawTopic.charAt(0).toUpperCase() + rawTopic.slice(1);
+    const offlineFriendlyMsg = 'Hiện tại mình đang gặp trục trặc kết nối mạng một chút, bạn thử bấm gửi lại câu hỏi giúp mình nhé!';
     return {
-      replies: ['nghe thú vị đấy', 'nói rõ hơn xem nào'],
-      reply: 'nghe thú vị đấy',
+      replies: [offlineFriendlyMsg],
+      reply: offlineFriendlyMsg,
       session_title: formattedTopic,
       sessionTitle: formattedTopic,
       should_update_title: true,
@@ -1499,9 +1680,10 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean, 
   }
 
   // MẶC ĐỊNH
+  const defaultOfflineMsg = 'Hiện tại mình đang bị gián đoạn kết nối một chút, bạn nhắn lại câu hỏi sau vài giây nhé!';
   return {
-    replies: ['nghe đây', 'có vụ gì mới à'],
-    reply: 'nghe đây',
+    replies: [defaultOfflineMsg],
+    reply: defaultOfflineMsg,
     session_title: '',
     sessionTitle: '',
     should_update_title: false,

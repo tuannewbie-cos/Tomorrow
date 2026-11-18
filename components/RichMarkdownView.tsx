@@ -47,14 +47,32 @@ export function convertLatexToUnicode(latex: string): string {
 
   let res = latex;
 
-  // Fractions: \frac{a}{b} -> (a / b)
-  res = res.replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1 / $2)');
+  // 1. Loại bỏ các lệnh bọc dấu ngoặc \left và \right
+  res = res.replace(/\\left\s*([(\[{|])/g, '$1');
+  res = res.replace(/\\right\s*([)\]}|])/g, '$1');
+  res = res.replace(/\\left\./g, '');
+  res = res.replace(/\\right\./g, '');
 
-  // Square roots: \sqrt{x} -> √(x), \sqrt[n]{x} -> ⁿ√(x)
-  res = res.replace(/\\sqrt\[([^\]]+)\]\{([^}]+)\}/g, '$1√($2)');
-  res = res.replace(/\\sqrt\{([^}]+)\}/g, '√($1)');
+  // 2. Căn bậc hai (xử lý trước để loại bỏ ngoặc nhọn lồng nhau cho phân số)
+  while (/\\sqrt\[([^\]]+)\]\{([^{}]+)\}/.test(res)) {
+    res = res.replace(/\\sqrt\[([^\]]+)\]\{([^{}]+)\}/g, '$1√($2)');
+  }
+  while (/\\sqrt\{([^{}]+)\}/.test(res)) {
+    res = res.replace(/\\sqrt\{([^{}]+)\}/g, '√($1)');
+  }
 
-  // Greek letters
+  // 3. Phân số: \frac{a}{b} -> (a / b) (hỗ trợ phân số lồng nhau)
+  while (/\\frac\{([^{}]+)\}\{([^{}]+)\}/.test(res)) {
+    res = res.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1 / $2)');
+  }
+
+  // 4. Môi trường ma trận LaTeX: \begin{matrix} ... \end{matrix}
+  res = res.replace(/\\begin\{[a-zA-Z]*matrix\}/g, '[');
+  res = res.replace(/\\end\{[a-zA-Z]*matrix\}/g, ']');
+  res = res.replace(/\\\\/g, '; ');
+  res = res.replace(/&/g, ', ');
+
+  // 5. Ký tự Hy Lạp
   const greekMap: Record<string, string> = {
     '\\alpha': 'α',
     '\\beta': 'β',
@@ -90,8 +108,9 @@ export function convertLatexToUnicode(latex: string): string {
     res = res.split(k).join(v);
   }
 
-  // Math operators & symbols
+  // 6. Toán tử và ký hiệu toán học (Bổ sung \mid cho P(A|B))
   const symbolMap: Record<string, string> = {
+    '\\mid': '|',
     '\\sum': '∑',
     '\\prod': '∏',
     '\\int': '∫',
@@ -136,7 +155,7 @@ export function convertLatexToUnicode(latex: string): string {
     res = res.split(k).join(v);
   }
 
-  // Superscripts
+  // 7. Số mũ (Superscripts)
   const superMap: Record<string, string> = {
     '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
     '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹',
@@ -150,7 +169,7 @@ export function convertLatexToUnicode(latex: string): string {
   });
   res = res.replace(/\^([0-9a-zA-Z+-])/g, (_, c) => superMap[c] || c);
 
-  // Subscripts
+  // 8. Chỉ số dưới (Subscripts)
   const subMap: Record<string, string> = {
     '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
     '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
@@ -166,8 +185,8 @@ export function convertLatexToUnicode(latex: string): string {
   });
   res = res.replace(/_([0-9a-zA-Z+-])/g, (_, c) => subMap[c] || c);
 
-  // Strip LaTeX wrappers
-  res = res.replace(/\\(text|mathbf|mathit|mathrm)\{([^}]+)\}/g, '$2');
+  // 9. Gỡ bỏ vỏ bọc văn bản LaTeX
+  res = res.replace(/\\(text|textbf|textit|mathrm|mathbf)\{([^}]+)\}/g, '$2');
   res = res.replace(/\\,/g, ' ');
   res = res.replace(/\\;/g, ' ');
   res = res.replace(/\\quad/g, '   ');
@@ -189,11 +208,64 @@ export type MarkdownBlock =
   | { type: 'paragraph'; text: string };
 
 /**
+ * Phân tách các ô trong hàng bảng Markdown mà không cắt nhầm dấu | bên trong công thức toán $$...$$ hoặc inline code
+ */
+export function splitMarkdownTableRow(rowText: string): string[] {
+  const trimmed = rowText.trim();
+  const stripped = trimmed.replace(/^\|/, '').replace(/\|$/, '');
+  const cells: string[] = [];
+  let current = '';
+  let inDoubleDollar = false;
+  let inSingleDollar = false;
+  let inBacktick = false;
+
+  for (let i = 0; i < stripped.length; i++) {
+    const ch = stripped[i];
+    const next = stripped[i + 1];
+
+    if (ch === '\\' && (next === '|' || next === '$' || next === '`')) {
+      current += next;
+      i++;
+      continue;
+    }
+    if (ch === '`') {
+      inBacktick = !inBacktick;
+      current += ch;
+      continue;
+    }
+    if (!inBacktick && ch === '$' && next === '$') {
+      inDoubleDollar = !inDoubleDollar;
+      current += '$$';
+      i++;
+      continue;
+    }
+    if (!inBacktick && !inDoubleDollar && ch === '$') {
+      inSingleDollar = !inSingleDollar;
+      current += '$';
+      continue;
+    }
+    if (!inBacktick && !inDoubleDollar && !inSingleDollar && ch === '|') {
+      cells.push(current.trim());
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+/**
  * Bộ phân tích cú pháp khối Markdown tự chủ (Zero External Bundler Dependencies)
  */
 export function parseMarkdownBlocks(rawText: string): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = [];
-  const lines = (rawText || '').split(/\r?\n/);
+  // Chuẩn hóa các dấu xuống dòng bị escape
+  const normalizedText = (rawText || '')
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '  ');
+  const lines = normalizedText.split(/\r?\n/);
   let i = 0;
 
   while (i < lines.length) {
@@ -213,12 +285,13 @@ export function parseMarkdownBlocks(rawText: string): MarkdownBlock[] {
       if (i < lines.length && lines[i].trim().startsWith('```')) {
         i++; // Bỏ qua dòng đóng ```
       }
-      const code = codeLines.join('\n');
+      const code = codeLines.join('\n') + '\n';
+      const actualLines = code.split('\n');
       blocks.push({
         type: 'code',
         language: language.toUpperCase() || 'CODE',
         code,
-        lineCount: Math.max(codeLines.length, 1),
+        lineCount: Math.max(actualLines.length, 1),
       });
       continue;
     }
@@ -256,10 +329,7 @@ export function parseMarkdownBlocks(rawText: string): MarkdownBlock[] {
     ) {
       const headerLine = trimmed;
       const separatorLine = lines[i + 1].trim();
-      const headers = headerLine
-        .split('|')
-        .slice(1, -1)
-        .map((h) => h.trim());
+      const headers = splitMarkdownTableRow(headerLine);
       i += 2; // Bỏ qua header và dòng gạch
       const rows: string[][] = [];
       const tableRawLines = [headerLine, separatorLine];
@@ -267,10 +337,7 @@ export function parseMarkdownBlocks(rawText: string): MarkdownBlock[] {
       while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
         const rowLine = lines[i].trim();
         tableRawLines.push(rowLine);
-        const cells = rowLine
-          .split('|')
-          .slice(1, -1)
-          .map((c) => c.trim());
+        const cells = splitMarkdownTableRow(rowLine);
         rows.push(cells);
         i++;
       }
@@ -392,14 +459,19 @@ export function parseInlineMarkdown(text: string): InlineToken[] {
   const tokens: InlineToken[] = [];
   if (!text) return tokens;
 
-  // Regex nhận diện các token nội dòng
-  const INLINE_REGEX = /(\$[^$\n]+\$|`[^`\n]+`|\[[^\]]+\]\(https?:\/\/[^\s)]+\)|https?:\/\/[^\s)]+|\*\*[^*]+\*\*|\*[^*]+\*)/g;
+  // Regex nhận diện các token nội dòng: ưu tiên $$...$$ trước $...$, hỗ trợ cả **...** lẫn __...__
+  const INLINE_REGEX = /(\$\$[^$\n]+\$\$|\$[^$\n]+\$|`[^`\n]+`|\[[^\]]+\]\(https?:\/\/[^\s)]+\)|https?:\/\/[^\s)]+|\*\*[^*]+\*\*|__[^_]+__|\*[^*]+\*|_[^_]+_)/g;
   const parts = text.split(INLINE_REGEX);
 
   for (const part of parts) {
     if (!part) continue;
 
-    if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
+    if (part.startsWith('$$') && part.endsWith('$$') && part.length > 4) {
+      tokens.push({
+        type: 'math',
+        text: convertLatexToUnicode(part.slice(2, -2)),
+      });
+    } else if (part.startsWith('$') && part.endsWith('$') && part.length > 2) {
       tokens.push({
         type: 'math',
         text: convertLatexToUnicode(part.slice(1, -1)),
@@ -426,12 +498,18 @@ export function parseInlineMarkdown(text: string): InlineToken[] {
         text: part,
         url: part,
       });
-    } else if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+    } else if (
+      (part.startsWith('**') && part.endsWith('**') && part.length > 4) ||
+      (part.startsWith('__') && part.endsWith('__') && part.length > 4)
+    ) {
       tokens.push({
         type: 'bold',
         text: part.slice(2, -2),
       });
-    } else if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+    } else if (
+      (part.startsWith('*') && part.endsWith('*') && part.length > 2) ||
+      (part.startsWith('_') && part.endsWith('_') && part.length > 2)
+    ) {
       tokens.push({
         type: 'italic',
         text: part.slice(1, -1),
@@ -556,7 +634,7 @@ const CodeBlockView: React.FC<CodeBlockViewProps> = ({ language, code, lineCount
           <View style={styles.codeLinesCol}>
             {lines.map((line, idx) => (
               <Text key={`code-line-${idx}`} style={styles.codeLineText}>
-                {highlightCodeLine(line)}
+                {line.length === 0 ? ' ' : highlightCodeLine(line)}
               </Text>
             ))}
           </View>
@@ -573,9 +651,10 @@ interface TableViewProps {
   headers: string[];
   rows: string[][];
   theme: ThemeColors;
+  renderInline?: (text: string) => React.ReactNode;
 }
 
-const TableView: React.FC<TableViewProps> = ({ headers, rows, theme }) => {
+const TableView: React.FC<TableViewProps> = ({ headers, rows, theme, renderInline }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopyTable = async () => {
@@ -625,7 +704,9 @@ const TableView: React.FC<TableViewProps> = ({ headers, rows, theme }) => {
           <View style={[styles.tableRow, { backgroundColor: headerBg }]}>
             {headers.map((header, hIdx) => (
               <View key={`th-${hIdx}`} style={[styles.tableHeaderCell, { borderRightColor: tableBorderColor }]}>
-                <Text style={[styles.tableHeaderText, { color: headerTextColor }]}>{header}</Text>
+                <Text style={[styles.tableHeaderText, { color: headerTextColor }]}>
+                  {renderInline ? renderInline(header) : header}
+                </Text>
               </View>
             ))}
           </View>
@@ -640,7 +721,9 @@ const TableView: React.FC<TableViewProps> = ({ headers, rows, theme }) => {
               <View key={`tr-${rIdx}`} style={[styles.tableRow, { backgroundColor: rowBg, borderTopColor: tableBorderColor }]}>
                 {row.map((cell, cIdx) => (
                   <View key={`td-${rIdx}-${cIdx}`} style={[styles.tableCell, { borderRightColor: tableBorderColor }]}>
-                    <Text style={[styles.tableCellText, { color: cellTextColor }]}>{cell}</Text>
+                    <Text style={[styles.tableCellText, { color: cellTextColor }]}>
+                      {renderInline ? renderInline(cell) : cell}
+                    </Text>
                   </View>
                 ))}
               </View>
@@ -807,6 +890,7 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
               headers={block.headers}
               rows={block.rows}
               theme={theme}
+              renderInline={renderInline}
             />
           );
         }
@@ -1085,6 +1169,7 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     lineHeight: 20,
     color: '#E6EDF3',
+    ...(Platform.OS === 'web' ? ({ whiteSpace: 'pre' } as any) : {}),
   },
   tableWrapper: {
     borderRadius: 8,

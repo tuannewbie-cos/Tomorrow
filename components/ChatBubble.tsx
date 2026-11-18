@@ -36,7 +36,8 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
 
   // 1. Kiểm tra nhanh nội dung có chứa khối Rich Markdown không (Code block, Table, Math, Heading)
   const messageText = message.text || '';
-  const hasRichBlock = /```|\n\|.*\|.*\n|^#{1,3}\s|\$\$/.test(messageText);
+  const normalizedText = messageText.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
+  const hasRichBlock = /```|\|.*\||^#{1,3}\s|\$\$|\$/.test(normalizedText);
 
   // 2. Tính toán Dual-Width Bubble:
   // - Nếu hasRichBlock === false: maxWidth gọn gàng (75% desktop, 85% mobile), padding Messenger chuẩn

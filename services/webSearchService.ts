@@ -14,6 +14,66 @@ export interface WebSearchContext {
 const URL_REGEX = /(https?:\/\/[^\s]+)/i;
 
 /**
+ * 0. NHẬN DIỆN TRUY VẤN HÀN LÂM / KHOA HỌC / THUẬT TOÁN / CODE
+ * Nhận diện câu hỏi thuộc khối Toán học, Khoa học tự nhiên, Thuật toán, Lập trình
+ * để BỎ QUA tra cứu web ngoài, ưu tiên phản hồi tức thì từ bộ não LLM (không bị watchdog 12s timeout).
+ */
+export function isAcademicOrCodeQuery(text: string): boolean {
+  const lower = (text || '').toLowerCase();
+
+  // 1. Dấu hiệu khối code Markdown hoặc từ khóa cú pháp lập trình
+  if (
+    lower.includes('```') ||
+    lower.includes('function') ||
+    lower.includes('def ') ||
+    lower.includes('const ') ||
+    lower.includes('class ') ||
+    lower.includes('import ') ||
+    lower.includes('export ')
+  ) {
+    return true;
+  }
+
+  // 2. Từ khóa Toán học & Công thức
+  const mathKeywords = [
+    'định lý', 'dinh ly', 'định luật', 'dinh luat', 'chứng minh', 'chung minh',
+    'công thức', 'cong thuc', 'tính toán', 'tinh toan', 'phương trình', 'phuong trinh',
+    'hệ phương trình', 'bất đẳng thức', 'tích phân', 'tich phan', 'đạo hàm', 'dao ham',
+    'nguyên hàm', 'nguyen ham', 'giới hạn', 'ma trận', 'ma tran', 'vecto', 'vector',
+    'hình học', 'tam giác', 'đại số', 'giải tích', 'xác suất', 'xac suat', 'thống kê',
+    'bayes', 'pythagore', 'pythagoras', 'newton', 'euler', 'gauss', 'toán', 'toan',
+    'giải toán', 'giai toan', 'phép tính', 'tính nhẩm', 'nhị thức', 'tích vô hướng'
+  ];
+  if (mathKeywords.some((kw) => lower.includes(kw))) {
+    return true;
+  }
+
+  // 3. Từ khóa Khoa học Tự nhiên
+  const scienceKeywords = [
+    'vật lý', 'vat ly', 'hóa học', 'hoa hoc', 'sinh học', 'sinh hoc',
+    'thuyết tương đối', 'nguyên tử', 'phân tử', 'quang hợp', 'hóa trị',
+    'bảng tuần hoàn', 'gia tốc', 'vận tốc', 'động năng', 'thế năng', 'quang phổ'
+  ];
+  if (scienceKeywords.some((kw) => lower.includes(kw))) {
+    return true;
+  }
+
+  // 4. Từ khóa Lập trình & Thuật toán
+  const codeKeywords = [
+    'viết code', 'viet code', 'thuật toán', 'thuat toan', 'algorithm',
+    'quicksort', 'mergesort', 'binary search', 'cấu trúc dữ liệu', 'data structure',
+    'lập trình', 'lap trinh', 'oop', 'kế thừa', 'đa hình', 'python', 'javascript',
+    'typescript', 'c++', 'java', 'sql', 'react', 'vue', 'lỗi code', 'debug code',
+    'giải thuật', 'regex', 'biểu thức chính quy'
+  ];
+  if (codeKeywords.some((kw) => lower.includes(kw))) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * 1. PHÁT HIỆN Ý ĐỊNH CẦN TRA CỨU WEB (shouldTriggerWebSearch)
  */
 export function shouldTriggerWebSearch(userText: string, forceSearch: boolean = false): boolean {
@@ -31,17 +91,33 @@ export function shouldTriggerWebSearch(userText: string, forceSearch: boolean = 
     return false;
   }
 
+  // CÁC TỪ KHÓA ÉP BUỘC TRA CỨU WEB / KIỂM CHỨNG TIN TỨC RÕ RÀNG
+  const explicitSearchKeywords = [
+    'check web', 'kiểm tra web', 'kiem tra web', 'đưa đường dẫn', 'dua duong dan',
+    'đưa link', 'dua link', 'xin link', 'cho xin link', 'đưa link đi', 'dua link di',
+    'tìm lại đi', 'tim lai di', 'check lại xem', 'check lai xem',
+    'nguồn đâu', 'nguon dau', 'dẫn chứng', 'dan chung',
+    'tìm trên mạng', 'tim tren mang', 'search web', 'tin tức mới nhất', 'hôm nay'
+  ];
+  const hasExplicitSearch = explicitSearchKeywords.some((kw) => lower.includes(kw));
+
+  // NẾU LÀ CÂU HỎI TOÁN HỌC / KHOA HỌC / CODE VÀ KHÔNG YÊU CẦU TÌM WEB CỤ THỂ:
+  // BỎ QUA TRA CỨU WEB ĐỂ TĂNG TỐC PHẢN HỒI SIÊU TỐC VÀ TRÁNH WATCHDOG TIMEOUT
+  if (isAcademicOrCodeQuery(text) && !hasExplicitSearch) {
+    return false;
+  }
+
   // 1. Có chứa đường dẫn URL
   if (URL_REGEX.test(text)) {
     return true;
   }
 
-  // 2. Từ khóa thời gian thực & tin tức nóng
+  // 2. Từ khóa thời gian thực & tin tức nóng (Đã làm sạch, tránh từ đơn lẻ gây trigger nhầm)
   const realTimeKeywords = [
-    'hôm nay', 'hom nay', 'hiện tại', 'hien tai', 'mới nhất', 'moi nhat',
+    'hôm nay', 'hom nay', 'mới nhất', 'moi nhat',
     'vừa mới', 'vua moi', 'tin tức', 'tin tuc', 'tình hình', 'tinh hinh',
     'năm nay', 'nam nay', '2025', '2026', 'bây giờ', 'bay gio',
-    'lịch thi đấu', 'lich thi dau', 'kết quả', 'ket qua', 'tỷ số', 'ty so',
+    'lịch thi đấu', 'lich thi dau', 'kết quả bóng đá', 'kết quả trận đấu', 'tỷ số', 'ty so',
     'bảng xếp hạng', 'bang xep hang', 'vòng bảng', 'chung kết', 'bán kết'
   ];
   if (realTimeKeywords.some((kw) => lower.includes(kw))) {
@@ -58,12 +134,10 @@ export function shouldTriggerWebSearch(userText: string, forceSearch: boolean = 
     return true;
   }
 
-  // 4. Câu hỏi tra cứu dữ kiện, số liệu thị trường chuyên biệt
+  // 4. Câu hỏi tra cứu dữ kiện cụ thể (Đã loại bỏ từ đơn lẻ như 'thống kê', 'cấu hình', 'tìm giúp', 'search')
   const queryQuestions = [
-    'bao nhiêu bàn', 'bao nhieu ban', 'tìm giúp', 'tim giup',
-    'search', 'tra cứu', 'tra cuu', 'trên mạng', 'tren mang', 'trên web', 'tren web',
-    'thống kê', 'thong ke', 'cấu hình', 'cau hinh', 'giá bao nhiêu', 'gia bao nhieu',
-    'người sáng lập', 'CEO của', 'bao nhiêu tuổi'
+    'bao nhiêu bàn', 'bao nhieu ban', 'trên mạng', 'tren mang', 'trên web', 'tren web',
+    'giá bao nhiêu', 'gia bao nhieu', 'người sáng lập', 'CEO của', 'bao nhiêu tuổi'
   ];
   if (queryQuestions.some((q) => lower.includes(q))) {
     return true;
@@ -76,8 +150,8 @@ export function shouldTriggerWebSearch(userText: string, forceSearch: boolean = 
     'tìm lại đi', 'tim lai di', 'check lại xem', 'check lai xem',
     'nguồn đâu', 'nguon dau', 'source', 'dẫn chứng', 'dan chung',
     'thật không', 'that khong', 'có thật không', 'co that khong',
-    'bị sa thải', 'bi sa thai', 'sa thải', 'từ chức', 'mới nhất',
-    'hiện tại', 'xong chưa', 'xác thực', 'xac thuc', 'kiểm chứng', 'kiem chung'
+    'bị sa thải', 'bi sa thai', 'sa thải', 'từ chức',
+    'xong chưa', 'xác thực', 'xac thuc', 'kiểm chứng', 'kiem chung'
   ];
   if (verificationKeywords.some((vk) => lower.includes(vk))) {
     return true;
