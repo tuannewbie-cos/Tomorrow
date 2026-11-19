@@ -288,12 +288,16 @@ export default function App() {
       try {
         aiResponse = await Promise.race([aiResponsePromise, timeoutPromise]);
       } catch (err: any) {
-        console.error('[AI Error Detail]:', err?.message || err);
+        const errMsg = err?.message || 'Unknown error';
+        console.error('[AI Error Detail]:', errMsg);
         aiResponse = localResilientFallback(text, false, userMemory);
         if (!aiResponse || !aiResponse.replies || aiResponse.replies.length === 0) {
           const isTM = userMemory.nickname === 'm' || /^(t|m|tao|mày)\b/i.test(text);
+          const errorDisplay = isTM
+            ? `Lỗi hệ thống (${errMsg}) — m thử gửi lại giúp t nhé!`
+            : `Lỗi hệ thống (${errMsg}) — bạn thử gửi lại giúp mình nhé!`;
           aiResponse = {
-            replies: [isTM ? 'mạng bên t đang hơi lag chút, m nhắn lại câu vừa rồi giúp t nhé' : 'mạng bên mình đang hơi lag chút, bạn nhắn lại câu vừa rồi giúp mình nhé'],
+            replies: [errorDisplay],
             conversation_state: 'casual_friend',
             should_update_title: false,
           };
@@ -507,7 +511,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.2.4</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.2.5</Text>
               </View>
             </View>
           </View>

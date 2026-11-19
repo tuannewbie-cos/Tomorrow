@@ -201,9 +201,22 @@ export function buildLocalReflexDirective(
     'thuật toàn', 'thuat toan', 'bubble sort', 'bubblesort', 'quicksort', 'mergesort',
     'đệ quy', 'de quy', 'sắp xếp', 'sap xep', 'usedebounce', 'debounce',
     'tế bào', 'te bao', 'phản ứng', 'phan ung', 'axit', 'bazo', 'chất khử', 'chất oxi hóa',
-    'di truyền', 'di truyen', 'nhiễm sắc thể', 'dna', 'rna', 'sinh học', 'sinh hoc'
+    'di truyền', 'di truyen', 'nhiễm sắc thể', 'dna', 'rna', 'sinh học', 'sinh hoc',
+    // Bổ sung ngôn ngữ lập trình & câu hỏi code tiếp nối
+    'ngôn ngữ c', 'ngon ngu c', 'ngôn ngữ lập trình', 'ngôn ngữ', 'ngon ngu', 'trong c', 'bằng c', 'bang c', 'code c',
+    'c++', 'c#', 'python', 'java', 'golang', 'rust', 'swift', 'kotlin',
+    'javascript', 'typescript', 'php', 'ruby', 'sql', 'html', 'css', 'printf', 'scanf', 'include'
   ];
-  const hasExpertWord = expertKeywords.some((kw) => lower.includes(kw)) || trimmed.includes('```');
+
+  // Kiểm tra nếu lượt trước model đã trả về code hoặc thuật toán, và user hỏi tiếp nối (VD: "trong ngôn ngữ c", "còn python", "tối ưu hơn")
+  const lastModelMsg = (recentHistory || [])
+    .filter((m) => m.role === 'model' || m.sender === 'ai')
+    .slice(-1)[0]?.text || '';
+  const isCodeFollowUp =
+    (lastModelMsg.includes('```') || lastModelMsg.toLowerCase().includes('thuật toán') || lastModelMsg.toLowerCase().includes('bubble sort')) &&
+    (lower.includes(' c') || lower.includes('ngôn ngữ') || lower.includes('code') || lower.includes('python') || lower.includes('java') || lower.includes('viết lại') || lower.includes('tối ưu') || lower.includes('trong '));
+
+  const hasExpertWord = expertKeywords.some((kw) => lower.includes(kw)) || trimmed.includes('```') || isCodeFollowUp;
 
   if (wordCount > 18 || hasExpertWord) {
     const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS | ${pronounRule} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc. Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng (explicit line breaks), thụt lề chuẩn (4 spaces cho Python, 2 spaces cho TS/JS), CẤM viết dồn 1 dòng. Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
@@ -456,29 +469,35 @@ export function isNetworkErrorMessage(text: string): boolean {
     lower.includes('mạng chập chờn') ||
     lower.includes('kiểm tra kết nối') ||
     lower.includes('watchdog_timeout') ||
-    lower.includes('network error')
+    lower.includes('network error') ||
+    lower.includes('lỗi hệ thống') ||
+    lower.includes('loi he thong') ||
+    lower.includes('chưa nhận được phản hồi từ ai') ||
+    lower.includes('hệ thống chưa kết nối được ai')
   );
 }
 
 /**
- * Chuẩn hóa lịch sử hội thoại nhiều lượt (Multi-turn History Normalization):
- * - Lọc bỏ thông báo lỗi mạng cũ và tin nhắn rỗng.
+ * Chuẩn hóa lịch sử hội thoại trước khi gửi lên API (OpenAI / Gemini) — normalizeHistoryForAPI:
+ * - Lọc bỏ thông báo lỗi mạng cũ, lỗi hệ thống và tin nhắn rỗng.
  * - Loại bỏ tin nhắn người dùng cuối bị trùng lặp nếu recentChats đã chứa tin nhắn hiện tại.
+ * - Nếu trong lịch sử cũ có khối code dài (> 400 ký tự) ở các lượt xa (> 4 lượt gần nhất), rút gọn để tiết kiệm token và tránh tràn context.
  * - Đảm bảo tin nhắn đầu tiên gửi đến API LUÔN có role 'user'.
- * - Gộp các tin nhắn liên tiếp cùng role bằng 2 dấu xuống dòng (\n\n).
- * - Đảm bảo danh sách luân phiên nghiêm ngặt giữa user và model/assistant.
+ * - Gộp TẤT CẢ các tin nhắn liên tiếp cùng role (đặc biệt là các bong bóng model kề nhau) thành 1 tin nhắn duy nhất (nối bằng \n\n).
+ * - Đảm bảo tin nhắn cuối cùng trong mảng gửi lên API luôn là tin nhắn hiện tại của user.
  */
-export function normalizeChatHistory(
+export function normalizeHistoryForAPI(
   recentChats: ChatMessage[] = [],
   currentText: string = '',
   currentImageBase64?: string,
   target: 'gemini' | 'openai' = 'gemini'
 ): NormalizedChatMessage[] {
-  // 1. Lọc bỏ các tin nhắn lỗi mạng và tin nhắn hoàn toàn rỗng
+  // 1. Lọc bỏ các tin nhắn lỗi mạng/hệ thống và tin nhắn hoàn toàn rỗng
   const valid = (recentChats || []).filter((m) => {
     if (!m) return false;
-    if (isNetworkErrorMessage(m.text || '')) return false;
-    if (!m.text?.trim() && !m.imageBase64 && !m.imageUri) return false;
+    const txt = m.text || '';
+    if (isNetworkErrorMessage(txt)) return false;
+    if (!txt.trim() && !m.imageBase64 && !m.imageUri) return false;
     return true;
   });
 
@@ -489,14 +508,30 @@ export function normalizeChatHistory(
     if (isUser && last.text) {
       const lastTrim = last.text.trim();
       const currTrim = currentText.trim();
-      if (lastTrim === currTrim || currTrim.startsWith(lastTrim)) {
+      if (lastTrim === currTrim || currTrim.startsWith(lastTrim) || lastTrim.startsWith(currTrim)) {
         valid.pop();
       }
     }
   }
 
-  // 3. Chuyển đổi role theo target API
-  const mapped: NormalizedChatMessage[] = valid.map((m) => {
+  // 3. Rút gọn các khối code quá dài (> 400 ký tự) ở các lượt cũ (ngoài 4 tin nhắn gần nhất)
+  const historyLen = valid.length;
+  const pruned = valid.map((m, idx) => {
+    // Chỉ giữ nguyên vẹn 4 tin nhắn gần nhất
+    if (idx < historyLen - 4 && m.text && m.text.length > 400) {
+      const text = m.text;
+      const shortened = text.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]{300,})```/g, (_match, lang, code) => {
+        const lines = code.split('\n');
+        const preview = lines.slice(0, 5).join('\n');
+        return `\`\`\`${lang}\n${preview}\n... [đã rút gọn khối code cũ]\n\`\`\``;
+      });
+      return { ...m, text: shortened };
+    }
+    return m;
+  });
+
+  // 4. Chuyển đổi role theo target API
+  const mapped: NormalizedChatMessage[] = pruned.map((m) => {
     const isUser = m.role === 'user' || m.sender === 'user';
     return {
       role: isUser ? 'user' : (target === 'gemini' ? 'model' : 'assistant'),
@@ -505,12 +540,12 @@ export function normalizeChatHistory(
     };
   });
 
-  // 4. Đảm bảo tin nhắn đầu tiên LUÔN là role 'user' (loại bỏ các tin chào/model ở đầu)
+  // 5. Đảm bảo tin nhắn đầu tiên LUÔN là role 'user' (loại bỏ các tin chào/model ở đầu)
   while (mapped.length > 0 && mapped[0].role !== 'user') {
     mapped.shift();
   }
 
-  // 5. Gộp các tin nhắn liên tiếp cùng role bằng 2 dấu xuống dòng (\n\n)
+  // 6. Gộp TẤT CẢ các tin nhắn liên tiếp cùng role thành 1 tin nhắn duy nhất (nối bằng \n\n)
   const merged: NormalizedChatMessage[] = [];
   for (const msg of mapped) {
     if (merged.length === 0) {
@@ -528,14 +563,12 @@ export function normalizeChatHistory(
     }
   }
 
-  // 6. Đính kèm tin nhắn hiện tại của người dùng vào cuối
+  // 7. Đảm bảo tin nhắn hiện tại của người dùng LUÔN ở cuối cùng với role 'user'
   if (currentText.trim() || currentImageBase64) {
     const userRole: 'user' = 'user';
     if (merged.length > 0 && merged[merged.length - 1].role === userRole) {
-      merged[merged.length - 1].text = merged[merged.length - 1].text
-        ? `${merged[merged.length - 1].text}\n\n${currentText}`
-        : currentText;
-      if (currentImageBase64 && !merged[merged.length - 1].imageBase64) {
+      merged[merged.length - 1].text = currentText;
+      if (currentImageBase64) {
         merged[merged.length - 1].imageBase64 = currentImageBase64;
       }
     } else {
@@ -549,6 +582,8 @@ export function normalizeChatHistory(
 
   return merged;
 }
+
+export const normalizeChatHistory = normalizeHistoryForAPI;
 
 /**
  * Làm sạch văn bản đàm thoại nhưng bảo toàn tuyệt đối 100% các khối code ```lang ... ```
@@ -1086,6 +1121,40 @@ export function safeParseAIJson(rawText: string): any {
         };
       }
     }
+  }
+
+  // Tầng 3b: Chống sập khi code C/C++/Java chứa printf("...\n"), dấu ngoặc kép hoặc thoát ký tự hỏng JSON:
+  let fallbackExtract = trimmed
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .replace(/^\s*\{\s*"conversation_state"\s*:\s*"[^"]*"\s*,\s*"replies"\s*:\s*\[\s*"/i, '')
+    .replace(/"\s*\]\s*,\s*"session_title"[\s\S]*$/i, '')
+    .replace(/"\s*\]\s*,\s*"should_update_title"[\s\S]*$/i, '')
+    .replace(/"\s*\]\s*\}?\s*$/i, '')
+    .replace(/\\n/g, '\n')
+    .replace(/\\"/g, '"')
+    .trim();
+
+  // Nếu vẫn còn sót chuỗi JSON bọc ngoài do cú pháp lộn xộn
+  if (fallbackExtract.startsWith('{') && fallbackExtract.includes('"replies"')) {
+    const match = fallbackExtract.match(/"replies"\s*:\s*\[\s*"([\s\S]*)/i);
+    if (match && match[1]) {
+      fallbackExtract = match[1]
+        .replace(/"\s*\][\s\S]*$/i, '')
+        .replace(/\\n/g, '\n')
+        .replace(/\\"/g, '"')
+        .trim();
+    }
+  }
+
+  if (fallbackExtract.length > 0 && !fallbackExtract.startsWith('{')) {
+    return {
+      conversation_state: 'expert_jarvis',
+      replies: [fallbackExtract],
+      session_title: '',
+      should_update_title: false,
+      memory_note: '',
+    };
   }
 
   // Tầng 4 (Chốt chặn cuối cùng): Làm sạch vỏ bọc ```json ... ``` và trả thẳng nội dung văn bản cho người dùng
@@ -1766,12 +1835,39 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean, 
     };
   }
 
+  // 11D. BUBBLE SORT TRONG NGÔN NGỮ C / C CODE OFFLINE RESILIENT
+  if (
+    (lower.includes(' c') || lower === 'c' || lower.includes('ngôn ngữ c') || lower.includes('trong c')) &&
+    (lower.includes('bubble') || lower.includes('sắp xếp') || lower.includes('thuật toán') || lower.includes('thuật toàn') || lower.includes('code'))
+  ) {
+    return {
+      replies: [
+        'Dưới đây là mã nguồn thuật toán Bubble Sort (Sắp xếp nổi bọt) bằng ngôn ngữ C chuẩn chỉnh:',
+        '```c\n#include <stdio.h>\n\nvoid bubbleSort(int arr[], int n) {\n    int i, j, temp;\n    int swapped;\n    for (i = 0; i < n - 1; i++) {\n        swapped = 0;\n        for (j = 0; j < n - i - 1; j++) {\n            if (arr[j] > arr[j + 1]) {\n                temp = arr[j];\n                arr[j] = arr[j + 1];\n                arr[j + 1] = temp;\n                swapped = 1;\n            }\n        }\n        if (swapped == 0)\n            break;\n    }\n}\n\nvoid printArray(int arr[], int size) {\n    for (int i = 0; i < size; i++) {\n        printf("%d ", arr[i]);\n    }\n    printf("\\n");\n}\n\nint main() {\n    int arr[] = {64, 34, 25, 12, 22, 11, 90};\n    int n = sizeof(arr) / sizeof(arr[0]);\n    bubbleSort(arr, n);\n    printf("Mảng sau khi sắp xếp: \\n");\n    printArray(arr, n);\n    return 0;\n}\n```',
+        'Mã nguồn C trên sử dụng cờ `swapped` để dừng sớm với độ phức tạp tốt nhất O(n), xấu nhất O(n²), bộ nhớ phụ trợ O(1).'
+      ],
+      reply: 'Dưới đây là mã nguồn thuật toán Bubble Sort bằng ngôn ngữ C',
+      session_title: 'Thuật toán Bubble Sort trong C',
+      sessionTitle: 'Thuật toán Bubble Sort trong C',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'gemini_expert',
+      conversationState: 'gemini_expert',
+      memory_note: 'Học thuật toán Bubble Sort trong ngôn ngữ C',
+      memoryNote: 'Học thuật toán Bubble Sort trong ngôn ngữ C',
+      jarvis_intent: 'work_assist',
+    };
+  }
+
   // 12. CÁC CÂU NÓI CÓ NỘI DUNG RÕ RÀNG (CASUAL FRIEND / GEMINI EXPERT)
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length >= 3 && !isPlaceholderOrNoiseTitle(text)) {
     const rawTopic = words.slice(0, 5).join(' ');
     const formattedTopic = rawTopic.charAt(0).toUpperCase() + rawTopic.slice(1);
-    const offlineFriendlyMsg = 'Hiện tại mình đang gặp trục trặc kết nối mạng một chút, bạn thử bấm gửi lại câu hỏi giúp mình nhé!';
+    const isTM = userMemory?.nickname === 'm' || /^(t|m|tao|mày)\b/i.test(text);
+    const offlineFriendlyMsg = isTM
+      ? 'Chưa nhận được phản hồi từ AI (Offline/Timeout), m bấm gửi lại câu hỏi giúp t nhé!'
+      : 'Chưa nhận được phản hồi từ AI (Offline/Timeout), bạn bấm gửi lại câu hỏi giúp mình nhé!';
     return {
       replies: [offlineFriendlyMsg],
       reply: offlineFriendlyMsg,
@@ -1788,7 +1884,10 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean, 
   }
 
   // MẶC ĐỊNH
-  const defaultOfflineMsg = 'Hiện tại mình đang bị gián đoạn kết nối một chút, bạn nhắn lại câu hỏi sau vài giây nhé!';
+  const isTM = userMemory?.nickname === 'm' || /^(t|m|tao|mày)\b/i.test(text);
+  const defaultOfflineMsg = isTM
+    ? 'Hệ thống chưa kết nối được AI (Offline/Timeout), m nhắn lại sau vài giây nhé!'
+    : 'Hệ thống chưa kết nối được AI (Offline/Timeout), bạn nhắn lại sau vài giây nhé!';
   return {
     replies: [defaultOfflineMsg],
     reply: defaultOfflineMsg,
@@ -1946,9 +2045,21 @@ export async function sendMessageToTomorrow(
     }
     return fallbackRes;
   } catch (error: any) {
-    console.error('[AI Error Detail]:', error?.message || error);
-    const fallbackRes = localResilientFallback(userText, !!imageBase64, userMemory);
-    return fallbackRes;
+    const errMsg = error?.message || 'Unknown error';
+    console.error('[AI Error Detail]:', errMsg);
+    const isTM = userMemory?.nickname === 'm' || /^(t|m|tao|mày)\b/i.test(userText);
+    const errorDisplay = isTM
+      ? `Lỗi hệ thống (${errMsg}) — m thử gửi lại giúp t nhé!`
+      : `Lỗi hệ thống (${errMsg}) — bạn thử gửi lại giúp mình nhé!`;
+    return {
+      replies: [errorDisplay],
+      reply: errorDisplay,
+      session_title: '',
+      should_update_title: false,
+      conversation_state: 'casual_friend',
+      memory_note: '',
+      jarvis_intent: 'chat',
+    };
   }
 }
 

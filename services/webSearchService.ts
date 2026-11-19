@@ -71,7 +71,8 @@ export function isAcademicOrCodeQuery(text: string): boolean {
     'cấu trúc dữ liệu', 'data structure', 'đệ quy', 'de quy', 'độ phức tạp', 'do phuc tap',
     'lập trình', 'lap trinh', 'oop', 'kế thừa', 'đa hình', 'python', 'javascript',
     'typescript', 'c++', 'java', 'sql', 'react', 'vue', 'lỗi code', 'debug code',
-    'giải thuật', 'regex', 'biểu thức chính quy', 'sắp xếp', 'sap xep'
+    'giải thuật', 'regex', 'biểu thức chính quy', 'sắp xếp', 'sap xep',
+    'ngôn ngữ c', 'ngon ngu c', 'ngôn ngữ lập trình', 'trong c', 'bằng c', 'bang c', 'code c'
   ];
   if (codeKeywords.some((kw) => lower.includes(kw))) {
     return true;
