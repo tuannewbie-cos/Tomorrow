@@ -39,6 +39,9 @@ const ALL_GEMINI_KEYS = [PRIMARY_GEMINI_KEY, ...BACKUP_GEMINI_KEYS].filter((k) =
  * - gemini-2.5-flash, gemini-2.0-flash, gemini-2.0-flash-lite, gemini-1.5-flash (Chuẩn Google API)
  */
 export const FREE_MODEL_CHAIN: string[] = [
+  'gemini-3.5-flash-lite',
+  'gemini-flash-lite-latest',
+  'gemini-3.1-flash-lite',
   'gemini-2.5-flash',
   'gemini-2.0-flash',
   'gemini-2.0-flash-lite',
@@ -193,7 +196,12 @@ export function buildLocalReflexDirective(
     'newton', 'euler', 'gauss', 'vectơ', 'vector',
     'giới hạn', 'gioi han', 'cấu trúc dữ liệu', 'cau truc du lieu',
     'thuyết tương đối', 'thuyet tuong doi', 'độ phức tạp', 'do phuc tap',
-    'vận tốc', 'van toc', 'gia tốc', 'gia toc'
+    'vận tốc', 'van toc', 'gia tốc', 'gia toc',
+    // Bổ sung từ khóa Thuật toán (kể cả typo 'thuật toàn') & Sinh - Hóa - Lập trình
+    'thuật toàn', 'thuat toan', 'bubble sort', 'bubblesort', 'quicksort', 'mergesort',
+    'đệ quy', 'de quy', 'sắp xếp', 'sap xep', 'usedebounce', 'debounce',
+    'tế bào', 'te bao', 'phản ứng', 'phan ung', 'axit', 'bazo', 'chất khử', 'chất oxi hóa',
+    'di truyền', 'di truyen', 'nhiễm sắc thể', 'dna', 'rna', 'sinh học', 'sinh hoc'
   ];
   const hasExpertWord = expertKeywords.some((kw) => lower.includes(kw)) || trimmed.includes('```');
 
@@ -240,8 +248,11 @@ NGUYÊN TẮC CỐT LÕI:
    - Khi viết code (Python, TypeScript, JavaScript, C, Java, C++,...), BẮT BUỘC xuống dòng rõ ràng cho từng câu lệnh (explicit line breaks \n). TUYỆT ĐỐI CẤM viết dồn code thành 1 dòng (condensed single-line code).
    - Tuân thủ thụt lề chuẩn: 4 khoảng trắng (4 spaces) cho Python; 2 khoảng trắng (2 spaces) cho TypeScript/JavaScript/JSON; thụt lề chuẩn theo scope cho C/C++/Java.
    - Đặt trọn vẹn toàn bộ khối code \`\`\`lang ... \`\`\` trong cùng một tin nhắn (bong bóng chat).
+7. QUY TẮC TRẢ LỜI KHOA HỌC TỰ NHIÊN (TOÁN, LÝ, HÓA, SINH) & THUẬT TOÁN:
+   - Khoa học Tự nhiên: Luôn tuân theo 3 bước mạch lạc: Khái niệm bản chất -> Công thức / Cơ chế / Đơn vị chuẩn SI -> Ví dụ thực tế hoặc tính toán cụ thể.
+   - Thuật toán & Lập trình: Phân tích độ phức tạp Big-O (Thời gian O(...) và Không gian bộ nhớ O(...)), giải thích luồng thực thi từng bước (step-by-step logic), điều kiện dừng sớm (early exit) và các trường hợp biên (edge cases). Khối code BẮT BUỘC giữ nguyên thụt lề và xuống dòng \n đầy đủ.
 
-6 VÍ DỤ MẪU CHUẨN XÁC (GOLDEN FEW-SHOT BANK):
+7 VÍ DỤ MẪU CHUẨN XÁC (GOLDEN FEW-SHOT BANK):
 - Mẫu 1 [MODE=PING]:
   User: "yo"
   Output: {"conversation_state":"ping","replies":["yo","nay có vụ gì mới thế"],"session_title":"","should_update_title":false,"memory_note":""}
@@ -264,7 +275,11 @@ NGUYÊN TẮC CỐT LÕI:
 
 - Mẫu 6 [MODE=EXPERT_JARVIS | Giải quyết vấn đề chuyên sâu]:
   User: "giải thích ngắn gọn tại sao nhồi quá nhiều chữ vào system prompt lại làm bot ngu đi"
-  Output: {"conversation_state":"gemini_expert","replies":["Do hiện tượng 'Lost in the Middle' — khi prompt quá dài và chồng chéo, cơ chế Attention của LLM bị phân tán, dẫn đến quên luật ở giữa, xung đột giọng điệu và tăng độ trễ sinh token.","Cách chuẩn nhất là dùng code cục bộ lọc tín hiệu trước (Local Reflex) kết hợp 5-6 ví dụ Few-Shot tinh gọn."],"session_title":"Tối ưu kiến trúc System Prompt","should_update_title":true,"memory_note":"Đang tối ưu kiến trúc AI cho dự án Tomorrow"}`;
+  Output: {"conversation_state":"gemini_expert","replies":["Do hiện tượng 'Lost in the Middle' — khi prompt quá dài và chồng chéo, cơ chế Attention của LLM bị phân tán, dẫn đến quên luật ở giữa, xung đột giọng điệu và tăng độ trễ sinh token.","Cách chuẩn nhất là dùng code cục bộ lọc tín hiệu trước (Local Reflex) kết hợp 5-6 ví dụ Few-Shot tinh gọn."],"session_title":"Tối ưu kiến trúc System Prompt","should_update_title":true,"memory_note":"Đang tối ưu kiến trúc AI cho dự án Tomorrow"}
+
+- Mẫu 7 [MODE=EXPERT_JARVIS | Giải thích thuật toán & Code chuẩn]:
+  User: "giải thích cho tôi thuật toàn bubble sort"
+  Output: {"conversation_state":"gemini_expert","replies":["Bubble Sort (Sắp xếp nổi bọt) là thuật toán sắp xếp cơ bản hoạt động bằng cách liên tục so sánh hai phần tử kề nhau và đổi chỗ nếu chúng sai thứ tự. Sau mỗi lượt lặp, phần tử lớn nhất sẽ 'nổi' dần về cuối mảng.\\n\\n• Độ phức tạp: Best Case O(n), Worst/Average Case O(n²), Không gian bộ nhớ O(1) (In-place).\\n• Tối ưu: Dùng cờ swapped để dừng sớm nếu mảng đã đúng thứ tự.","\`\`\`python\\ndef bubble_sort(arr):\\n    n = len(arr)\\n    for i in range(n):\\n        swapped = False\\n        for j in range(0, n - i - 1):\\n            if arr[j] > arr[j + 1]:\\n                arr[j], arr[j + 1] = arr[j + 1], arr[j]\\n                swapped = True\\n        if not swapped:\\n            break\\n    return arr\\n\\n# Test thử:\\nnums = [64, 34, 25, 12, 22, 11, 90]\\nprint(bubble_sort(nums))\\n\`\`\`"],"session_title":"Giải thích thuật toán Bubble Sort","should_update_title":true,"memory_note":"Tìm hiểu thuật toán Bubble Sort"}`;
 
 /**
  * Hàm phân tích phong cách & hành vi cục bộ (extractUserStyleLocal):
@@ -1700,6 +1715,53 @@ export function localResilientFallback(userMessage: string, hasImage?: boolean, 
       conversationState: 'gemini_expert',
       memory_note: 'Tìm hiểu về định lý Bayes và lý thuyết xác suất',
       memoryNote: 'Tìm hiểu về định lý Bayes và lý thuyết xác suất',
+      jarvis_intent: 'work_assist',
+    };
+  }
+
+  // 11B. THUẬT TOÁN BUBBLE SORT & SẮP XẾP OFFLINE RESILIENT (Kể cả typo 'thuật toàn')
+  if (
+    lower.includes('bubble sort') ||
+    lower.includes('bubblesort') ||
+    lower.includes('sắp xếp nổi bọt') ||
+    ((lower.includes('thuật toán') || lower.includes('thuật toàn') || lower.includes('giải thuật')) && lower.includes('bubble'))
+  ) {
+    return {
+      replies: [
+        'Bubble Sort (Sắp xếp nổi bọt) là thuật toán sắp xếp đơn giản hoạt động bằng cách liên tục so sánh hai phần tử liền kề và hoán đổi chúng nếu sai thứ tự. Sau mỗi lượt duyệt, phần tử lớn nhất sẽ "nổi" dần về cuối danh sách.',
+        'Độ phức tạp thời gian & không gian:\n• Thời gian tốt nhất (Best Case): O(n) (khi mảng đã được sắp xếp sẵn và có cờ kiểm tra `swapped`)\n• Thời gian trung bình & xấu nhất (Worst Case): O(n²)\n• Không gian phụ trợ: O(1) (thuật toán sắp xếp tại chỗ - In-place)',
+        '```python\ndef bubble_sort(arr):\n    n = len(arr)\n    for i in range(n):\n        swapped = False\n        for j in range(0, n - i - 1):\n            if arr[j] > arr[j + 1]:\n                arr[j], arr[j + 1] = arr[j + 1], arr[j]\n                swapped = True\n        if not swapped:\n            break  # Tối ưu: Dừng sớm nếu mảng đã đúng thứ tự\n    return arr\n\n# Ví dụ chạy thử:\nnumbers = [64, 34, 25, 12, 22, 11, 90]\nprint(bubble_sort(numbers))\n# Kết quả: [11, 12, 22, 25, 34, 64, 90]\n```'
+      ],
+      reply: 'Bubble Sort (Sắp xếp nổi bọt) là thuật toán sắp xếp đơn giản',
+      session_title: 'Thuật toán Bubble Sort',
+      sessionTitle: 'Thuật toán Bubble Sort',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'gemini_expert',
+      conversationState: 'gemini_expert',
+      memory_note: 'Tìm hiểu thuật toán Bubble Sort và độ phức tạp O(n^2)',
+      memoryNote: 'Tìm hiểu thuật toán Bubble Sort và độ phức tạp O(n^2)',
+      jarvis_intent: 'work_assist',
+    };
+  }
+
+  // 11C. HOOK USEDEBOUNCE / REACT TYPESCRIPT OFFLINE RESILIENT
+  if (lower.includes('usedebounce') || (lower.includes('debounce') && lower.includes('hook'))) {
+    return {
+      replies: [
+        'đây là custom hook `useDebounce` chuẩn TypeScript bằng generic, hỗ trợ hoãn giá trị của bất kỳ kiểu dữ liệu nào:',
+        '```tsx\nimport { useState, useEffect } from \'react\';\n\nexport function useDebounce<T>(value: T, delay: number): T {\n  const [debouncedValue, setDebouncedValue] = useState<T>(value);\n\n  useEffect(() => {\n    const handler = setTimeout(() => {\n      setDebouncedValue(value);\n    }, delay);\n\n    return () => {\n      clearTimeout(handler);\n    };\n  }, [value, delay]);\n\n  return debouncedValue;\n}\n```',
+        'Cách dùng cực đơn giản:\n• Truyền giá trị cần hoãn (ví dụ `searchTerm`) và thời gian `delay` (ms) vào hook.\n• Hook sẽ trả về giá trị mới sau khi người dùng ngừng gõ đủ khoảng thời gian đó, cực ngon khi gọi API search để không bị spam request.'
+      ],
+      reply: 'đây là custom hook useDebounce chuẩn TypeScript',
+      session_title: 'Custom Hook useDebounce',
+      sessionTitle: 'Custom Hook useDebounce',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'gemini_expert',
+      conversationState: 'gemini_expert',
+      memory_note: 'Lập trình custom hook useDebounce bằng TypeScript',
+      memoryNote: 'Lập trình custom hook useDebounce bằng TypeScript',
       jarvis_intent: 'work_assist',
     };
   }

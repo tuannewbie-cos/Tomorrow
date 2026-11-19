@@ -29,7 +29,11 @@ export function isAcademicOrCodeQuery(text: string): boolean {
     lower.includes('const ') ||
     lower.includes('class ') ||
     lower.includes('import ') ||
-    lower.includes('export ')
+    lower.includes('export ') ||
+    lower.includes('hook') ||
+    lower.includes('useeffect') ||
+    lower.includes('usestate') ||
+    lower.includes('bug')
   ) {
     return true;
   }
@@ -48,23 +52,26 @@ export function isAcademicOrCodeQuery(text: string): boolean {
     return true;
   }
 
-  // 3. Từ khóa Khoa học Tự nhiên
+  // 3. Từ khóa Khoa học Tự nhiên nền tảng (Lý, Hóa, Sinh)
   const scienceKeywords = [
     'vật lý', 'vat ly', 'hóa học', 'hoa hoc', 'sinh học', 'sinh hoc',
     'thuyết tương đối', 'nguyên tử', 'phân tử', 'quang hợp', 'hóa trị',
-    'bảng tuần hoàn', 'gia tốc', 'vận tốc', 'động năng', 'thế năng', 'quang phổ'
+    'bảng tuần hoàn', 'gia tốc', 'vận tốc', 'động năng', 'thế năng', 'quang phổ',
+    'tế bào', 'te bao', 'phản ứng', 'phan ung', 'axit', 'bazo', 'chất khử', 'chất oxi hóa',
+    'di truyền', 'nhiễm sắc thể', 'dna', 'rna', 'quang phổ', 'điện tích', 'từ trường'
   ];
   if (scienceKeywords.some((kw) => lower.includes(kw))) {
     return true;
   }
 
-  // 4. Từ khóa Lập trình & Thuật toán
+  // 4. Từ khóa Lập trình & Thuật toán (kể cả lỗi chính tả 'thuật toàn')
   const codeKeywords = [
-    'viết code', 'viet code', 'thuật toán', 'thuat toan', 'algorithm',
-    'quicksort', 'mergesort', 'binary search', 'cấu trúc dữ liệu', 'data structure',
+    'viết code', 'viet code', 'thuật toán', 'thuat toan', 'thuật toàn', 'thuat toan',
+    'algorithm', 'bubble sort', 'bubblesort', 'quicksort', 'mergesort', 'binary search',
+    'cấu trúc dữ liệu', 'data structure', 'đệ quy', 'de quy', 'độ phức tạp', 'do phuc tap',
     'lập trình', 'lap trinh', 'oop', 'kế thừa', 'đa hình', 'python', 'javascript',
     'typescript', 'c++', 'java', 'sql', 'react', 'vue', 'lỗi code', 'debug code',
-    'giải thuật', 'regex', 'biểu thức chính quy'
+    'giải thuật', 'regex', 'biểu thức chính quy', 'sắp xếp', 'sap xep'
   ];
   if (codeKeywords.some((kw) => lower.includes(kw))) {
     return true;

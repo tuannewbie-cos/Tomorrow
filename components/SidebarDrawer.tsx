@@ -64,13 +64,20 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   // Xác nhận xóa toàn bộ
   const handleConfirmClearAll = () => {
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm(
-        'Hành động này sẽ xóa vĩnh viễn tất cả các cuộc trò chuyện và thiết lập lại bộ nhớ tâm lý. Bạn có chắc không?'
-      );
-      if (confirmed) {
-        onClearAll();
-        if (!isDesktop) onClose();
-      }
+      try {
+        if (typeof window !== 'undefined' && typeof window.confirm === 'function') {
+          const confirmed = window.confirm(
+            'Hành động này sẽ xóa vĩnh viễn tất cả các cuộc trò chuyện và thiết lập lại bộ nhớ tâm lý. Bạn có chắc không?'
+          );
+          if (confirmed) {
+            onClearAll();
+            if (!isDesktop) onClose();
+          }
+          return;
+        }
+      } catch (_) {}
+      onClearAll();
+      if (!isDesktop) onClose();
       return;
     }
 
@@ -91,32 +98,16 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
     );
   };
 
-  // Xác nhận xóa 1 phiên
-  const handleConfirmDeleteSession = (session: ChatSession) => {
-    if (Platform.OS === 'web') {
-      const confirmed = window.confirm(
-        `Bạn có chắc muốn xóa cuộc trò chuyện "${formatSessionTitle(session.title)}" không?`
-      );
-      if (confirmed) {
-        onDeleteSession(session.id);
+  // Xóa 1 phiên trò chuyện: chặn nổi bọt sự kiện và xóa tức thì
+  const handleDeleteSessionItem = (session: ChatSession, e?: any) => {
+    if (e) {
+      if (typeof e.stopPropagation === 'function') e.stopPropagation();
+      if (typeof e.preventDefault === 'function') e.preventDefault();
+      if (e.nativeEvent && typeof e.nativeEvent.stopPropagation === 'function') {
+        e.nativeEvent.stopPropagation();
       }
-      return;
     }
-
-    Alert.alert(
-      'Xóa cuộc trò chuyện?',
-      `Bạn có chắc muốn xóa cuộc trò chuyện "${formatSessionTitle(session.title)}" không?`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Xóa',
-          style: 'destructive',
-          onPress: () => {
-            onDeleteSession(session.id);
-          },
-        },
-      ]
-    );
+    onDeleteSession(session.id);
   };
 
   // Nội dung chính của Sidebar (dùng chung cho cả Split-View và Drawer)
@@ -270,8 +261,18 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
                       pressed && styles.btnPressed,
                       Platform.OS === 'web' && { cursor: 'pointer' as any },
                     ]}
-                    onPress={() => handleConfirmDeleteSession(sess)}
-                    hitSlop={8}
+                    onPress={(e: any) => {
+                      if (e) {
+                        if (typeof e.stopPropagation === 'function') e.stopPropagation();
+                        if (typeof e.preventDefault === 'function') e.preventDefault();
+                        if (e.nativeEvent && typeof e.nativeEvent.stopPropagation === 'function') {
+                          e.nativeEvent.stopPropagation();
+                        }
+                      }
+                      handleDeleteSessionItem(sess, e);
+                    }}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    disabled={false}
                   >
                     <Trash2 size={14} color={theme.textMuted} />
                   </Pressable>

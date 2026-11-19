@@ -415,7 +415,7 @@ export async function deleteSession(sessionId: string): Promise<ChatSession[]> {
   try {
     const currentSessions = await loadSessions();
     const updatedSessions = currentSessions.filter((s) => s.id !== sessionId);
-    await saveSessions(updatedSessions);
+    await AsyncStorage.setItem('CHAT_SESSIONS_V2', JSON.stringify(updatedSessions));
     return updatedSessions;
   } catch (error) {
     console.error('[Storage] Lỗi khi xóa session:', error);
