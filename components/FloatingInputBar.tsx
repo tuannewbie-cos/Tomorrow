@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useImperativeHandle, forwardRef } from 'react';
 import {
   View,
   TextInput,
+  type TextInputInstance,
   StyleSheet,
   Pressable,
   ActivityIndicator,
@@ -15,7 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image as ImageIcon, Send, X, Smile, Globe } from 'lucide-react-native';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
 
-interface FloatingInputBarProps {
+export interface FloatingInputBarProps {
   onSendMessage: (text: string, imageBase64?: string, imageUri?: string, forceWebSearch?: boolean) => void;
   isLoading: boolean;
   disabled?: boolean;
@@ -23,17 +24,30 @@ interface FloatingInputBarProps {
   theme?: ThemeColors;
 }
 
+export interface FloatingInputBarRef {
+  focus: () => void;
+}
+
 const QUICK_EMOJIS = ['😟', '😭', '💔', '🫠', '😂', '🥰', '✨', '☕'];
 
-export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
+export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBarProps>(({
   onSendMessage,
   isLoading,
   disabled,
   isTomorrowTyping = false,
   theme = DARK_THEME,
-}) => {
+}, ref) => {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
+
+  const textInputRef = useRef<TextInputInstance>(null);
+  const lastSendTimestampRef = useRef<number>(0);
+
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      textInputRef.current?.focus();
+    },
+  }));
 
   const [inputText, setInputText] = useState('');
   const [inputHeight, setInputHeight] = useState(44);
@@ -76,10 +90,13 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
   };
 
   const handleSend = () => {
+    const now = Date.now();
+    if (now - lastSendTimestampRef.current < 200) return;
     const trimmed = inputText.trim();
     if (!trimmed && !selectedImage) return;
     if (isLoading || isTomorrowTyping) return;
 
+    lastSendTimestampRef.current = now;
     onSendMessage(trimmed, selectedImage?.base64, selectedImage?.uri, forceWebSearch);
     setInputText('');
     setInputHeight(44); // Thu chiều cao ô nhập về 44px ngay lập tức khi gửi
@@ -112,15 +129,20 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
   // Phím tắt macOS: Enter để gửi (ngăn xuống dòng), Shift + Enter để xuống dòng
   const handleKeyPress = (e: any) => {
     if (Platform.OS === 'web') {
-      const nativeEvent = e.nativeEvent;
+      const nativeEvent = e.nativeEvent || e;
       // BẢO VỆ TUYỆT ĐỐI CHO CMD+C, CMD+V, CMD+A, CMD+X, CMD+Z:
       // Nếu e.metaKey hoặc e.ctrlKey đang được nhấn, TUYỆT ĐỐI KHÔNG can thiệp để WKWebView/Browser copy/paste bình thường
       if (nativeEvent?.metaKey || nativeEvent?.ctrlKey) {
         return;
       }
-      if (nativeEvent?.key === 'Enter' && !nativeEvent?.shiftKey) {
+      const key = nativeEvent?.key || e.key;
+      const shiftKey = nativeEvent?.shiftKey ?? e.shiftKey;
+      if (key === 'Enter' && !shiftKey) {
         if (typeof e.preventDefault === 'function') {
           e.preventDefault();
+        }
+        if (typeof nativeEvent.preventDefault === 'function') {
+          nativeEvent.preventDefault();
         }
         const trimmed = inputText.trim();
         if ((trimmed || selectedImage) && !isLoading && !isTomorrowTyping) {
@@ -237,6 +259,7 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
 
         {/* TextInput co giãn đa dòng mượt mà theo nội dung (minHeight: 44, maxHeight: 160) */}
         <TextInput
+          ref={textInputRef}
           style={[
             styles.input,
             {
@@ -257,6 +280,7 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
           onChangeText={handleTextChange}
           onContentSizeChange={handleContentSizeChange}
           onKeyPress={handleKeyPress}
+          {...(Platform.OS === 'web' ? { onKeyDown: handleKeyPress } : {})}
           multiline
           maxLength={4000}
           editable={!isLoading && !disabled}
@@ -292,7 +316,7 @@ export const FloatingInputBar: React.FC<FloatingInputBarProps> = ({
       </View>
     </View>
   );
-};
+});
 
 const styles = StyleSheet.create({
   wrapper: {

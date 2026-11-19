@@ -34,10 +34,11 @@ import {
 } from './services/aiService';
 import { ChatBubble } from './components/ChatBubble';
 import { ColdGreeting } from './components/ColdGreeting';
-import { FloatingInputBar } from './components/FloatingInputBar';
+import { FloatingInputBar, FloatingInputBarRef } from './components/FloatingInputBar';
 import { SidebarDrawer } from './components/SidebarDrawer';
 import { TypingIndicator } from './components/TypingIndicator';
-import { Menu, Sparkles, Dot, SquarePen, Sun, Moon, ChevronDown } from 'lucide-react-native';
+import { CommandPalette } from './components/CommandPalette';
+import { Menu, Sparkles, Dot, SquarePen, Sun, Moon, ChevronDown, Search } from 'lucide-react-native';
 import {
   ThemeMode,
   DARK_THEME,
@@ -67,10 +68,17 @@ export default function App() {
   const [isReady, setIsReady] = useState<boolean>(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(width >= 768);
   const [showScrollDownBtn, setShowScrollDownBtn] = useState<boolean>(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
 
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
+  const inputBarRef = useRef<FloatingInputBarRef>(null);
   const prevIsDesktopRef = useRef<boolean>(isDesktop);
+  const isCommandPaletteOpenRef = useRef<boolean>(false);
   const theme = themeMode === 'light' ? LIGHT_THEME : DARK_THEME;
+
+  useEffect(() => {
+    isCommandPaletteOpenRef.current = isCommandPaletteOpen;
+  }, [isCommandPaletteOpen]);
 
   // 1. KHỞI TẠO WEB FONTS & NẠP DỮ LIỆU ĐA PHIÊN, THEME
   useEffect(() => {
@@ -420,14 +428,20 @@ export default function App() {
   const handleCreateNewSession = () => {
     setCurrentSessionId(null);
     setMessages([]);
+    setTimeout(() => {
+      inputBarRef.current?.focus();
+    }, 50);
   };
 
-  // 4. CHỌN 1 PHIÊN TRÒ CHUYỆN CŨ TỪ SIDEBAR
+  // 4. CHỌN 1 PHIÊN TRÒ CHUYỆN CŨ TỪ SIDEBAR HOẶC COMMAND PALETTE
   const handleSelectSession = (sessionId: string) => {
     const selected = sessions.find((s) => s.id === sessionId);
     if (selected) {
       setCurrentSessionId(selected.id);
       setMessages(selected.messages || []);
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      }, 100);
     }
   };
 
@@ -449,6 +463,50 @@ export default function App() {
     setMessages([]);
     setUserMemory(DEFAULT_USER_MEMORY);
   };
+
+  // 7. LẮNG NGHE PHÍM TẮT TOÀN CỤC CHUẨN MACOS TRÊN WEB (Cmd+K, Cmd+N, Cmd+B, Escape)
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      const isCmdOrCtrl = e.metaKey || e.ctrlKey;
+      const key = (e.key || '').toLowerCase();
+
+      // Cmd/Ctrl + K: Bật/tắt bảng lệnh nhanh Command Palette
+      if (isCmdOrCtrl && key === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen((prev) => !prev);
+        return;
+      }
+
+      // Cmd/Ctrl + N: Tạo phiên chat mới sạch & focus ô nhập liệu
+      if (isCmdOrCtrl && key === 'n') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(false);
+        handleCreateNewSession();
+        return;
+      }
+
+      // Cmd/Ctrl + B: Đóng/Mở Sidebar
+      if (isCmdOrCtrl && key === 'b') {
+        e.preventDefault();
+        setIsSidebarOpen((prev) => !prev);
+        return;
+      }
+
+      // Escape: Nếu Command Palette đang mở thì đóng lại ngay
+      if (e.key === 'Escape') {
+        if (isCommandPaletteOpenRef.current) {
+          setIsCommandPaletteOpen(false);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, []);
 
   // Màn hình khởi động nhanh chống nháy trắng
   if (!isReady) {
@@ -511,13 +569,61 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.2.5</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.3</Text>
               </View>
             </View>
           </View>
 
-          {/* Cụm nút góc phải: Nút Theme Sáng/Tối + Nút Tạo Cuộc Trò Chuyện Mới */}
+          {/* Cụm nút góc phải: Nút Command Palette ⌘K (trên Desktop) + Nút Theme Sáng/Tối + Nút Tạo Cuộc Trò Chuyện Mới */}
           <View style={styles.headerRightActions}>
+            {/* Nút Command Palette ⌘K tinh tế trên Desktop (width >= 768px) */}
+            {isDesktop && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.commandPaletteBtn,
+                  {
+                    backgroundColor:
+                      theme.mode === 'dark'
+                        ? 'rgba(255, 255, 255, 0.05)'
+                        : 'rgba(0, 0, 0, 0.04)',
+                    borderColor: theme.borderSubtle,
+                  },
+                  pressed && { backgroundColor: theme.btnHover },
+                  Platform.OS === 'web' && { cursor: 'pointer' as any },
+                ]}
+                onPress={() => setIsCommandPaletteOpen(true)}
+                hitSlop={6}
+              >
+                <Search size={14} color={theme.textMuted} />
+                <Text
+                  style={[
+                    styles.commandPaletteBtnText,
+                    { color: theme.textSecondary },
+                  ]}
+                >
+                  Tìm kiếm
+                </Text>
+                <View
+                  style={[
+                    styles.shortcutKbd,
+                    {
+                      backgroundColor:
+                        theme.mode === 'dark'
+                          ? 'rgba(255, 255, 255, 0.08)'
+                          : 'rgba(0, 0, 0, 0.06)',
+                      borderColor: theme.borderSubtle,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[styles.shortcutKbdText, { color: theme.textMuted }]}
+                  >
+                    ⌘K
+                  </Text>
+                </View>
+              </Pressable>
+            )}
+
             {/* Nút chuyển đổi Theme (☀️ / 🌙) */}
             <Pressable
               style={({ pressed }) => [
@@ -638,6 +744,7 @@ export default function App() {
 
               {/* 3. Floating Pill Input Bar (maxWidth: 820, alignSelf: 'center') */}
               <FloatingInputBar
+                ref={inputBarRef}
                 onSendMessage={handleSendMessage}
                 isLoading={isLoading}
                 isTomorrowTyping={isTomorrowTyping}
@@ -646,6 +753,19 @@ export default function App() {
             </View>
           </KeyboardAvoidingView>
         </View>
+
+        {/* Bảng lệnh nhanh Command Palette macOS Spotlight (Cmd+K) */}
+        <CommandPalette
+          visible={isCommandPaletteOpen}
+          onClose={() => setIsCommandPaletteOpen(false)}
+          sessions={sessions}
+          onSelectSession={handleSelectSession}
+          onCreateNewSession={handleCreateNewSession}
+          onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+          onToggleTheme={handleToggleTheme}
+          theme={theme}
+          themeMode={themeMode}
+        />
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -725,6 +845,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  commandPaletteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 36,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 8,
+  },
+  commandPaletteBtnText: {
+    fontSize: 13,
+    fontWeight: '500',
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif"
+        : undefined,
+  },
+  shortcutKbd: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 5,
+    borderWidth: 1,
+  },
+  shortcutKbdText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   mainLayoutBody: {
     flex: 1,
