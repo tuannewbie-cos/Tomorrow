@@ -352,6 +352,42 @@ runTest('getColdGreetingText matches circadian periods', () => {
   assert.ok(gNight.startsWith('Đêm đã khuya rồi!'));
 });
 
+// -----------------------------------------------------------------------------
+// TEST 11: Unified handleNewChat in App.tsx
+// -----------------------------------------------------------------------------
+runTest('App.tsx defines unified handleNewChat with session turn cancellation, input clearing and focus', () => {
+  const appTsx = fs.readFileSync(path.resolve(__dirname, 'App.tsx'), 'utf8');
+  assert.ok(appTsx.includes('const handleNewChat = useCallback('), 'App.tsx must define handleNewChat with useCallback');
+  assert.ok(appTsx.includes('currentSessionTurnIdRef.current++'), 'handleNewChat must increment currentSessionTurnIdRef to cancel pending turns');
+  assert.ok(appTsx.includes('setCurrentSessionId(null)'), 'handleNewChat must reset currentSessionId to null');
+  assert.ok(appTsx.includes('setMessages([])'), 'handleNewChat must reset messages to empty array');
+  assert.ok(appTsx.includes('inputBarRef.current?.clear?.()'), 'handleNewChat must clear draft input and images');
+  assert.ok(appTsx.includes('setIsCommandPaletteOpen(false)'), 'handleNewChat must close CommandPalette');
+  assert.ok(appTsx.includes('inputBarRef.current?.focus()'), 'handleNewChat must refocus inputBarRef after 50ms');
+});
+
+// -----------------------------------------------------------------------------
+// TEST 12: Cmd/Ctrl + N shortcut capture & anti-stale closure
+// -----------------------------------------------------------------------------
+runTest('App.tsx captures Cmd/Ctrl + N with { capture: true } and triggers latest handleNewChatRef', () => {
+  const appTsx = fs.readFileSync(path.resolve(__dirname, 'App.tsx'), 'utf8');
+  assert.ok(appTsx.includes('{ capture: true }'), 'Global keydown listener must be attached with { capture: true }');
+  assert.ok(appTsx.includes('handleNewChatRef.current()'), 'Keydown handler must invoke handleNewChatRef.current() to avoid stale closures');
+  assert.ok(appTsx.includes("key === 'n' || code === 'KeyN'"), 'Keydown handler must verify key === "n" or code === "KeyN"');
+  assert.ok(appTsx.includes('!e.altKey && !e.shiftKey'), 'Keydown handler must ensure Alt and Shift are not pressed');
+  assert.ok(appTsx.includes('e.stopPropagation()'), 'Keydown handler must call e.stopPropagation()');
+});
+
+// -----------------------------------------------------------------------------
+// TEST 13: CommandPalette.tsx integrates onNewChat
+// -----------------------------------------------------------------------------
+runTest('CommandPalette.tsx supports onNewChat and triggers it on ⌘N action', () => {
+  const cmdPaletteTsx = fs.readFileSync(path.resolve(__dirname, 'components/CommandPalette.tsx'), 'utf8');
+  assert.ok(cmdPaletteTsx.includes('onNewChat?: () => void;'), 'CommandPaletteProps must include onNewChat');
+  assert.ok(cmdPaletteTsx.includes('handleTriggerNewChat'), 'CommandPalette must define handleTriggerNewChat');
+  assert.ok(cmdPaletteTsx.includes('onClose()'), 'CommandPalette must close on new chat action');
+});
+
 console.log('\n--------------------------------------------------------------------------------');
 console.log(`🎉 RESULT: ${passed}/${total} TESTS PASSED!`);
 if (passed === total) {

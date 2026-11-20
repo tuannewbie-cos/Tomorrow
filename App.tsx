@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -72,8 +72,10 @@ export default function App() {
 
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
   const inputBarRef = useRef<FloatingInputBarRef>(null);
+  const inputRef = inputBarRef;
   const prevIsDesktopRef = useRef<boolean>(isDesktop);
   const isCommandPaletteOpenRef = useRef<boolean>(false);
+  const currentSessionTurnIdRef = useRef<number>(0);
   const theme = themeMode === 'light' ? LIGHT_THEME : DARK_THEME;
 
   useEffect(() => {
@@ -251,6 +253,8 @@ export default function App() {
     setMessages(updatedMessages);
     setIsLoading(true);
 
+    const turnId = ++currentSessionTurnIdRef.current;
+
     // HẠNG MỤC 1: Hiện bong bóng đợi chat tức thì (0ms delay) ngay lập tức khi suy nghĩ hoặc tìm kiếm
     setIsTomorrowTyping(true);
     setTypingStatusText(undefined);
@@ -316,6 +320,13 @@ export default function App() {
         setIsSearchingWeb(false);
       }
 
+      // Nếu người dùng đã mở chat mới trong lúc chờ AI phản hồi thì dừng lại ngay
+      if (currentSessionTurnIdRef.current !== turnId) {
+        setIsTomorrowTyping(false);
+        setIsLoading(false);
+        return;
+      }
+
       // Bước B: Đồng bộ luồng cập nhật tiêu đề hội thoại thông minh
       const aiSessionTitle = (aiResponse.session_title || aiResponse.sessionTitle || '').trim();
       const currentSess = nextSessions.find((s) => s.id === activeId);
@@ -351,6 +362,12 @@ export default function App() {
 
       // HẠNG MỤC 2 (v4.1): TÁCH BONG BÓNG THÔNG MINH THEO NHỊP GÕ NGƯỜI THẬT (Multi-Bubble Sequencing)
       for (const [index, replyText] of replies.entries()) {
+        if (currentSessionTurnIdRef.current !== turnId) {
+          setIsTomorrowTyping(false);
+          setIsLoading(false);
+          return;
+        }
+
         const isLastReply = index === replies.length - 1;
         const aiMsg: ChatMessage = {
           id: `ai-${Date.now()}-${index}`,
@@ -393,9 +410,21 @@ export default function App() {
 
           const typingDelay = Math.min(Math.max(replyText.length * 8, 300), 450);
           await sleep(typingDelay);
+
+          if (currentSessionTurnIdRef.current !== turnId) {
+            setIsTomorrowTyping(false);
+            setIsLoading(false);
+            return;
+          }
         } else {
           setIsTomorrowTyping(false);
         }
+      }
+
+      if (currentSessionTurnIdRef.current !== turnId) {
+        setIsTomorrowTyping(false);
+        setIsLoading(false);
+        return;
       }
 
       if (aiResponse.memoryUpdate || aiResponse.memory_note) {
@@ -424,14 +453,38 @@ export default function App() {
     }
   };
 
-  // 3. TẠO CUỘC TRÒ CHUYỆN MỚI
-  const handleCreateNewSession = () => {
+  // 3. TẠO CUỘC TRÒ CHUYỆN MỚI THỐNG NHẤT (handleNewChat)
+  const handleNewChat = useCallback(() => {
+    // A. Hủy / Đánh dấu hủy mọi luồng phản hồi AI hoặc tách bong bóng đang chạy dở
+    currentSessionTurnIdRef.current++;
+    setIsTomorrowTyping(false);
+    setIsLoading(false);
+    setTypingStatusText(undefined);
+    setIsSearchingWeb(false);
+
+    // B. Reset ID phiên và làm sạch danh sách tin nhắn
     setCurrentSessionId(null);
     setMessages([]);
+
+    // C. Xóa văn bản nháp & ảnh tạm trên thanh nhập liệu
+    inputBarRef.current?.clear?.();
+    inputBarRef.current?.reset?.();
+
+    // D. Đóng Command Palette nếu đang mở
+    setIsCommandPaletteOpen(false);
+
+    // E. Focus con trỏ vào ô nhập liệu sau 50ms để sẵn sàng gõ ngay
     setTimeout(() => {
       inputBarRef.current?.focus();
     }, 50);
-  };
+  }, []);
+
+  // Lưu tham chiếu mới nhất để tránh stale closure trong global event listener
+  const handleNewChatRef = useRef(handleNewChat);
+  handleNewChatRef.current = handleNewChat;
+
+  // Giữ alias handleCreateNewSession để bảo toàn 100% tương thích ngược
+  const handleCreateNewSession = handleNewChat;
 
   // 4. CHỌN 1 PHIÊN TRÒ CHUYỆN CŨ TỪ SIDEBAR HOẶC COMMAND PALETTE
   const handleSelectSession = (sessionId: string) => {
@@ -471,40 +524,45 @@ export default function App() {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       const isCmdOrCtrl = e.metaKey || e.ctrlKey;
       const key = (e.key || '').toLowerCase();
+      const code = e.code || '';
+
+      // Cmd/Ctrl + N: Tạo cuộc trò chuyện mới sạch & focus ô nhập liệu (bắt ở capture phase để chặn triệt để new window của browser)
+      if (isCmdOrCtrl && !e.altKey && !e.shiftKey && (key === 'n' || code === 'KeyN')) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleNewChatRef.current();
+        return;
+      }
 
       // Cmd/Ctrl + K: Bật/tắt bảng lệnh nhanh Command Palette
-      if (isCmdOrCtrl && key === 'k') {
+      if (isCmdOrCtrl && !e.altKey && !e.shiftKey && (key === 'k' || code === 'KeyK')) {
         e.preventDefault();
+        e.stopPropagation();
         setIsCommandPaletteOpen((prev) => !prev);
         return;
       }
 
-      // Cmd/Ctrl + N: Tạo phiên chat mới sạch & focus ô nhập liệu
-      if (isCmdOrCtrl && key === 'n') {
-        e.preventDefault();
-        setIsCommandPaletteOpen(false);
-        handleCreateNewSession();
-        return;
-      }
-
       // Cmd/Ctrl + B: Đóng/Mở Sidebar
-      if (isCmdOrCtrl && key === 'b') {
+      if (isCmdOrCtrl && !e.altKey && !e.shiftKey && (key === 'b' || code === 'KeyB')) {
         e.preventDefault();
+        e.stopPropagation();
         setIsSidebarOpen((prev) => !prev);
         return;
       }
 
       // Escape: Nếu Command Palette đang mở thì đóng lại ngay
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' || code === 'Escape') {
         if (isCommandPaletteOpenRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
           setIsCommandPaletteOpen(false);
         }
       }
     };
 
-    window.addEventListener('keydown', handleGlobalKeyDown);
+    window.addEventListener('keydown', handleGlobalKeyDown, { capture: true });
     return () => {
-      window.removeEventListener('keydown', handleGlobalKeyDown);
+      window.removeEventListener('keydown', handleGlobalKeyDown, { capture: true });
     };
   }, []);
 
@@ -760,7 +818,8 @@ export default function App() {
           onClose={() => setIsCommandPaletteOpen(false)}
           sessions={sessions}
           onSelectSession={handleSelectSession}
-          onCreateNewSession={handleCreateNewSession}
+          onCreateNewSession={handleNewChat}
+          onNewChat={handleNewChat}
           onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
           onToggleTheme={handleToggleTheme}
           theme={theme}

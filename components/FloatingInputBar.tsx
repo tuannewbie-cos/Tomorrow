@@ -26,6 +26,10 @@ export interface FloatingInputBarProps {
 
 export interface FloatingInputBarRef {
   focus: () => void;
+  clear?: () => void;
+  reset?: () => void;
+  setInputText?: (text: string) => void;
+  setSelectedImage?: (image: { uri: string; base64?: string } | null) => void;
 }
 
 const QUICK_EMOJIS = ['😟', '😭', '💔', '🫠', '😂', '🥰', '✨', '☕'];
@@ -43,17 +47,35 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
   const textInputRef = useRef<TextInputInstance>(null);
   const lastSendTimestampRef = useRef<number>(0);
 
-  useImperativeHandle(ref, () => ({
-    focus: () => {
-      textInputRef.current?.focus();
-    },
-  }));
-
   const [inputText, setInputText] = useState('');
   const [inputHeight, setInputHeight] = useState(44);
   const [selectedImage, setSelectedImage] = useState<{ uri: string; base64?: string } | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [forceWebSearch, setForceWebSearch] = useState(false);
+
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      textInputRef.current?.focus();
+    },
+    clear: () => {
+      setInputText('');
+      setSelectedImage(null);
+      setShowEmojiPicker(false);
+      setInputHeight(44);
+    },
+    reset: () => {
+      setInputText('');
+      setSelectedImage(null);
+      setShowEmojiPicker(false);
+      setInputHeight(44);
+    },
+    setInputText: (text: string) => {
+      setInputText(text);
+    },
+    setSelectedImage: (img: { uri: string; base64?: string } | null) => {
+      setSelectedImage(img);
+    },
+  }));
 
   // Chọn ảnh từ thư viện thiết bị (an toàn trên cả Mobile lẫn Web Desktop)
   const handlePickImage = async () => {

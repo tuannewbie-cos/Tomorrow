@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -31,6 +31,7 @@ export interface CommandPaletteProps {
   sessions: ChatSession[];
   onSelectSession: (sessionId: string) => void;
   onCreateNewSession: () => void;
+  onNewChat?: () => void;
   onToggleSidebar: () => void;
   onToggleTheme: () => void;
   theme: ThemeColors;
@@ -111,6 +112,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   sessions,
   onSelectSession,
   onCreateNewSession,
+  onNewChat,
   onToggleSidebar,
   onToggleTheme,
   theme,
@@ -132,6 +134,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     }
   }, [visible]);
 
+  // Hành động tạo cuộc trò chuyện mới: gọi onNewChat / onCreateNewSession và đóng bảng lệnh ngay
+  const handleTriggerNewChat = useCallback(() => {
+    if (typeof onNewChat === 'function') {
+      onNewChat();
+    } else if (typeof onCreateNewSession === 'function') {
+      onCreateNewSession();
+    }
+    onClose();
+  }, [onNewChat, onCreateNewSession, onClose]);
+
   // Nhóm Thao Tác Nhanh (⌘N, ⌘B, Đổi theme)
   const quickActions: PaletteItem[] = useMemo(
     () => [
@@ -143,10 +155,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         badge: '⌘N',
         iconType: 'new_chat',
         group: 'actions',
-        action: () => {
-          onCreateNewSession();
-          onClose();
-        },
+        action: handleTriggerNewChat,
       },
       {
         id: 'act-toggle-sidebar',
@@ -178,7 +187,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         },
       },
     ],
-    [themeMode, onCreateNewSession, onToggleSidebar, onToggleTheme, onClose]
+    [themeMode, handleTriggerNewChat, onToggleSidebar, onToggleTheme, onClose]
   );
 
   // Nhóm Các Phiên Gần Đây (hiển thị khi chưa tìm kiếm)
