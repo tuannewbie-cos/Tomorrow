@@ -461,7 +461,7 @@ export function buildLocalReflexDirective(
     const domain: ExpertDomain = 'VISION_LAB';
     const domainLine = getDomainDirectiveLine(domain);
     const domainPart = domainLine ? ` ${domainLine} |` : '';
-    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS |${domainPart} ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc bài tập/hình ảnh được gửi. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức LaTeX). Khi viết code, BẮT BUỘC xuống dòng rõ ràng, thụt lề chuẩn, giải thích từng bước giải. Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies".]`;
+    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS |${domainPart} ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc bài tập/hình ảnh được gửi. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức LaTeX). Khi viết code, BẮT BUỘC xuống dòng rõ ràng, thụt lề chuẩn, giải thích từng bước giải. Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies". Mảng "replies" BẮT BUỘC chỉ chứa các chuỗi văn bản Markdown thuần (string[]), TUYỆT ĐỐI KHÔNG đặt object {} lồng bên trong mảng "replies".]`;
 
     return {
       intentMode: 'EXPERT_JARVIS',
@@ -583,7 +583,7 @@ export function buildLocalReflexDirective(
   if (hasImage || isExpertDomainActive || wordCount > 18 || hasExpertWord) {
     const domainLine = getDomainDirectiveLine(domain);
     const domainPart = domainLine ? ` ${domainLine} |` : '';
-    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS |${domainPart} ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng (explicit line breaks), thụt lề chuẩn (4 spaces cho Python, 2 spaces cho TS/JS), CẤM viết dồn 1 dòng. Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
+    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS |${domainPart} ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng (explicit line breaks), thụt lề chuẩn (4 spaces cho Python, 2 spaces cho TS/JS), CẤM viết dồn 1 dòng. Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau. Mảng "replies" BẮT BUỘC chỉ chứa các chuỗi văn bản Markdown thuần (string[]), TUYỆT ĐỐI KHÔNG đặt object {} lồng bên trong mảng "replies".]`;
 
     let dynamicMaxTokens = 1200;
     let dynamicTimeout = 30000;
@@ -1080,11 +1080,12 @@ export function normalizeHistoryForAPI(
   currentImageBase64?: string,
   target: 'gemini' | 'openai' = 'gemini'
 ): NormalizedChatMessage[] {
-  // 1. Lọc bỏ các tin nhắn lỗi mạng/hệ thống và tin nhắn hoàn toàn rỗng
+  // 1. Lọc bỏ các tin nhắn lỗi mạng/hệ thống, bong bóng chứa [object Object] và tin nhắn hoàn toàn rỗng
   const valid = (recentChats || []).filter((m) => {
     if (!m) return false;
-    const txt = m.text || '';
+    const txt = typeof m.text === 'string' ? m.text : (m.text ? String(m.text) : '');
     if (isNetworkErrorMessage(txt)) return false;
+    if (txt.includes('[object Object]')) return false;
     if (!txt.trim() && !m.imageBase64 && !m.imageUri) return false;
     return true;
   });
@@ -1694,6 +1695,150 @@ export function repairJsonWithLatexAndControls(raw: string): string {
 }
 
 /**
+ * Hàm đệ quy làm phẳng object/array thành chuỗi Markdown sạch đẹp.
+ * Tuyệt đối không bao giờ trả về chuỗi "[object Object]".
+ */
+export function flattenReplyToMarkdown(item: unknown): string {
+  if (item === null || item === undefined) return '';
+
+  if (typeof item === 'string') {
+    const trimmed = item.trim();
+    return trimmed === '[object Object]' ? '' : trimmed;
+  }
+
+  if (typeof item === 'number' || typeof item === 'boolean') {
+    return String(item);
+  }
+
+  if (Array.isArray(item)) {
+    return item
+      .map((sub) => flattenReplyToMarkdown(sub))
+      .filter((s) => s.length > 0 && s !== '[object Object]')
+      .join('\n\n');
+  }
+
+  if (typeof item === 'object') {
+    const obj = item as Record<string, unknown>;
+    const keys = Object.keys(obj);
+    if (keys.length === 0) return '';
+
+    // 1. Ưu tiên lấy trực tiếp nếu object chỉ bọc 1 trường text chuẩn
+    const singleTextKeys = ['text', 'content', 'message', 'reply', 'answer'];
+    const matchingSingleKeys = keys.filter((k) => singleTextKeys.includes(k.toLowerCase()));
+    if (keys.length === 1 && matchingSingleKeys.length === 1) {
+      return flattenReplyToMarkdown(obj[keys[0]]);
+    }
+
+    // 2. Duyệt các cặp [key, val] ghép thành Markdown sạch đẹp
+    const metadataKeys = [
+      'conversation_state',
+      'conversationstate',
+      'session_title',
+      'sessiontitle',
+      'should_update_title',
+      'shouldupdatetitle',
+      'memory_note',
+      'memorynote',
+      'jarvis_action',
+      'jarvis_intent',
+      'jarvisintent',
+    ];
+
+    const parts: string[] = [];
+    for (const [key, val] of Object.entries(obj)) {
+      if (val === null || val === undefined) continue;
+      const lowerKey = key.toLowerCase();
+      if (metadataKeys.includes(lowerKey)) continue;
+
+      const valFormatted = flattenReplyToMarkdown(val);
+      if (!valFormatted || valFormatted === '[object Object]') continue;
+
+      if (['title', 'heading', 'step', 'name'].includes(lowerKey)) {
+        const cleanTitle = valFormatted.replace(/^\*\*|\*\*$/g, '');
+        parts.push(`**${cleanTitle}**`);
+      } else if (['code', 'source_code', 'program', 'snippet', 'implementation'].includes(lowerKey)) {
+        if (valFormatted.startsWith('```')) {
+          parts.push(valFormatted);
+        } else {
+          const lang = /\b(int\s+main|#include|cout|printf|std::|div\(|int\s*\*)/i.test(valFormatted) ? 'cpp' : 'cpp';
+          parts.push(`\`\`\`${lang}\n${valFormatted}\n\`\`\``);
+        }
+      } else if (['complexity', 'time_complexity', 'space_complexity'].includes(lowerKey)) {
+        const label = lowerKey.includes('time')
+          ? 'Độ phức tạp thời gian'
+          : lowerKey.includes('space')
+          ? 'Độ phức tạp không gian'
+          : 'Độ phức tạp';
+        parts.push(`**${label}:** ${valFormatted}`);
+      } else if (['justification', 'explanation', 'description', 'note', 'analysis', 'solution'].includes(lowerKey)) {
+        parts.push(valFormatted);
+      } else {
+        parts.push(`**${key}:** ${valFormatted}`);
+      }
+    }
+
+    const res = parts.filter(Boolean).join('\n\n');
+    return res === '[object Object]' ? '' : res;
+  }
+
+  return '';
+}
+
+/**
+ * Trích xuất danh sách replies sạch đẹp từ parsed JSON.
+ * Tự động làm phẳng mọi object lồng nhau hoặc fallback khi thiếu trường "replies".
+ */
+export function extractRepliesFromParsedJson(direct: any): string[] {
+  if (!direct || typeof direct !== 'object') return [];
+
+  // 1. Trường hợp có mảng "replies"
+  if (Array.isArray(direct.replies) && direct.replies.length > 0) {
+    const flattened = direct.replies
+      .map((r: any) => flattenReplyToMarkdown(r))
+      .filter((s: string) => s.length > 0 && s !== '[object Object]');
+    if (flattened.length > 0) return flattened;
+  }
+
+  // 2. Trường hợp có chuỗi/object đơn "reply"
+  if (direct.reply !== undefined && direct.reply !== null) {
+    const flat = flattenReplyToMarkdown(direct.reply);
+    if (flat && flat !== '[object Object]') return [flat];
+  }
+
+  // 3. Trường hợp JSON hợp lệ nhưng không có key "replies"
+  // (VD: { solution: ..., code: ..., complexity: ... } hoặc { answer: ... })
+  const metadataKeys = [
+    'conversation_state',
+    'conversationstate',
+    'session_title',
+    'sessiontitle',
+    'should_update_title',
+    'shouldupdatetitle',
+    'memory_note',
+    'memorynote',
+    'jarvis_action',
+    'jarvis_intent',
+    'jarvisintent',
+  ];
+
+  const contentObj: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(direct)) {
+    if (!metadataKeys.includes(k.toLowerCase()) && v !== null && v !== undefined) {
+      contentObj[k] = v;
+    }
+  }
+
+  if (Object.keys(contentObj).length > 0) {
+    const flat = flattenReplyToMarkdown(contentObj);
+    if (flat && flat !== '[object Object]') {
+      return [flat];
+    }
+  }
+
+  return [];
+}
+
+/**
  * Bộ giải mã JSON Bất Tử (safeParseAIJson) — KHÔNG BAO GIỜ ĐƯỢC throw Error:
  * Dù AI trả về bất kỳ chuỗi gì (dù hỏng JSON vì công thức LaTeX \frac, P(A|B) hay văn bản thường),
  * hàm vẫn LUÔN trả về object hợp lệ chứa nội dung thật của AI, tuyệt đối không throw lỗi và không trả về câu vô nghĩa.
@@ -1714,10 +1859,11 @@ export function safeParseAIJson(rawText: string): any {
   try {
     const repaired = repairJsonWithLatexAndControls(trimmed);
     const direct = JSON.parse(repaired);
-    if (direct && Array.isArray(direct.replies) && direct.replies.length > 0) {
+    const extractedReplies = extractRepliesFromParsedJson(direct);
+    if (direct && extractedReplies.length > 0) {
       return {
         conversation_state: direct.conversation_state || 'expert_jarvis',
-        replies: sanitizeAndMergeBrokenBlocks(direct.replies.map((r: any) => String(r))),
+        replies: sanitizeAndMergeBrokenBlocks(extractedReplies),
         session_title: direct.session_title || '',
         should_update_title: Boolean(direct.should_update_title),
         memory_note: direct.memory_note || '',
@@ -1728,10 +1874,11 @@ export function safeParseAIJson(rawText: string): any {
   // Tầng 1b: Thử parse trực tiếp nếu JSON đã hợp lệ
   try {
     const direct = JSON.parse(trimmed);
-    if (direct && Array.isArray(direct.replies) && direct.replies.length > 0) {
+    const extractedReplies = extractRepliesFromParsedJson(direct);
+    if (direct && extractedReplies.length > 0) {
       return {
         conversation_state: direct.conversation_state || 'expert_jarvis',
-        replies: sanitizeAndMergeBrokenBlocks(direct.replies.map((r: any) => String(r))),
+        replies: sanitizeAndMergeBrokenBlocks(extractedReplies),
         session_title: direct.session_title || '',
         should_update_title: Boolean(direct.should_update_title),
         memory_note: direct.memory_note || '',
@@ -1749,10 +1896,11 @@ export function safeParseAIJson(rawText: string): any {
     try {
       const repaired = repairJsonWithLatexAndControls(jsonSlice);
       const parsed = JSON.parse(repaired);
-      if (parsed && Array.isArray(parsed.replies) && parsed.replies.length > 0) {
+      const extractedReplies = extractRepliesFromParsedJson(parsed);
+      if (parsed && extractedReplies.length > 0) {
         return {
           conversation_state: parsed.conversation_state || 'expert_jarvis',
-          replies: sanitizeAndMergeBrokenBlocks(parsed.replies.map((r: any) => String(r))),
+          replies: sanitizeAndMergeBrokenBlocks(extractedReplies),
           session_title: parsed.session_title || '',
           should_update_title: Boolean(parsed.should_update_title),
           memory_note: parsed.memory_note || '',
@@ -1766,10 +1914,11 @@ export function safeParseAIJson(rawText: string): any {
         .replace(/\\(?![/u"\\bfnrt]|u[0-9a-fA-F]{4})/g, '\\\\')
         .replace(/\\(frac|times|tet|text|theta|tau|to|top|triangle|neq|nabla|nu|beta|binom|Box|right|rightarrow|Rightarrow|rho|alpha|cdot|sum|int|pm|partial|infty|approx|sim|le|ge|leq|geq)/g, '\\\\$1');
       const parsed = JSON.parse(fixedLatex);
-      if (parsed && Array.isArray(parsed.replies) && parsed.replies.length > 0) {
+      const extractedReplies = extractRepliesFromParsedJson(parsed);
+      if (parsed && extractedReplies.length > 0) {
         return {
           conversation_state: parsed.conversation_state || 'expert_jarvis',
-          replies: sanitizeAndMergeBrokenBlocks(parsed.replies.map((r: any) => String(r))),
+          replies: sanitizeAndMergeBrokenBlocks(extractedReplies),
           session_title: parsed.session_title || '',
           should_update_title: Boolean(parsed.should_update_title),
           memory_note: parsed.memory_note || '',
@@ -1783,7 +1932,8 @@ export function safeParseAIJson(rawText: string): any {
       const rawItems = repliesMatch[1]
         .split(/",\s*"/)
         .map(s => s.replace(/^\s*"|"\s*$/g, '').replace(/\\n/g, '\n').replace(/\\"/g, '"').trim())
-        .filter(Boolean);
+        .map(s => flattenReplyToMarkdown(s))
+        .filter(s => s.length > 0 && s !== '[object Object]');
       if (rawItems.length > 0) {
         const titleMatch = jsonSlice.match(/"session_title"\s*:\s*"([^"]*)"/);
         return {
@@ -1824,7 +1974,7 @@ export function safeParseAIJson(rawText: string): any {
   if (fallbackExtract.length > 0 && !fallbackExtract.startsWith('{')) {
     return {
       conversation_state: 'expert_jarvis',
-      replies: [fallbackExtract],
+      replies: [flattenReplyToMarkdown(fallbackExtract)],
       session_title: '',
       should_update_title: false,
       memory_note: '',
@@ -1838,7 +1988,7 @@ export function safeParseAIJson(rawText: string): any {
     .trim();
   return {
     conversation_state: 'expert_jarvis',
-    replies: [cleanedPlain || 'nghe đây'],
+    replies: [flattenReplyToMarkdown(cleanedPlain) || 'nghe đây'],
     session_title: '',
     should_update_title: false,
     memory_note: '',
@@ -1862,10 +2012,13 @@ export function parseAIResponseJson(
       let replies: string[] = [];
       if (Array.isArray(parsed.replies)) {
         replies = parsed.replies
-          .filter((r: unknown) => typeof r === 'string' && (r as string).trim().length > 0)
-          .map((r: string) => r.trim());
-      } else if (typeof parsed.reply === 'string' && parsed.reply.trim().length > 0) {
-        replies = [parsed.reply.trim()];
+          .map((r: unknown) => flattenReplyToMarkdown(r))
+          .filter((r: string) => r.length > 0 && r !== '[object Object]');
+      } else if (parsed.reply) {
+        const flat = flattenReplyToMarkdown(parsed.reply);
+        if (flat && flat !== '[object Object]') {
+          replies = [flat];
+        }
       }
 
       replies = sanitizeAndMergeBrokenBlocks(replies);

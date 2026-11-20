@@ -36,7 +36,8 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
   const timestampColor = isAI ? theme.textMuted : 'rgba(255, 255, 255, 0.8)';
 
   // 1. Kiểm tra nhanh nội dung có chứa khối Rich Markdown không (Code block, Table, Math, Heading)
-  const messageText = message.text || '';
+  const safeText = typeof message.text === 'string' ? message.text : (message.text ? JSON.stringify(message.text, null, 2) : '');
+  const messageText = safeText === '[object Object]' ? '' : safeText;
   const normalizedText = messageText.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
   const hasRichBlock = /```|\|.*\||^#{1,3}\s|\$\$|\$/.test(normalizedText);
 

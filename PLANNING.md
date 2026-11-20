@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.5.4` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.5.5` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -160,6 +160,18 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
   - **Chuẩn hóa thông điệp lỗi (Diagnostic Trace):**
     + Bổ sung `extractApiErrorMessage` phân giải trực tiếp `parsed?.error?.message` trong 140 ký tự, chấm dứt việc cắt chuỗi JSON `errText.slice(0, 45)` gây ra chữ `error: message`.
   - Cập nhật live badge header: **`Online • v4.5.4`**. Nâng cấp bộ kiểm thử lên 19/19 scenarios đạt 190/190 điểm hoàn hảo.
+
+- [x] **Ngày 9+++++: `fix/v4.5.5-eliminate-object-object-in-structured-json-replies` (Tomorrow v4.5.5 — Eliminate [object Object] in Structured JSON Replies)**
+  - **Làm phẳng triệt để Object lồng nhau thành Markdown (`flattenReplyToMarkdown`):**
+    + Hàm đệ quy thông minh tự động trích xuất các object cấu trúc (như `{ title, code, complexity, explanation }`) thành chuỗi Markdown hoàn chỉnh, đóng gói khối mã C/C++ chuẩn ```` ```cpp\n...\n``` ````, in đậm tiêu đề `**...**`, và loại bỏ vĩnh viễn chuỗi `"[object Object]"`.
+    + Tự động làm phẳng JSON ngay cả khi AI trả về thiếu key `replies` (như `{ solution: ..., code: ... }`).
+  - **Khóa định dạng `string[]` trong `[DIRECTIVE]`:**
+    + Yêu cầu rõ ràng LLM chỉ xuất mảng `string[]` thuần, không lồng object `{}` bên trong `replies`.
+  - **Chốt chặn an toàn đa tầng (UI & History Filter):**
+    + Tại `App.tsx`: lọc bỏ toàn bộ `"[object Object]"` và sanitize từng bong bóng với `flattenReplyToMarkdown`.
+    + Tại `ChatBubble.tsx`: ép chuẩn `safeText` với `JSON.stringify` an toàn, ngăn chặn hiển thị `[object Object]`.
+    + Tại `normalizeHistoryForAPI`: lọc bỏ hoàn toàn các bong bóng lỗi cũ chứa `"[object Object]"` trước khi gửi lên API.
+  - Cập nhật live badge header: **`Online • v4.5.5`**. Nâng cấp bộ kiểm thử lên 20/20 scenarios đạt 200/200 điểm hoàn hảo.
 
 - [ ] **Ngày 10 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.

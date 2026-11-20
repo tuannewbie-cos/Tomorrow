@@ -22,6 +22,7 @@
  * 17. Test_Domain_Casual_Protected: User nhắn "mệt vl :3" -> giữ nguyên CASUAL_FRIEND, maxTokens = 250, không bị kích hoạt nhầm chế độ chuyên gia.
  * 18. Test_Vision_Routing: Câu hỏi có ảnh "giải hộ tôi bài 1" -> domain VISION_LAB, intentMode EXPERT_JARVIS, dynamicMaxTokens = 2500, dynamicTimeout = 35000.
  * 19. Test_Vision_CarryOver: Lượt 1 gửi ảnh, lượt 2 nhắn "bài tập, làm hộ tôi bài 1" -> kế thừa thành công ảnh lượt 1 cho câu hỏi nối tiếp.
+ * 20. Test_Eliminate_Object_Object_In_Replies: safeParseAIJson với object lồng nhau -> làm phẳng thành Markdown sạch có code C++, 0 ký tự "[object Object]".
  */
 
 const fs = require('fs');
@@ -1057,8 +1058,45 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
   });
 }
 
+// TEST 20: Test_Eliminate_Object_Object_In_Replies
+{
+  const mockAIResponse = JSON.stringify({
+    conversation_state: 'expert_jarvis',
+    replies: [
+      {
+        title: "Lời giải C++",
+        code: "int div(int *q, int *r, int a, int b) {\n    if (a < b) { *q = 0; *r = a; return; }\n    div(q, r, a - b, b);\n    *q += 1;\n}",
+        complexity: "O(a/b)"
+      }
+    ]
+  });
+
+  const parsed = aiService.safeParseAIJson(mockAIResponse);
+  const replies = parsed && parsed.replies ? parsed.replies : [];
+  const fullText = replies.join('\n\n');
+
+  const hasObjectObject = fullText.includes('[object Object]') || JSON.stringify(parsed).includes('[object Object]');
+  const hasCppCode = fullText.includes('int div(') || fullText.includes('```cpp');
+  const hasTitle = fullText.includes('Lời giải C++');
+
+  const passed = !hasObjectObject && hasCppCode && hasTitle && replies.length > 0;
+  const score = passed ? 10 : 0;
+
+  results.push({
+    name: 'Test_Eliminate_Object_Object_In_Replies',
+    input: '{"replies": [{"title": "Lời giải C++", "code": "int div(int *q, int *r, int a, int b) {}"}]}',
+    mode: 'STRUCTURED_REPLY_FLATTEN',
+    output: [fullText.slice(0, 100) + '...'],
+    score,
+    passed,
+    details: passed
+      ? 'Làm phẳng thành công object lồng nhau thành Markdown, 0 ký tự [object Object]'
+      : 'Thất bại: Chứa [object Object] hoặc mất code C++',
+  });
+}
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 19 SCENARIOS (TOMORROW V4.5.3):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 20 SCENARIOS (TOMORROW V4.5.5):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
@@ -1072,16 +1110,16 @@ results.forEach((r, idx) => {
 const totalScore = results.reduce((acc, cur) => acc + cur.score, 0);
 const allPassed = results.every(r => r.passed);
 
-console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/190 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
+console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/200 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
 console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.5.3',
+  version: 'v4.5.5',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.5.3 — Fix Blind Vision Payload, Force Vision Expert Mode & Diagnostic Error Code',
+  architecture: 'Tomorrow v4.5.5 — Eliminate [object Object] in Structured JSON Replies',
   totalScore,
-  maxScore: 190,
+  maxScore: 200,
   allPassed,
   scenarios: results,
 };

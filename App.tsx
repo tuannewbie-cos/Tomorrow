@@ -34,6 +34,7 @@ import {
   localResilientFallback,
   KeystrokeTelemetry,
   resolveCarriedOverVisionImage,
+  flattenReplyToMarkdown,
 } from './services/aiService';
 import { ChatBubble } from './components/ChatBubble';
 import { ColdGreeting } from './components/ColdGreeting';
@@ -465,21 +466,31 @@ export default function App() {
         updatedTitle = aiSessionTitle;
       }
 
-      const replies =
+      const rawReplies =
         aiResponse.replies && aiResponse.replies.length > 0
           ? aiResponse.replies
           : [aiResponse.reply || 'ơi'];
+
+      const sanitizedReplies = rawReplies
+        .map((r: any) => (typeof r === 'string' ? r.trim() : flattenReplyToMarkdown(r)))
+        .filter((r: string) => r.length > 0 && r !== '[object Object]');
+
+      const replies = sanitizedReplies.length > 0 ? sanitizedReplies : ['nghe đây'];
 
       let currentHistory = [...updatedMessages];
 
       // HẠNG MỤC 1 & 2: TÁCH BONG BÓNG VÀ LƯU VÀO targetSessionId KHÔNG BỊ HỦY BỞI Cmd+N
       for (const [index, replyText] of replies.entries()) {
         const isLastReply = index === replies.length - 1;
+        const cleanReplyText = typeof replyText === 'string' && replyText !== '[object Object]'
+          ? replyText
+          : (flattenReplyToMarkdown(replyText) || 'nghe đây');
+
         const aiMsg: ChatMessage = {
           id: `ai-${Date.now()}-${index}`,
           role: 'model',
           sender: 'ai',
-          text: replyText,
+          text: cleanReplyText,
           timestamp: Date.now(),
           jarvisIntent: aiResponse.jarvis_intent,
           sources: isLastReply ? aiResponse.sources : undefined,
@@ -941,7 +952,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.5.4</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.5.5</Text>
               </View>
             </View>
           </View>
