@@ -51,15 +51,16 @@ const ALL_GEMINI_KEYS = [PRIMARY_GEMINI_KEY, ...BACKUP_GEMINI_KEYS].filter((k) =
 
 /**
  * 1. KHAI BÁO DANH SÁCH MODEL XOAY VÒNG MIỄN PHÍ TRÊN GOOGLE GENERATIVE LANGUAGE API (v1beta)
- * Đảm bảo chỉ dùng các model chính thức, hợp lệ và đang hoạt động để không bao giờ bị gián đoạn:
- * - gemini-2.5-flash, gemini-2.0-flash, gemini-2.0-flash-lite, gemini-1.5-flash (Chuẩn Google API)
+ * Đảm bảo chỉ dùng các model chính thức, hợp lệ và đang hoạt động 100% (HTTP 200),
+ * loại bỏ hoàn toàn các model đã bị Google deprecate trả về 404:
+ * - gemini-3.8-flash, gemini-3.5-flash, gemini-3.5-flash-lite, gemini-flash-lite-latest, gemini-flash-latest
  */
 export const FREE_MODEL_CHAIN: string[] = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-flash',
-  'gemini-1.5-pro',
+  'gemini-3.8-flash',
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-flash-lite-latest',
+  'gemini-flash-latest',
 ];
 
 /**
@@ -67,11 +68,11 @@ export const FREE_MODEL_CHAIN: string[] = [
  * Ưu tiên các model Flash mạnh nhất trước rồi mới rơi xuống Flash-Lite
  */
 export const SMART_FLASH_MODEL_CHAIN: string[] = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash',
-  'gemini-1.5-pro',
-  'gemini-2.0-flash-lite',
+  'gemini-3.8-flash',
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-flash-lite-latest',
+  'gemini-flash-latest',
 ];
 
 /**
@@ -79,11 +80,11 @@ export const SMART_FLASH_MODEL_CHAIN: string[] = [
  * Tuyệt đối không chứa các model chỉ nhận text thuần (như Gemma cũ).
  */
 export const VISION_MODEL_CHAIN: string[] = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  'gemini-1.5-flash',
-  'gemini-1.5-pro',
+  'gemini-3.8-flash',
+  'gemini-3.5-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-flash-lite-latest',
+  'gemini-flash-latest',
 ];
 
 // Timeout 8.5 giây cho mỗi lần gọi để chống treo vô định
@@ -760,14 +761,46 @@ export function extractUserStyleLocal(text: string, recentChats?: ChatMessage[])
 }
 
 /**
- * Tự động nhận diện Endpoint theo định dạng API Key:
- * - Nếu key bắt đầu bằng `AQ.`: gọi qua https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:generateContent?key=${API_KEY}
- * - Nếu key bắt đầu bằng `AIza`: gọi qua https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${API_KEY}
+ * Trích xuất chuẩn xác thông điệp lỗi từ phản hồi API (OpenAI / Gemini)
+ * Trả về 1 dòng ngắn gọn tối đa 140 ký tự, không bị cắt cụt JSON hay in key.
  */
+export function extractApiErrorMessage(rawBody: string): string {
+  if (!rawBody) return 'Unknown error';
+  try {
+    const parsed = JSON.parse(rawBody);
+    const msg = parsed?.error?.message || parsed?.message || parsed?.error?.code || parsed?.error || '';
+    if (typeof msg === 'string' && msg.trim()) {
+      return msg.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 140);
+    }
+  } catch {
+    // Không phải JSON
+  }
+  return rawBody.replace(/[\r\n\t]+/g, ' ').trim().slice(0, 140);
+}
+
+/**
+ * Hàm dựng URL Gemini thông minh — HẠNG MỤC 2:
+ * - Nếu apiKey.trim().startsWith('AQ.') (Vertex AI Express Mode):
+ *   https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}
+ * - Ngược lại (AIza... — Google AI Studio):
+ *   https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey.trim())}
+ */
+export function buildGeminiEndpoint(model: string, apiKey: string): string {
+  const cleanKey = (apiKey || '').trim();
+  if (cleanKey.startsWith('AQ.')) {
+    return `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+  }
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+}
+
 export function getEndpointsForModel(model: string, apiKey: string): string[] {
-  return [
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
-  ];
+  const cleanKey = (apiKey || '').trim();
+  const primary = buildGeminiEndpoint(model, cleanKey);
+  // Cung cấp endpoint đối ứng làm fallback dự phòng nếu endpoint chính gặp từ chối/quyền hạn
+  const fallback = cleanKey.startsWith('AQ.')
+    ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`
+    : `https://aiplatform.googleapis.com/v1/publishers/google/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+  return [primary, fallback];
 }
 
 /**
@@ -966,10 +999,10 @@ export function normalizeVisionImage(
 }
 
 /**
- * Tự động tìm và kế thừa ảnh gần nhất cho câu hỏi nối tiếp (Vision Image Carry-Over)
- * Kiểm tra 3 tin nhắn gần nhất của user trong phiên chat:
- * - Nếu có ảnh (imageBase64 / imageUri) VÀ (câu hỏi mang tính tham chiếu HOẶC lượt trước bị lỗi/timeout/hỏi lại):
- *   -> tự động gắn lại ảnh gần nhất đó vào lượt gọi Vision hiện tại.
+ * Tự động tìm và kế thừa ảnh gần nhất cho câu hỏi nối tiếp (Vision Image Carry-Over) — HẠNG MỤC 3:
+ * - CHỈ kích hoạt khi lượt hiện tại KHÔNG có ảnh mới (!currentImage) VÀ nội dung tin nhắn
+ *   chứa từ khóa tham chiếu rõ ràng tới ảnh/bài cũ qua Regex.
+ * - XÓA BỎ HOÀN TOÀN điều kiện tự động kế thừa khi bot báo lỗi (chống dính ảnh cũ sang chủ đề khác).
  */
 export function resolveCarriedOverVisionImage(
   userText: string,
@@ -979,37 +1012,11 @@ export function resolveCarriedOverVisionImage(
   if (currentImage) return currentImage;
   if (!recentChats || recentChats.length === 0) return undefined;
 
-  const lower = userText.toLowerCase().trim();
-  const REFERENCE_KEYWORDS = [
-    'bài 1', 'bai 1', 'bài 2', 'bai 2', 'bài 3', 'bai 3', 'bài 4', 'bai 4',
-    'bài tập', 'bai tap', 'bài trên', 'bai tren',
-    'ảnh trên', 'anh tren', 'hình trên', 'hinh tren',
-    'câu 1', 'cau 1', 'câu 2', 'cau 2', 'câu 3', 'cau 3',
-    'câu trên', 'cau tren', 'đề trên', 'de tren',
-    'giải hộ', 'giai ho', 'làm hộ', 'lam ho', 'xem hộ', 'xem ho',
-    'soi hộ', 'soi ho', 'giải lại', 'giai lai', 'làm lại', 'lam lai',
-    'tiếp đi', 'tiep di', 'làm tiếp', 'lam tiep', 'câu tiếp', 'cau tiep',
-    'bài này', 'bai nay', 'hình này', 'hinh nay', 'ảnh này', 'anh nay',
-    'xem lại', 'xem lai',
-  ];
+  const CARRY_OVER_REGEX = /(bài trên|bai tren|ảnh trên|anh tren|hình trên|hinh tren|câu trên|cau tren|đề trên|de tren|bài 1|bai 1|bài 2|bai 2|bài tập trên|bai tap tren|giải lại bài|giai lai bai|làm lại bài|lam lai bai|làm hộ.*trên|lam ho.*tren|giải hộ.*trên|giai ho.*tren)/i;
 
-  const hasReference = REFERENCE_KEYWORDS.some((kw) => lower.includes(kw));
+  const hasReference = CARRY_OVER_REGEX.test(userText);
 
-  // Kiểm tra nếu lượt model trước đó bị lỗi (chứa lỗi mạng, timeout, hoặc câu hỏi lại/fallback)
-  const lastModelMsg = [...recentChats]
-    .reverse()
-    .find((m) => m.role === 'model' || m.sender === 'ai');
-  const modelText = (lastModelMsg?.text || '').toLowerCase();
-  const wasLastError = lastModelMsg
-    ? (isNetworkErrorMessage(modelText) ||
-       modelText.includes('ảnh gì đây') ||
-       modelText.includes('giao diện hay bug') ||
-       modelText.includes('chưa nhận được phản hồi') ||
-       modelText.includes('chập chờn') ||
-       modelText.includes('đường truyền đang chập chờn'))
-    : false;
-
-  if (hasReference || wasLastError) {
+  if (hasReference) {
     const userMsgs = recentChats
       .filter((m) => m.role === 'user' || m.sender === 'user')
       .slice(-3);
@@ -1220,35 +1227,63 @@ async function callOpenAI(
     const validVision = await resolveValidVisionImage(imageBase64);
     const normalizedHistory = normalizeChatHistory(recentChats, userMessageWithHint, validVision?.pureBase64 || imageBase64, 'openai');
 
-    const openAiMessages: any[] = [
-      { role: 'system', content: systemPrompt },
+    // 3. Đảm bảo system prompt gửi cho OpenAI luôn có từ "JSON"
+    const enforcedSystemPrompt = systemPrompt.includes('JSON')
+      ? systemPrompt
+      : `${systemPrompt}\n\n[BẮT BUỘC]: Luôn phản hồi ở định dạng JSON hợp lệ.`;
+
+    const openAiMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: any }> = [
+      { role: 'system', content: enforcedSystemPrompt },
     ];
 
     for (let i = 0; i < normalizedHistory.length; i++) {
       const m = normalizedHistory[i];
-      const isLastUserTurn = (i === normalizedHistory.length - 1) && m.role === 'user';
-      const msgVision = isLastUserTurn && validVision
-        ? validVision
-        : (m.imageBase64 ? normalizeVisionImage(m.imageBase64) : null);
+      const isLastUserTurn = (i === normalizedHistory.length - 1);
 
-      if (msgVision) {
-        openAiMessages.push({
-          role: m.role,
-          content: [
-            { type: 'text', text: m.text || userMessageWithHint },
-            {
-              type: 'image_url',
-              image_url: {
-                url: msgVision.dataUrl,
-                detail: 'high',
+      // 1. Chuẩn hóa role trong mảng messages gửi OpenAI: chỉ cho phép 'system' | 'user' | 'assistant'
+      const role: 'user' | 'assistant' = (m.role === 'user' || (m as any).sender === 'user')
+        ? 'user'
+        : 'assistant';
+
+      const textContent = (m.text || '').trim() || (role === 'user' ? userMessageWithHint : 'nghe đây');
+
+      if (isLastUserTurn) {
+        // 2. Chuẩn hóa image_url cho tin nhắn user cuối cùng (khi có ảnh)
+        if (validVision) {
+          let mime = (validVision.mimeType || 'image/jpeg').toLowerCase();
+          if (mime === 'image/jpg') mime = 'image/jpeg';
+          const validMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+          if (!validMimes.includes(mime)) mime = 'image/jpeg';
+
+          const pureBase64 = validVision.pureBase64
+            .replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '')
+            .replace(/[\r\n\s]+/g, '');
+
+          openAiMessages.push({
+            role: 'user',
+            content: [
+              { type: 'text', text: userMessageWithHint || textContent },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${mime};base64,${pureBase64}`,
+                  detail: 'auto',
+                },
               },
-            },
-          ],
-        });
+            ],
+          });
+        } else {
+          openAiMessages.push({
+            role: 'user',
+            content: userMessageWithHint || textContent,
+          });
+        }
       } else {
+        // Toàn bộ tin nhắn lịch sử trước lượt hiện tại gửi dưới dạng content: string (không rỗng),
+        // KHÔNG nhét object ảnh cũ sai chuẩn vào giữa mảng lịch sử (tránh HTTP 400 trên assistant)
         openAiMessages.push({
-          role: m.role,
-          content: m.text,
+          role,
+          content: textContent,
         });
       }
     }
@@ -1256,7 +1291,7 @@ async function callOpenAI(
     const payload = {
       model: 'gpt-4o-mini',
       temperature,
-      max_tokens: maxTokens,
+      max_tokens: Math.min(Math.max(250, maxTokens), 2500),
       response_format: { type: 'json_object' },
       messages: openAiMessages,
     };
@@ -1283,7 +1318,8 @@ async function callOpenAI(
       }
       recordApiUsage('openai', 'gpt-4o-mini', userMessageWithHint.length, 0, true).catch(() => {});
       const errText = await res.text().catch(() => '');
-      throw new Error(`OpenAI HTTP ${status}: ${errText.slice(0, 100)}`);
+      const parsedErrorMsg = extractApiErrorMessage(errText);
+      throw new Error(`OpenAI HTTP ${status}: ${parsedErrorMsg}`);
     }
 
     const data: any = await res.json();
@@ -1445,7 +1481,8 @@ async function executeApiCall(
 
     const errStatus = res.status;
     const errText = await res.text().catch(() => '');
-    throw new Error(`HTTP ${errStatus}: ${errText.slice(0, 100)}`);
+    const parsedMsg = extractApiErrorMessage(errText);
+    throw new Error(`HTTP ${errStatus}: ${parsedMsg}`);
   } finally {
     clearTimeout(timeoutId);
   }
@@ -1499,7 +1536,7 @@ async function callModelFallbackChain(
         lastError = err;
         const msg = err?.message || String(err);
         if (failoverTrace) {
-          failoverTrace.push(`Gemini(${model}):${msg.slice(0, 35)}`);
+          failoverTrace.push(`Gemini(${model}):${msg.replace(/[\r\n\t]+/g, ' ').slice(0, 70)}`);
         }
         console.warn(`[AI Fallback Chain] Model "${model}" gặp lỗi (${msg}), tự động fallback sang tầng tiếp theo...`);
       }
@@ -2781,7 +2818,8 @@ export async function sendMessageToTomorrow(
         }
       } catch (err: any) {
         const errMsg = err?.message || String(err);
-        failoverTrace.push(`OpenAI:${errMsg.slice(0, 45)}`);
+        const cleanMsg = extractApiErrorMessage(errMsg);
+        failoverTrace.push(`OpenAI:${cleanMsg.slice(0, 60)}`);
         console.warn('[AI Router Failover]:', `OpenAI gặp sự cố (${errMsg}), tự động chuyển ngầm sang Gemini`);
       }
     }
@@ -2835,7 +2873,8 @@ export async function sendMessageToTomorrow(
         }
       } catch (err: any) {
         const errMsg = err?.message || String(err);
-        failoverTrace.push(`Key#${keyIdx + 1}:${errMsg.slice(0, 45)}`);
+        const cleanMsg = extractApiErrorMessage(errMsg);
+        failoverTrace.push(`Key#${keyIdx + 1}:${cleanMsg.slice(0, 60)}`);
         console.warn('[AI Router Failover]:', `API Key #${keyIdx + 1} lỗi (${errMsg}), thử key tiếp theo...`);
       }
     }

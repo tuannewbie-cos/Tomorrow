@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.5.3` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.5.4` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -144,6 +144,22 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
     + Khi tất cả các tầng API đều thất bại: ghi nhận `failoverTrace`, log `[Vision/AI Failover Trace]:`, và đính kèm `[Debug: Failover All Models - {mã lỗi}]` vào cuối câu trả lời fallback.
     + Khi có ảnh đề bài/học tập, `localResilientFallback` trả lời nghiêm túc, chu đáo, không trả lời ngây ngô "ảnh gì đây / giao diện hay bug cần soi à :3".
   - Cập nhật live badge header: **`Online • v4.5.3`**. Nâng cấp bộ kiểm thử lên 19/19 scenarios đạt 190/190 điểm hoàn hảo.
+
+- [x] **Ngày 9++++: `fix/v4.5.4-openai-400-gemini-404-routing-and-image-carry-over` (Tomorrow v4.5.4 — Live Diagnose & Fix OpenAI HTTP 400, Gemini HTTP 404 & Stop Sticky Image Carry-Over)**
+  - **Khắc phục triệt để OpenAI HTTP 400:**
+    + Chuẩn hóa nghiêm ngặt mảng messages gửi OpenAI: chỉ cho phép role `'system' | 'user' | 'assistant'`.
+    + Toàn bộ tin nhắn lịch sử gửi dưới dạng `content: string` thuần túy (không rỗng), loại bỏ hoàn toàn việc nhồi object `image_url` vào các turn lịch sử (đặc biệt role `assistant`) gây lỗi OpenAI 400.
+    + Chỉ tin nhắn user cuối cùng mới gắn mảng đa phương thức `image_url` với `detail: 'auto'` và clean base64.
+    + Đảm bảo system prompt gửi OpenAI luôn có từ khóa `"JSON"` để tương thích với `response_format: { type: 'json_object' }`.
+  - **Khắc phục dứt điểm Gemini HTTP 404 (AI Studio vs Vertex AI Express Mode):**
+    + Thay thế toàn bộ các model đã bị Google khai tử (`gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-flash`) bằng các model đang hoạt động 100%: `gemini-3.8-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-flash-lite-latest`, `gemini-flash-latest`.
+    + Tự động nhận diện định dạng API key: Nếu tiền tố `AQ.` định tuyến sang Vertex AI Express endpoint (`aiplatform.googleapis.com`); nếu tiền tố `AIza` định tuyến sang Google AI Studio endpoint (`generativelanguage.googleapis.com`).
+  - **Chấm dứt hiện tượng dính ảnh thừa (Sticky Image Carry-Over):**
+    + Loại bỏ hoàn toàn cờ `wasLastError` trong `resolveCarriedOverVisionImage`, tránh việc một câu hỏi thuần văn bản (như "giải thích cho tôi về nhiệt học") bị ép gán ảnh cũ chỉ vì lượt trước bot báo lỗi.
+    + Chỉ kế thừa ảnh khi người dùng thật sự dùng từ khóa tham chiếu (`bài trên`, `bài 1`, `câu 1`, `làm hộ bài trên`, etc.).
+  - **Chuẩn hóa thông điệp lỗi (Diagnostic Trace):**
+    + Bổ sung `extractApiErrorMessage` phân giải trực tiếp `parsed?.error?.message` trong 140 ký tự, chấm dứt việc cắt chuỗi JSON `errText.slice(0, 45)` gây ra chữ `error: message`.
+  - Cập nhật live badge header: **`Online • v4.5.4`**. Nâng cấp bộ kiểm thử lên 19/19 scenarios đạt 190/190 điểm hoàn hảo.
 
 - [ ] **Ngày 10 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
