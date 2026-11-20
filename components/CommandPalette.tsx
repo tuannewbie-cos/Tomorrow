@@ -702,7 +702,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             </View>
 
             <Text style={[styles.footerBrand, { color: theme.textMuted }]}>
-              Tomorrow v4.3
+              Tomorrow v4.4
             </Text>
           </View>
         </View>

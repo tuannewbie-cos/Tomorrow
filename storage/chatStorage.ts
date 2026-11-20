@@ -70,11 +70,13 @@ export function getVaultFromProfile(profile?: UserMemoryProfile): UserMemoryVaul
 
 /**
  * Hợp nhất ghi chú mới vào JSON Memory Vault và giới hạn tối đa 5 mục mỗi mảng
+ * Tự động lọc bỏ các ghi chú lệch pha về "thức khuya" / "thức đêm" khi không phải khung đêm khuya (23:00 - 03:59)
  */
 export function mergeMemoryNoteIntoVault(
   vault: UserMemoryVault,
   newNote: string,
-  userText: string
+  userText: string,
+  chronoOrDate?: any
 ): UserMemoryVault {
   const current = vault || DEFAULT_USER_MEMORY_VAULT;
   const updated: UserMemoryVault = {
@@ -87,6 +89,23 @@ export function mergeMemoryNoteIntoVault(
 
   const lowerText = (userText || '').toLowerCase();
   const lowerNote = (newNote || '').toLowerCase();
+
+  // Xác định xem có phải khung đêm khuya (23:00 - 03:59) hay không
+  let isLateNight = false;
+  if (chronoOrDate && typeof chronoOrDate === 'object') {
+    if ('period' in chronoOrDate && typeof chronoOrDate.period === 'string') {
+      isLateNight = chronoOrDate.period === 'LATE_NIGHT';
+    } else if ('hour' in chronoOrDate && typeof chronoOrDate.hour === 'number') {
+      const h = chronoOrDate.hour;
+      isLateNight = h >= 23 || h < 4;
+    }
+  } else if (chronoOrDate instanceof Date) {
+    const h = chronoOrDate.getHours();
+    isLateNight = h >= 23 || h < 4;
+  } else {
+    const h = new Date().getHours();
+    isLateNight = h >= 23 || h < 4;
+  }
 
   // 1. Cập nhật Pronouns
   if (['t', 'm', 'tao', 'mày', 'may'].some((w) => lowerText.split(/[\s,.;!?:~]+/).includes(w))) {
@@ -128,7 +147,12 @@ export function mergeMemoryNoteIntoVault(
   // 4. Nếu newNote có nội dung cụ thể
   if (newNote && newNote.trim().length > 3) {
     const cleanNote = newNote.trim();
-    if (lowerNote.includes('thích') || lowerNote.includes('fan') || lowerNote.includes('mê')) {
+    const isLateNightNote = lowerNote.includes('thức khuya') || lowerNote.includes('thức đêm');
+
+    if (isLateNightNote && !isLateNight) {
+      // HẠNG MỤC 3: Bỏ qua ghi chú lệch pha về thức khuya / thức đêm khi không phải đêm khuya
+      console.log('[Storage] Bỏ qua ghi chú lệch pha thức khuya:', cleanNote);
+    } else if (lowerNote.includes('thích') || lowerNote.includes('fan') || lowerNote.includes('mê')) {
       if (!updated.favorites.includes(cleanNote)) updated.favorites.unshift(cleanNote);
     } else if (lowerNote.includes('dự án') || lowerNote.includes('làm') || lowerNote.includes('code') || lowerNote.includes('phát triển')) {
       if (!updated.activeProjects.includes(cleanNote)) updated.activeProjects.unshift(cleanNote);
@@ -140,7 +164,27 @@ export function mergeMemoryNoteIntoVault(
   }
 
   if (userText && userText.trim().length > 6 && !lowerText.includes('hello') && !lowerText.includes('yo')) {
-    updated.recentContext = userText.trim().slice(0, 80);
+    const isLateNightUserText = lowerText.includes('thức khuya') || lowerText.includes('thức đêm');
+    if (!isLateNightUserText || isLateNight) {
+      updated.recentContext = userText.trim().slice(0, 80);
+    }
+  }
+
+  // HẠNG MỤC 3: Dọn sạch các ghi chú lệch pha trong habits và recentContext nếu không phải đêm khuya
+  if (!isLateNight) {
+    updated.habits = updated.habits.filter((h) => {
+      const l = h.toLowerCase();
+      return !l.includes('thức khuya') && !l.includes('thức đêm');
+    });
+    if (
+      updated.recentContext &&
+      (updated.recentContext.toLowerCase().includes('thức khuya') ||
+        updated.recentContext.toLowerCase().includes('thức đêm'))
+    ) {
+      updated.recentContext = updated.recentContext
+        .replace(/thức khuya|thức đêm/gi, 'làm việc')
+        .trim() || 'Trò chuyện cùng Tomorrow';
+    }
   }
 
   // Giới hạn tối đa 5 mục mỗi mảng để prompt luôn siêu nhẹ dưới 120 tokens
@@ -291,6 +335,7 @@ export function cleanOldSessionsWithGenericTitles(sessions: ChatSession[]): {
 
 /**
  * Hàm dọn sạch các ghi chú nhầm về đêm muộn / thức khuya nếu trước đó lỡ lưu
+ * Tự động lọc bỏ các ghi chú lệch pha trong UserMemoryProfile và UserMemoryVault
  */
 export function cleanNightNotesFromMemory(memory: UserMemoryProfile): UserMemoryProfile {
   let changed = false;
@@ -302,16 +347,59 @@ export function cleanNightNotesFromMemory(memory: UserMemoryProfile): UserMemory
       .replace(/hay bồn chồn vào đêm muộn/gi, 'Thích trò chuyện thư giãn')
       .replace(/đêm muộn/gi, 'khi rảnh')
       .replace(/thức khuya/gi, 'nghỉ ngơi')
+      .replace(/thức đêm/gi, 'nghỉ ngơi')
       .trim();
   };
 
-  if (cleaned.moodTrend && cleaned.moodTrend.toLowerCase().includes('đêm muộn')) {
+  if (cleaned.moodTrend && (cleaned.moodTrend.toLowerCase().includes('đêm muộn') || cleaned.moodTrend.toLowerCase().includes('thức khuya') || cleaned.moodTrend.toLowerCase().includes('thức đêm'))) {
     cleaned.moodTrend = purgeNightWords(cleaned.moodTrend) || 'Thích phong cách ấm áp, hài hước';
     changed = true;
   }
-  if (cleaned.currentProblem && cleaned.currentProblem.toLowerCase().includes('đêm muộn')) {
+  if (cleaned.currentProblem && (cleaned.currentProblem.toLowerCase().includes('đêm muộn') || cleaned.currentProblem.toLowerCase().includes('thức khuya') || cleaned.currentProblem.toLowerCase().includes('thức đêm'))) {
     cleaned.currentProblem = purgeNightWords(cleaned.currentProblem) || 'Áp lực công việc, học tập';
     changed = true;
+  }
+  if (cleaned.summary && (cleaned.summary.toLowerCase().includes('đêm muộn') || cleaned.summary.toLowerCase().includes('thức khuya') || cleaned.summary.toLowerCase().includes('thức đêm'))) {
+    cleaned.summary = purgeNightWords(cleaned.summary) || 'Người dùng cần không gian trò chuyện tâm sự nhẹ nhàng, không phán xét.';
+    changed = true;
+  }
+
+  // Dọn dẹp habits & vault nếu không phải đêm khuya (23:00 - 03:59)
+  const currentHour = new Date().getHours();
+  const isLateNight = currentHour >= 23 || currentHour < 4;
+
+  if (Array.isArray(cleaned.habits)) {
+    const prevLen = cleaned.habits.length;
+    cleaned.habits = isLateNight
+      ? cleaned.habits.slice(0, 5)
+      : cleaned.habits.filter((h) => {
+          const l = h.toLowerCase();
+          return !l.includes('thức khuya') && !l.includes('thức đêm') && !l.includes('đêm muộn');
+        }).slice(0, 5);
+    if (cleaned.habits.length !== prevLen) changed = true;
+  }
+
+  if (cleaned.vault) {
+    const oldVaultHabits = cleaned.vault.habits || [];
+    const newVaultHabits = isLateNight
+      ? oldVaultHabits.slice(0, 5)
+      : oldVaultHabits.filter((h) => {
+          const l = h.toLowerCase();
+          return !l.includes('thức khuya') && !l.includes('thức đêm') && !l.includes('đêm muộn');
+        }).slice(0, 5);
+
+    let newRecentContext = cleaned.vault.recentContext || '';
+    if (!isLateNight && (newRecentContext.toLowerCase().includes('thức khuya') || newRecentContext.toLowerCase().includes('thức đêm') || newRecentContext.toLowerCase().includes('đêm muộn'))) {
+      newRecentContext = purgeNightWords(newRecentContext) || 'Trò chuyện cùng Tomorrow';
+    }
+
+    cleaned.vault = {
+      ...cleaned.vault,
+      habits: newVaultHabits,
+      recentContext: newRecentContext,
+      favorites: (cleaned.vault.favorites || []).slice(0, 5),
+      activeProjects: (cleaned.vault.activeProjects || []).slice(0, 5),
+    };
   }
 
   return cleaned;
