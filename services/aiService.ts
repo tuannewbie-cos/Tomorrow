@@ -24,6 +24,7 @@ export {
   MicroPsychProfile,
   analyzeMicroPsychology,
 };
+import { recordApiUsage, setOpenAICircuitBreakerState } from './quotaShield';
 
 // Cấu hình OpenAI API (Bộ não chính siêu tốc gpt-4o-mini)
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
@@ -36,6 +37,7 @@ export function getOpenAICircuitBreakerStatus(): boolean {
 
 export function resetOpenAICircuitBreaker(): void {
   isOpenAIUnavailable = false;
+  setOpenAICircuitBreakerState(false).catch(() => {});
 }
 
 // Cấu hình Gemini API Keys (Chuỗi dự phòng ngầm miễn phí xoay vòng)
@@ -60,6 +62,20 @@ export const FREE_MODEL_CHAIN: string[] = [
   'gemini-2.0-flash',
   'gemini-2.0-flash-lite',
   'gemini-1.5-flash',
+];
+
+/**
+ * Chuỗi ưu tiên Model Flash thông minh nhất dành riêng cho STEM (Vật lý/Hóa/Điện tử/Code) & Vision Lab
+ * Ưu tiên các model Flash mạnh nhất trước rồi mới rơi xuống Flash-Lite
+ */
+export const SMART_FLASH_MODEL_CHAIN: string[] = [
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-3.5-flash-lite',
+  'gemini-flash-lite-latest',
+  'gemini-3.1-flash-lite',
+  'gemini-2.0-flash-lite',
 ];
 
 // Timeout 8.5 giây cho mỗi lần gọi để chống treo vô định
@@ -238,28 +254,158 @@ export function buildChronoContext(now: Date = new Date(), lastTimestamp?: numbe
   };
 }
 
+export type ExpertDomain =
+  | 'VISION_LAB'
+  | 'STEM_PHYSICS_MECH'
+  | 'STEM_CHEM_BIO'
+  | 'STEM_ELECTRONICS'
+  | 'CODE_CS'
+  | 'FINANCE_QUANT'
+  | 'GENERAL';
+
 export interface ReflexDirective {
   intentMode: 'STOP_SIGNAL' | 'PING' | 'WEB_INTEL' | 'EXPERT_JARVIS' | 'CASUAL_FRIEND';
   pronounRule: string;
   directivePrompt: string;
   dynamicMaxTokens: number;
   dynamicTimeout: number;
+  temperature?: number;
+  domain?: ExpertDomain;
   chrono?: ChronoContext;
   psych?: MicroPsychProfile;
 }
 
 /**
+ * Lấy dòng chỉ đạo chuyên môn con chuẩn xác cho từng nhánh tri thức
+ */
+export function getDomainDirectiveLine(domain: ExpertDomain): string {
+  switch (domain) {
+    case 'STEM_PHYSICS_MECH':
+      return '[DOMAIN: PHYSICS_MECH | Tóm tắt dữ kiện & đổi đơn vị SI -> nêu công thức LaTeX -> giải từng bước chính xác -> kiểm tra lại thứ nguyên kết quả.]';
+    case 'STEM_CHEM_BIO':
+      return '[DOMAIN: CHEM_BIO | Viết phương trình/cơ chế chuẩn xác bằng LaTeX/ký hiệu khoa học -> giải thích bản chất ngắn gọn, không bịa số liệu.]';
+    case 'STEM_ELECTRONICS':
+      return '[DOMAIN: ELECTRONICS | Nêu rõ thông số điện áp/dòng/công suất an toàn -> sơ đồ nối chân rõ ràng -> công thức tính toán hoặc code nhúng sạch.]';
+    case 'CODE_CS':
+      return '[DOMAIN: CODE_CS | Đi thẳng vào nguyên nhân gốc -> đưa code sạch có đánh dấu ngôn ngữ -> nêu ngắn gọn độ phức tạp hoặc lưu ý edge-case.]';
+    case 'FINANCE_QUANT':
+      return '[DOMAIN: FINANCE_QUANT | Trình bày công thức/số liệu dạng bảng hoặc gạch đầu dòng sắc nét -> phân tích cả cơ hội lẫn rủi ro, kèm ghi chú không phải lời khuyên đầu tư bắt buộc.]';
+    case 'VISION_LAB':
+      return '[DOMAIN: VISION_LAB | Đọc kỹ mọi chữ viết tay, công thức, linh kiện mạch hoặc biểu đồ trong ảnh -> mô tả ngắn phần nhận diện được rồi giải quyết trực tiếp yêu cầu của user.]';
+    case 'GENERAL':
+    default:
+      return '';
+  }
+}
+
+/**
+ * BỘ ĐỊNH TUYẾN CHUYÊN MÔN CON CỤC BỘ (detectExpertDomain)
+ * Chạy cục bộ trên máy trong < 1ms:
+ * - VISION_LAB: Khi có ảnh đính kèm (hasImage === true)
+ * - STEM_PHYSICS_MECH: Vật lý, cơ học, chuyển động, năng lượng, lực
+ * - STEM_CHEM_BIO: Hóa học, sinh học, phân tử, tế bào, phản ứng
+ * - STEM_ELECTRONICS: Điện tử, vi điều khiển, mạch điện, linh kiện
+ * - CODE_CS: Tin học, thuật toán, lập trình, cấu trúc dữ liệu
+ * - FINANCE_QUANT: Tài chính, đầu tư, chứng khoán, định giá, báo cáo tài chính
+ * - GENERAL: Các cuộc trò chuyện đời thường hoặc câu hỏi chung
+ */
+export function detectExpertDomain(userText: string, hasImage: boolean = false): ExpertDomain {
+  if (hasImage) return 'VISION_LAB';
+
+  const trimmed = (userText || '').trim();
+  if (!trimmed) return 'GENERAL';
+  const lower = trimmed.toLowerCase();
+
+  // 1. Nhánh Điện tử & Hệ thống nhúng (STEM_ELECTRONICS)
+  const electronicsPatterns = [
+    'điện trở', 'dien tro', 'tụ điện', 'tu dien', 'cuộn cảm', 'cuon cam',
+    'định luật ohm', 'dinh luat ohm', 'mạch rc', 'mach rc', 'rlc',
+    'transistor', 'mosfet', 'op-amp', 'opamp', 'diode', 'điot', 'diot',
+    'arduino', 'esp32', 'stm32', 'pwm', 'uart', 'i2c', 'spi', 'breadboard', 'pcb',
+    'mạch điện', 'mach dien', 'chân pin', 'chan pin', 'hạn dòng', 'han dong',
+    'vi điều khiển', 'vi dieu khien', 'vcc', 'gnd', 'gpio', 'nguồn 5v', 'nguon 5v',
+    'nguồn 3.3v', 'nguon 3.3v', 'sơ đồ mạch', 'so do mach', 'linh kiện điện tử'
+  ];
+  if (electronicsPatterns.some((p) => lower.includes(p))) {
+    return 'STEM_ELECTRONICS';
+  }
+
+  // 2. Nhánh Vật lý & Cơ học (STEM_PHYSICS_MECH)
+  const physicsPatterns = [
+    'gia tốc', 'gia toc', 'vận tốc', 'van toc', 'momen', 'động năng', 'dong nang',
+    'thế năng', 'the nang', 'con lắc', 'con lac', 'sóng', 'song', 'quang học', 'quang hoc',
+    'nhiệt động lực học', 'nhiet dong luc hoc', 'cơ học kết cấu', 'co hoc ket cau',
+    'ứng suất', 'ung suat', 'newton', 'joule', 'watt', 'phương trình chuyển động',
+    'phuong trinh chuyen dong', 'mạch từ', 'mach tu', 'rơi tự do', 'roi tu do',
+    'quán tính', 'quan tinh', 'áp suất', 'ap suat', 'động lượng', 'dong luong',
+    'vật lý', 'vat ly', 'cơ học', 'co hoc', 'thuyết tương đối', 'quang phổ',
+    'giao thoa', 'tần số góc', 'dao động điều hòa', 'dao dong dieu hoa'
+  ];
+  const hasForceWord = /\b(lực|luc)\b/i.test(lower);
+  if (physicsPatterns.some((p) => lower.includes(p)) || hasForceWord) {
+    return 'STEM_PHYSICS_MECH';
+  }
+
+  // 3. Nhánh Hóa học & Sinh học (STEM_CHEM_BIO)
+  const chemBioPatterns = [
+    'phản ứng', 'phan ung', 'cân bằng phương trình', 'can bang phuong trinh',
+    'oxi hóa', 'oxi hoa', 'hữu cơ', 'huu co', 'vô cơ', 'vo co',
+    'axit', 'bazơ', 'bazo', 'este', 'protein', 'tế bào', 'te bao',
+    'nguyên phân', 'nguyen phan', 'giảm phân', 'giam phan', 'đột biến', 'dot bien',
+    'enzyme', 'enzim', 'sinh học', 'sinh hoc', 'hóa học', 'hoa hoc',
+    'chất khử', 'chat khu', 'chất oxi hóa', 'chat oxi hoa', 'di truyền', 'di truyen',
+    'nhiễm sắc thể', 'nhiem sac the', 'kiểu gen', 'kiểu hình', 'quang hợp',
+    'liên kết ion', 'liên kết cộng hóa trị', 'bảng tuần hoàn'
+  ];
+  const hasShortChemBio = /\b(mol|ph|adn|arn|dna|rna|alen|gen)\b/i.test(lower);
+  if (chemBioPatterns.some((p) => lower.includes(p)) || hasShortChemBio) {
+    return 'STEM_CHEM_BIO';
+  }
+
+  // 4. Nhánh Tài chính & Đầu tư (FINANCE_QUANT)
+  const financePatterns = [
+    'cổ phiếu', 'co phieu', 'chứng khoán', 'chung khoan', 'crypto', 'bitcoin',
+    'lãi kép', 'lai kep', 'báo cáo tài chính', 'bao cao tai chinh',
+    'lạm phát', 'lam phat', 'tỷ giá', 'ty gia', 'giá vàng', 'gia vang',
+    'dòng tiền', 'dong tien', 'ngân sách', 'ngan sach', 'đầu tư', 'dau tu',
+    'rủi ro tài chính', 'rui ro tai chinh', 'danh mục đầu tư', 'cổ tức',
+    'trái phiếu', 'thị trường vốn', 'đòn bẩy tài chính'
+  ];
+  const hasShortFinance = /\b(btc|eth|dcf|npv|irr|p\/e|pe ratio|roe|roa|eps)\b/i.test(lower);
+  if (financePatterns.some((p) => lower.includes(p)) || hasShortFinance) {
+    return 'FINANCE_QUANT';
+  }
+
+  // 5. Nhánh Tin học & Lập trình (CODE_CS)
+  const codePatterns = [
+    'thuật toán', 'thuat toan', 'độ phức tạp', 'do phuc tap', 'typescript', 'javascript',
+    'python', 'c++', 'java', 'react', 'oop', 'cấu trúc dữ liệu', 'cau truc du lieu',
+    'con trỏ', 'con tro', 'đệ quy', 'de quy', 'bubblesort', 'bubble sort', 'quicksort',
+    'mergesort', 'database', 'indexing', 'backend', 'frontend', 'compiler', 'regex',
+    'kế thừa', 'ke thua', 'đa hình', 'da hinh', 'lập trình', 'lap trinh', 'viết code',
+    'viet code', 'printf', 'scanf', 'docker', 'kubernetes'
+  ];
+  const hasShortCode = /\b(code|bug|lỗi|big-o|sql|api|git)\b/i.test(lower);
+  if (codePatterns.some((p) => lower.includes(p)) || hasShortCode || trimmed.includes('```')) {
+    return 'CODE_CS';
+  }
+
+  return 'GENERAL';
+}
+
+/**
  * LỚP 1 — PHẢN XẠ CỤC BỘ TRÊN MÁY (buildLocalReflexDirective)
  * Chạy cục bộ 0.001s trước khi gọi API để xuất ra ĐÚNG 1 NHÃN CHỈ ĐẠO DUY NHẤT ([DIRECTIVE])
- * Tự động tính toán dynamicMaxTokens (250 cho chat ngắn, 1200 cho code/bảng/chuyên sâu)
- * và dynamicTimeout (7000ms cho chat ngắn, 12000ms cho chuyên sâu).
+ * Tự động tính toán dynamicMaxTokens (250 cho chat ngắn, 1200 cho code/bảng/chuyên sâu, 2000 cho STEM/Code/Vision)
+ * và dynamicTimeout (7000ms cho chat ngắn, 12000ms cho chuyên sâu, 15000ms cho bài giải STEM nặng).
  */
 export function buildLocalReflexDirective(
   userText: string,
   recentHistory: any[] = [],
   isWebSearched: boolean = false,
   chronoContext?: ChronoContext,
-  telemetry?: Partial<KeystrokeTelemetry>
+  telemetry?: Partial<KeystrokeTelemetry>,
+  hasImage: boolean = false
 ): ReflexDirective {
   const chrono = chronoContext || buildChronoContext();
   const psych = analyzeMicroPsychology(userText, telemetry, recentHistory);
@@ -301,7 +447,7 @@ export function buildLocalReflexDirective(
   // 2. Phân loại Trạng thái Phản xạ theo thứ tự ưu tiên bất biến:
   // STOP_SIGNAL > PING > WEB_INTEL > EXPERT_JARVIS > CASUAL_FRIEND
 
-  // A. STOP_SIGNAL
+  // A. STOP_SIGNAL (Giữ nguyên quyền ưu tiên cao nhất, cấm hỏi lại, budget 250t)
   const STOP_PATTERNS = /^(okk+|ok+|oki+|ừm*|ừa|ukm*|thôi|nghỉ|pp|bye|cút|im|im đi|cook|sybau|ngủ đây|thôi nhé|dừng|ok r|để t xem)[!.? ]*$/i;
   const isStopSignal =
     STOP_PATTERNS.test(lower) ||
@@ -317,6 +463,8 @@ export function buildLocalReflexDirective(
       directivePrompt,
       dynamicMaxTokens: 250,
       dynamicTimeout: 7000,
+      temperature: 0.75,
+      domain: 'GENERAL',
       chrono,
       psych,
     };
@@ -332,20 +480,30 @@ export function buildLocalReflexDirective(
       directivePrompt,
       dynamicMaxTokens: 250,
       dynamicTimeout: 7000,
+      temperature: 0.75,
+      domain: 'GENERAL',
       chrono,
       psych,
     };
   }
 
+  // 3. Nhận diện Chuyên Môn Con (Domain Sub-Router)
+  const domain = detectExpertDomain(userText, hasImage);
+
   // C. WEB_INTEL
   if (isWebSearched) {
-    const directivePrompt = `[DIRECTIVE: MODE=WEB_INTEL | ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Trả lời TRỰC TIẾP và CHÍNH XÁC ngay trong lượt này dựa trên dữ liệu Web đính kèm kèm URL thật. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). CẤM HỨA SUÔNG ("Đợi xíu", "Chờ mình chút"). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng và thụt lề chuẩn (4 spaces Python, 2 spaces TS/JS). Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
+    const domainLine = getDomainDirectiveLine(domain);
+    const domainPart = domainLine ? ` ${domainLine} |` : '';
+    const directivePrompt = `[DIRECTIVE: MODE=WEB_INTEL |${domainPart} ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Trả lời TRỰC TIẾP và CHÍNH XÁC ngay trong lượt này dựa trên dữ liệu Web đính kèm kèm URL thật. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). CẤM HỨA SUÔNG ("Đợi xíu", "Chờ mình chút"). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng và thụt lề chuẩn (4 spaces Python, 2 spaces TS/JS). Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
+    const isFinance = domain === 'FINANCE_QUANT';
     return {
       intentMode: 'WEB_INTEL',
       pronounRule,
       directivePrompt,
       dynamicMaxTokens: 1200,
       dynamicTimeout: 12000,
+      temperature: isFinance ? 0.35 : 0.7,
+      domain,
       chrono,
       psych,
     };
@@ -391,15 +549,41 @@ export function buildLocalReflexDirective(
     (lower.includes(' c') || lower.includes('ngôn ngữ') || lower.includes('code') || lower.includes('python') || lower.includes('java') || lower.includes('viết lại') || lower.includes('tối ưu') || lower.includes('trong '));
 
   const hasExpertWord = expertKeywords.some((kw) => lower.includes(kw)) || trimmed.includes('```') || isCodeFollowUp;
+  const isExpertDomainActive = domain !== 'GENERAL';
 
-  if (wordCount > 18 || hasExpertWord) {
-    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS | ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng (explicit line breaks), thụt lề chuẩn (4 spaces cho Python, 2 spaces cho TS/JS), CẤM viết dồn 1 dòng. Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
+  if (hasImage || isExpertDomainActive || wordCount > 18 || hasExpertWord) {
+    const domainLine = getDomainDirectiveLine(domain);
+    const domainPart = domainLine ? ` ${domainLine} |` : '';
+    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS |${domainPart} ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng (explicit line breaks), thụt lề chuẩn (4 spaces cho Python, 2 spaces cho TS/JS), CẤM viết dồn 1 dòng. Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
+
+    let dynamicMaxTokens = 1200;
+    let dynamicTimeout = 12000;
+    let temperature = 0.7;
+
+    if (
+      domain === 'STEM_PHYSICS_MECH' ||
+      domain === 'STEM_CHEM_BIO' ||
+      domain === 'STEM_ELECTRONICS' ||
+      domain === 'CODE_CS' ||
+      domain === 'VISION_LAB'
+    ) {
+      dynamicMaxTokens = 2000;
+      dynamicTimeout = 15000;
+      temperature = 0.35;
+    } else if (domain === 'FINANCE_QUANT') {
+      dynamicMaxTokens = 1200;
+      dynamicTimeout = 12000;
+      temperature = 0.35;
+    }
+
     return {
       intentMode: 'EXPERT_JARVIS',
       pronounRule,
       directivePrompt,
-      dynamicMaxTokens: 1200,
-      dynamicTimeout: 12000,
+      dynamicMaxTokens,
+      dynamicTimeout,
+      temperature,
+      domain,
       chrono,
       psych,
     };
@@ -423,6 +607,8 @@ export function buildLocalReflexDirective(
     directivePrompt,
     dynamicMaxTokens: 250,
     dynamicTimeout: 7000,
+    temperature: 0.75,
+    domain: 'GENERAL',
     chrono,
     psych,
   };
@@ -776,7 +962,8 @@ async function callOpenAI(
   recentChats: ChatMessage[],
   imageBase64?: string,
   maxTokens: number = 250,
-  timeoutMs: number = 7000
+  timeoutMs: number = 7000,
+  temperature: number = 0.75
 ): Promise<string> {
   const effectiveTimeout = Math.min(timeoutMs, 5000);
   const controller = new AbortController();
@@ -809,7 +996,7 @@ async function callOpenAI(
 
     const payload = {
       model: 'gpt-4o-mini',
-      temperature: 0.75,
+      temperature,
       max_tokens: maxTokens,
       response_format: { type: 'json_object' },
       messages: openAiMessages,
@@ -828,6 +1015,8 @@ async function callOpenAI(
     if (!res.ok) {
       const status = res.status;
       isOpenAIUnavailable = true;
+      setOpenAICircuitBreakerState(true).catch(() => {});
+      recordApiUsage('openai', 'gpt-4o-mini', userMessageWithHint.length, 0, true).catch(() => {});
       console.warn(`[OpenAI Circuit Breaker]: HTTP ${status}, switching silently to Gemini chain.`);
       const errText = await res.text().catch(() => '');
       throw new Error(`OpenAI HTTP ${status}: ${errText.slice(0, 100)}`);
@@ -837,10 +1026,13 @@ async function callOpenAI(
     const rawText = data?.choices?.[0]?.message?.content || '';
 
     if (!rawText) throw new Error('OpenAI returned empty message content');
+    recordApiUsage('openai', 'gpt-4o-mini', userMessageWithHint.length, rawText.length, false).catch(() => {});
     return rawText;
   } catch (err: any) {
     if (err?.name === 'AbortError' || controller.signal.aborted) {
       isOpenAIUnavailable = true;
+      setOpenAICircuitBreakerState(true).catch(() => {});
+      recordApiUsage('openai', 'gpt-4o-mini', userMessageWithHint.length, 0, true).catch(() => {});
       console.warn(`[OpenAI Timeout]: ${effectiveTimeout}ms timeout reached, aborting and switching silently to Gemini chain.`);
     }
     throw err;
@@ -856,7 +1048,7 @@ interface ExecuteApiCallResult {
 
 /**
  * Thực hiện 1 lượt gọi API tới 1 URL cụ thể kèm dynamic timeout qua AbortController
- * maxOutputTokens linh hoạt (800 / 1200) và hỗ trợ trích xuất Google Search Grounding metadata
+ * maxOutputTokens linh hoạt (800 / 1200 / 2000) và hỗ trợ trích xuất Google Search Grounding metadata
  */
 async function executeApiCall(
   url: string,
@@ -866,7 +1058,8 @@ async function executeApiCall(
   enableGrounding: boolean = false,
   maxTokens: number = 800,
   timeoutMs: number = TIMEOUT_MS,
-  recentChats: ChatMessage[] = []
+  recentChats: ChatMessage[] = [],
+  temperature: number = 0.7
 ): Promise<ExecuteApiCallResult> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -892,7 +1085,7 @@ async function executeApiCall(
     });
 
     const generationConfig: any = {
-      temperature: 0.7,
+      temperature,
       maxOutputTokens: maxTokens,
     };
 
@@ -986,6 +1179,7 @@ async function executeApiCall(
 
 /**
  * Logic Fallback & Timeout theo Model Fallback Chain
+ * Hỗ trợ ưu tiên Smart Flash Models cho nhánh STEM / Vision Lab
  */
 async function callModelFallbackChain(
   apiKey: string,
@@ -995,11 +1189,14 @@ async function callModelFallbackChain(
   enableGrounding: boolean = false,
   maxTokens: number = 800,
   timeoutMs: number = TIMEOUT_MS,
-  recentChats: ChatMessage[] = []
+  recentChats: ChatMessage[] = [],
+  temperature: number = 0.7,
+  preferSmartFlash: boolean = false
 ): Promise<ExecuteApiCallResult> {
   let lastError: any = null;
+  const chain = preferSmartFlash ? SMART_FLASH_MODEL_CHAIN : FREE_MODEL_CHAIN;
 
-  for (const model of FREE_MODEL_CHAIN) {
+  for (const model of chain) {
     const endpoints = getEndpointsForModel(model, apiKey);
 
     for (const url of endpoints) {
@@ -1012,9 +1209,11 @@ async function callModelFallbackChain(
           enableGrounding,
           maxTokens,
           timeoutMs,
-          recentChats
+          recentChats,
+          temperature
         );
         if (result && result.text) {
+          recordApiUsage('gemini', model, userMessageWithHint.length, result.text.length, false).catch(() => {});
           return result;
         }
       } catch (err: any) {
@@ -2165,12 +2364,14 @@ export async function sendMessageToTomorrow(
     }
 
     // LỚP 1 — PHẢN XẠ CỤC BỘ TRÊN MÁY: XUẤT ĐÚNG 1 NHÃN CHỈ ĐẠO DUY NHẤT
+    const hasImage = Boolean(imageBase64);
     const directive = buildLocalReflexDirective(
       userText,
       recentChats,
       needsWebSearch || webSearchContext.searched,
       chrono,
-      telemetry
+      telemetry,
+      hasImage
     );
 
     const psychTag = directive.psych?.directiveTag ? `${directive.psych.directiveTag}\n\n` : '';
@@ -2213,7 +2414,7 @@ export async function sendMessageToTomorrow(
     // =========================================================================
     // HẠNG MỤC 3: HYBRID AI ROUTER (Primary OpenAI -> 3 Tầng Gemini Free Chain)
     // Cấp phát Token Động & Dynamic Timeout: 250 tokens / 7s cho chat ngắn;
-    // 1200 tokens / 12s cho code, bảng biểu, công thức và phân tích chuyên sâu.
+    // 1200 tokens / 12s cho code/bảng/finance; 2000 tokens / 15s cho STEM/Vision.
     // =========================================================================
     // 1. BỘ NÃO CHÍNH SIÊU TỐC: OPENAI (gpt-4o-mini, dynamic tokens/timeout, silent circuit breaker)
     if (OPENAI_API_KEY && !isOpenAIUnavailable) {
@@ -2224,7 +2425,8 @@ export async function sendMessageToTomorrow(
           recentChats,
           imageBase64,
           directive.dynamicMaxTokens,
-          directive.dynamicTimeout
+          directive.dynamicTimeout,
+          directive.temperature ?? 0.75
         );
         const parsed = parseAIResponseJson(openAiRaw, userText, recentChats, webSearchContext.sources);
         if (parsed && parsed.replies && parsed.replies.length > 0) {
@@ -2254,6 +2456,9 @@ export async function sendMessageToTomorrow(
     }
 
     // 2. CHUỖI DỰ PHÒNG NGẦM: GEMINI MODEL FALLBACK CHAIN (MIỄN PHÍ 3 TẦNG)
+    const preferSmartFlash = Boolean(
+      directive.domain?.startsWith('STEM_') || directive.domain === 'VISION_LAB'
+    );
     for (let keyIdx = 0; keyIdx < ALL_GEMINI_KEYS.length; keyIdx++) {
       const key = ALL_GEMINI_KEYS[keyIdx];
       try {
@@ -2265,7 +2470,9 @@ export async function sendMessageToTomorrow(
           webSearchContext.searched,
           directive.dynamicMaxTokens,
           directive.dynamicTimeout,
-          recentChats
+          recentChats,
+          directive.temperature ?? 0.7,
+          preferSmartFlash
         );
         const parsed = parseAIResponseJson(rawRes.text, userText, recentChats, webSearchContext.sources);
         if (parsed && parsed.replies && parsed.replies.length > 0) {

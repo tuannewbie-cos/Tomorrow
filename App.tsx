@@ -61,6 +61,7 @@ import {
   THEME_STORAGE_KEY,
 } from './constants/theme';
 import { injectWebFonts } from './utils/webFont';
+import { compressImageForVision } from './utils/imageOptimizer';
 
 // Kiểm tra câu chào ngắn xã giao hoặc placeholder (tương thích ngược)
 export const isGreetingOrTooShort = (text: string) => {
@@ -118,6 +119,7 @@ export default function App() {
   const prevIsDesktopRef = useRef<boolean>(isDesktop);
   const isCommandPaletteOpenRef = useRef<boolean>(false);
   const currentSessionTurnIdRef = useRef<number>(0);
+  const [isDraggingImage, setIsDraggingImage] = useState<boolean>(false);
 
   const panesRef = useRef<ChatPane[]>(panes);
   panesRef.current = panes;
@@ -333,7 +335,7 @@ export default function App() {
         if (words.length > 6) {
           sessionTitle += '...';
         }
-      } else if (imageUri && !trimmedText) {
+      } else if ((imageUri || imageBase64) && (!trimmedText || trimmedText === 'Hãy phân tích nội dung trong ảnh này giúp mình')) {
         sessionTitle = 'Hình ảnh gửi kèm';
       }
 
@@ -781,6 +783,90 @@ export default function App() {
     };
   }, [openDropdownPaneId]);
 
+  // HẠNG MỤC 3: DÁN ẢNH Cmd+V & KÉO-THẢ (DRAG & DROP) CHO VISION LAB TRÊN MACBOOK / WEB
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+
+    const handlePaste = async (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type.startsWith('image/')) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            try {
+              const opt = await compressImageForVision(file);
+              const imgObj = {
+                uri: `data:${opt.mimeType};base64,${opt.base64}`,
+                base64: opt.base64,
+                sizeKB: opt.sizeKB,
+              };
+              const activeId = activePaneIdRef.current;
+              inputBarRefs.current[activeId]?.setSelectedImage?.(imgObj);
+            } catch (err) {
+              console.warn('[Vision Paste] Lỗi nén ảnh:', err);
+            }
+            break;
+          }
+        }
+      }
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer?.types?.includes('Files')) {
+        setIsDraggingImage(true);
+      }
+    };
+
+    const handleDragLeave = (e: DragEvent) => {
+      if (!e.relatedTarget || e.relatedTarget === document.documentElement) {
+        setIsDraggingImage(false);
+      }
+    };
+
+    const handleDrop = async (e: DragEvent) => {
+      e.preventDefault();
+      setIsDraggingImage(false);
+      const files = e.dataTransfer?.files;
+      if (!files || files.length === 0) return;
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.type.startsWith('image/')) {
+          try {
+            const opt = await compressImageForVision(file);
+            const imgObj = {
+              uri: `data:${opt.mimeType};base64,${opt.base64}`,
+              base64: opt.base64,
+              sizeKB: opt.sizeKB,
+            };
+            const activeId = activePaneIdRef.current;
+            inputBarRefs.current[activeId]?.setSelectedImage?.(imgObj);
+          } catch (err) {
+            console.warn('[Vision Drop] Lỗi nén ảnh:', err);
+          }
+          break;
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    window.addEventListener('dragover', handleDragOver);
+    window.addEventListener('dragleave', handleDragLeave);
+    window.addEventListener('drop', handleDrop);
+
+    return () => {
+      window.removeEventListener('paste', handlePaste);
+      window.removeEventListener('dragover', handleDragOver);
+      window.removeEventListener('dragleave', handleDragLeave);
+      window.removeEventListener('drop', handleDrop);
+    };
+  }, []);
+
   // Màn hình khởi động nhanh chống nháy trắng
   if (!isReady) {
     return (
@@ -842,7 +928,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.5</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.5.1</Text>
               </View>
             </View>
           </View>
@@ -984,7 +1070,29 @@ export default function App() {
             style={[styles.keyboardContainer, { backgroundColor: theme.bgMain }]}
             keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
           >
-            <View style={styles.panesContainer}>
+            <View
+              style={[
+                styles.panesContainer,
+                isDraggingImage && {
+                  borderColor: '#3B82F6',
+                  borderWidth: 2,
+                  borderStyle: 'dashed',
+                  backgroundColor:
+                    themeMode === 'dark'
+                      ? 'rgba(59, 130, 246, 0.08)'
+                      : 'rgba(59, 130, 246, 0.04)',
+                },
+              ]}
+            >
+              {isDraggingImage && (
+                <View style={styles.dragDropBadgeContainer} pointerEvents="none">
+                  <View style={[styles.dragDropBadge, { backgroundColor: '#2563EB' }]}>
+                    <Text style={styles.dragDropBadgeText}>
+                      Thả ảnh vào đây để nén và đính kèm Vision Lab
+                    </Text>
+                  </View>
+                </View>
+              )}
               {displayedPanes.map((pane, paneIndex) => {
                 const isActive = pane.id === activePaneId;
                 const paneSession = pane.sessionId
@@ -1549,5 +1657,29 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 4,
     zIndex: 15,
+  },
+  dragDropBadgeContainer: {
+    position: 'absolute',
+    top: 24,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 50,
+  },
+  dragDropBadge: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  dragDropBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: -0.2,
   },
 });

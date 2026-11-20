@@ -16,6 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image as ImageIcon, Send, X, Smile, Globe } from 'lucide-react-native';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
 import { KeystrokeTelemetry } from '../services/microPsychProfiler';
+import { compressImageForVision } from '../utils/imageOptimizer';
 
 export { KeystrokeTelemetry };
 
@@ -38,7 +39,7 @@ export interface FloatingInputBarRef {
   clear?: () => void;
   reset?: () => void;
   setInputText?: (text: string) => void;
-  setSelectedImage?: (image: { uri: string; base64?: string } | null) => void;
+  setSelectedImage?: (image: { uri: string; base64?: string; sizeKB?: number } | null) => void;
 }
 
 const QUICK_EMOJIS = ['😟', '😭', '💔', '🫠', '😂', '🥰', '✨', '☕'];
@@ -62,7 +63,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
 
   const [inputText, setInputText] = useState('');
   const [inputHeight, setInputHeight] = useState(44);
-  const [selectedImage, setSelectedImage] = useState<{ uri: string; base64?: string } | null>(null);
+  const [selectedImage, setSelectedImage] = useState<{ uri: string; base64?: string; sizeKB?: number } | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [forceWebSearch, setForceWebSearch] = useState(false);
 
@@ -91,7 +92,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
     setInputText: (text: string) => {
       setInputText(text);
     },
-    setSelectedImage: (img: { uri: string; base64?: string } | null) => {
+    setSelectedImage: (img: { uri: string; base64?: string; sizeKB?: number } | null) => {
       setSelectedImage(img);
     },
   }));
@@ -113,16 +114,25 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: Platform.OS !== 'web',
-        quality: 0.7,
+        quality: 0.82,
         base64: true,
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        setSelectedImage({
-          uri: asset.uri,
-          base64: asset.base64 || undefined,
-        });
+        try {
+          const opt = await compressImageForVision(asset.base64 || asset.uri);
+          setSelectedImage({
+            uri: `data:${opt.mimeType};base64,${opt.base64}`,
+            base64: opt.base64,
+            sizeKB: opt.sizeKB,
+          });
+        } catch {
+          setSelectedImage({
+            uri: asset.uri,
+            base64: asset.base64 || undefined,
+          });
+        }
       }
     } catch (err) {
       console.error('[Picker] Lỗi chọn ảnh:', err);
@@ -161,7 +171,8 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
       burstCount,
     };
 
-    onSendMessage(trimmed, selectedImage?.base64, selectedImage?.uri, forceWebSearch, telemetry);
+    const effectiveText = trimmed || (selectedImage ? 'Hãy phân tích nội dung trong ảnh này giúp mình' : '');
+    onSendMessage(effectiveText, selectedImage?.base64, selectedImage?.uri, forceWebSearch, telemetry);
     setInputText('');
     setInputHeight(44); // Thu chiều cao ô nhập về 44px ngay lập tức khi gửi
     setSelectedImage(null);
@@ -287,7 +298,9 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
           >
             <X size={14} color="#FFF" />
           </Pressable>
-          <Text style={[styles.imagePreviewLabel, { color: theme.bubbleUser }]}>Ảnh gửi kèm</Text>
+          <Text style={[styles.imagePreviewLabel, { color: theme.bubbleUser }]}>
+            {selectedImage.sizeKB ? `${selectedImage.sizeKB} KB • Vision Lab` : 'Ảnh gửi kèm'}
+          </Text>
         </View>
       )}
 

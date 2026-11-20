@@ -1,8 +1,8 @@
 /**
- * TOMORROW V4.5 — DAY 8 CHRONO PRO, BACKGROUND CMD+N CONTINUITY, VS CODE SPLIT PANES & DAY 9 ON-DEVICE MICRO-PSYCHOLOGY PROFILER
+ * TOMORROW V4.5.1 — 90-DAY JARVIS FOUNDATION: DOMAIN SUB-ROUTER (STEM/FINANCE/CODE/VISION), STUDENT QUOTA SHIELD & INSTANT VISION PASTE
  * Automated Training & Verification Simulator
  * 
- * 13 Scenarios:
+ * 17 Scenarios:
  * 1. Test_Pronoun_No_Bro: Xưng "t - m", 0% "bro", max_tokens 250, thuần văn bản, lưu thần tượng Ronaldo vào Memory Vault.
  * 2. Test_Stop_Signal_Okk_Sybau: Tín hiệu dừng "okk" & "sybau" -> MODE=STOP_SIGNAL, max_tokens 250, 1 bong bóng <= 4 từ, 0 dấu "?".
  * 3. Test_Web_No_Stalling: Tra cứu Web đưa kết quả kèm URL ngay lập tức, max_tokens 1200, 0% hứa suông câu giờ.
@@ -16,6 +16,10 @@
  * 11. Test_Psych_Lowercase_Slang_Mirror: "nay fix bug mệt vl :3" -> ALL_LOWERCASE, slang=true, STRESSED_OVERWHELMED, 0% bro.
  * 12. Test_Psych_Masked_Sadness: "k sao đâu ổn mà..." + ngập ngừng -> MASKED_SADNESS, hesitation=HIGH, hạ tông ấm áp, không truy vấn dồn dập.
  * 13. Test_Psych_Excited_Hyped: "XONG RỒI ĐỈNH VL!!!" + gõ nhanh -> EXCITED_HYPED, phản hồi phấn khích ăn mừng cùng user.
+ * 14. Test_Domain_STEM_Physics: User hỏi bài tính gia tốc/lực -> detectExpertDomain trả về STEM_PHYSICS_MECH, maxTokens = 2000, temperature <= 0.4.
+ * 15. Test_Domain_Electronics: User hỏi tính điện trở hạn dòng LED với nguồn 5V Arduino -> trả về STEM_ELECTRONICS, maxTokens = 2000, temperature <= 0.4.
+ * 16. Test_Domain_Finance: User hỏi cách tính lãi kép & P/E cổ phiếu -> trả về FINANCE_QUANT, maxTokens = 1200, temperature <= 0.4.
+ * 17. Test_Domain_Casual_Protected: User nhắn "mệt vl :3" -> giữ nguyên CASUAL_FRIEND, maxTokens = 250, không bị kích hoạt nhầm chế độ chuyên gia.
  */
 
 const fs = require('fs');
@@ -520,9 +524,9 @@ function simulateAIProcess(userText, history = [], vault = DEFAULT_USER_MEMORY_V
   };
 }
 
-// ==================== BẮT ĐẦU CHẠY 13 KỊCH BẢN KIỂM THỬ ====================
+// ==================== BẮT ĐẦU CHẠY 17 KỊCH BẢN KIỂM THỬ ====================
 console.log('='.repeat(75));
-console.log('🚀 TOMORROW V4.5: CHRONO PRO, SPLIT PANES & MICRO-PSYCHOLOGY PROFILER');
+console.log('🚀 TOMORROW V4.5.1: 90-DAY JARVIS FOUNDATION: DOMAIN SUB-ROUTER & QUOTA SHIELD');
 console.log('='.repeat(75));
 
 const results = [];
@@ -888,8 +892,108 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
   });
 }
 
+// TEST 14: Test_Domain_STEM_Physics
+{
+  const userMsg = 'tính gia tốc của vật khối lượng 2kg khi chịu lực 10N';
+  const domain = aiService.detectExpertDomain(userMsg, false);
+  const directive = aiService.buildLocalReflexDirective(userMsg, []);
+
+  const isPhysics = domain === 'STEM_PHYSICS_MECH';
+  const isExpert = directive.intentMode === 'EXPERT_JARVIS';
+  const isBudget2000 = directive.dynamicMaxTokens === 2000;
+  const isLowTemp = (directive.temperature || 0.7) <= 0.4;
+  const hasPhysicsTag = directive.directivePrompt.includes('[DOMAIN: PHYSICS_MECH');
+
+  const score = (isPhysics && isExpert && isBudget2000 && isLowTemp && hasPhysicsTag) ? 10 : 0;
+
+  results.push({
+    name: 'Test_Domain_STEM_Physics',
+    input: userMsg,
+    mode: `DOMAIN_${domain}`,
+    output: [directive.directivePrompt.slice(0, 140) + '...'],
+    score,
+    passed: score === 10,
+    details: `detectExpertDomain: STEM_PHYSICS_MECH, maxTokens: ${directive.dynamicMaxTokens}, temp: ${directive.temperature}, LaTeX/SI directive attached`,
+  });
+}
+
+// TEST 15: Test_Domain_Electronics
+{
+  const userMsg = 'tính điện trở hạn dòng LED với nguồn 5V Arduino';
+  const domain = aiService.detectExpertDomain(userMsg, false);
+  const directive = aiService.buildLocalReflexDirective(userMsg, []);
+
+  const isElectronics = domain === 'STEM_ELECTRONICS';
+  const isExpert = directive.intentMode === 'EXPERT_JARVIS';
+  const isBudget2000 = directive.dynamicMaxTokens === 2000;
+  const isLowTemp = (directive.temperature || 0.7) <= 0.4;
+  const hasElectronicsTag = directive.directivePrompt.includes('[DOMAIN: ELECTRONICS');
+
+  const score = (isElectronics && isExpert && isBudget2000 && isLowTemp && hasElectronicsTag) ? 10 : 0;
+
+  results.push({
+    name: 'Test_Domain_Electronics',
+    input: userMsg,
+    mode: `DOMAIN_${domain}`,
+    output: [directive.directivePrompt.slice(0, 140) + '...'],
+    score,
+    passed: score === 10,
+    details: `detectExpertDomain: STEM_ELECTRONICS, maxTokens: ${directive.dynamicMaxTokens}, temp: ${directive.temperature}, Safe voltage/Pinout directive attached`,
+  });
+}
+
+// TEST 16: Test_Domain_Finance
+{
+  const userMsg = 'cách tính lãi kép & P/E cổ phiếu';
+  const domain = aiService.detectExpertDomain(userMsg, false);
+  const directive = aiService.buildLocalReflexDirective(userMsg, []);
+
+  const isFinance = domain === 'FINANCE_QUANT';
+  const isExpert = directive.intentMode === 'EXPERT_JARVIS';
+  const isBudget1200 = directive.dynamicMaxTokens === 1200;
+  const isLowTemp = (directive.temperature || 0.7) <= 0.4;
+  const hasFinanceTag = directive.directivePrompt.includes('[DOMAIN: FINANCE_QUANT');
+
+  const score = (isFinance && isExpert && isBudget1200 && isLowTemp && hasFinanceTag) ? 10 : 0;
+
+  results.push({
+    name: 'Test_Domain_Finance',
+    input: userMsg,
+    mode: `DOMAIN_${domain}`,
+    output: [directive.directivePrompt.slice(0, 140) + '...'],
+    score,
+    passed: score === 10,
+    details: `detectExpertDomain: FINANCE_QUANT, maxTokens: ${directive.dynamicMaxTokens}, temp: ${directive.temperature}, Risk & Table directive attached`,
+  });
+}
+
+// TEST 17: Test_Domain_Casual_Protected
+{
+  const userMsg = 'mệt vl :3';
+  const domain = aiService.detectExpertDomain(userMsg, false);
+  const directive = aiService.buildLocalReflexDirective(userMsg, []);
+
+  const isGeneral = domain === 'GENERAL';
+  const isCasual = directive.intentMode === 'CASUAL_FRIEND';
+  const isBudget250 = directive.dynamicMaxTokens === 250;
+  const isCasualTemp = (directive.temperature || 0.7) >= 0.7;
+  const noDomainTag = !directive.directivePrompt.includes('[DOMAIN:');
+
+  const score = (isGeneral && isCasual && isBudget250 && isCasualTemp && noDomainTag) ? 10 : 0;
+
+  results.push({
+    name: 'Test_Domain_Casual_Protected',
+    input: userMsg,
+    mode: `MODE_${directive.intentMode}`,
+    output: [directive.directivePrompt.slice(0, 120) + '...'],
+    score,
+    passed: score === 10,
+    details: `domain: GENERAL, intentMode: CASUAL_FRIEND, maxTokens: 250, temp: ${directive.temperature}, không kích hoạt nhầm chuyên gia`,
+  });
+}
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 13 SCENARIOS (TOMORROW V4.5):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 17 SCENARIOS (TOMORROW V4.5.1):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
@@ -903,16 +1007,16 @@ results.forEach((r, idx) => {
 const totalScore = results.reduce((acc, cur) => acc + cur.score, 0);
 const allPassed = results.every(r => r.passed);
 
-console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/130 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
+console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/170 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
 console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.5',
+  version: 'v4.5.1',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.5 - Day 8 Chrono Pro, Background Cmd+N Continuity, VS Code Split Chat Panes (Cmd+↑) & Day 9 On-Device Micro-Psychology Profiler',
+  architecture: 'Tomorrow v4.5.1 — 90-Day Jarvis Foundation: Domain Sub-Router (STEM/Finance/Code/Vision), Student Quota Shield & Instant Vision Paste',
   totalScore,
-  maxScore: 130,
+  maxScore: 170,
   allPassed,
   scenarios: results,
 };

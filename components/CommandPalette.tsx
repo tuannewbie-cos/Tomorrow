@@ -21,10 +21,13 @@ import {
   SearchX,
   CornerDownLeft,
   Columns2,
+  RefreshCw,
 } from 'lucide-react-native';
 import { ChatSession } from '../types/chat';
 import { ThemeColors, ThemeMode } from '../constants/theme';
 import { isPlaceholderOrNoiseTitle } from '../storage/chatStorage';
+import { getQuotaSummarySync, resetOpenAICircuitBreaker } from '../services/quotaShield';
+import { resetOpenAICircuitBreaker as resetAiBreaker } from '../services/aiService';
 
 export interface CommandPaletteProps {
   visible: boolean;
@@ -50,7 +53,7 @@ export interface PaletteItem {
   subtitle?: string;
   snippet?: string;
   badge?: string;
-  iconType: 'new_chat' | 'toggle_sidebar' | 'toggle_theme' | 'session' | 'split_panes';
+  iconType: 'new_chat' | 'toggle_sidebar' | 'toggle_theme' | 'session' | 'split_panes' | 'reset_circuit_breaker';
   sessionId?: string;
   action?: () => void;
   group: 'actions' | 'recent' | 'search';
@@ -125,13 +128,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [quotaSummary, setQuotaSummary] = useState(getQuotaSummarySync());
   const inputRef = useRef<TextInputInstance>(null);
 
-  // Focus ô tìm kiếm khi mở Modal
+  // Focus ô tìm kiếm khi mở Modal và đồng bộ Quota Shield
   useEffect(() => {
     if (visible) {
       setSearchQuery('');
       setSelectedIndex(0);
+      setQuotaSummary(getQuotaSummarySync());
       const timer = setTimeout(() => {
         inputRef.current?.focus();
       }, 50);
@@ -149,7 +154,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     onClose();
   }, [onNewChat, onCreateNewSession, onClose]);
 
-  // Nhóm Thao Tác Nhanh (⌘N, ⌘B, Đổi theme)
+  // Nhóm Thao Tác Nhanh (⌘N, ⌘B, Đổi theme, Quota Reset)
   const quickActions: PaletteItem[] = useMemo(
     () => [
       {
@@ -203,6 +208,21 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         group: 'actions',
         action: () => {
           onToggleSplitPanes?.();
+          onClose();
+        },
+      },
+      {
+        id: 'act-reset-openai',
+        type: 'action',
+        title: 'Reset cờ OpenAI (Thử kết nối lại)',
+        subtitle: 'Khôi phục kết nối gpt-4o-mini sau khi ngắt mạch Circuit Breaker',
+        badge: 'API',
+        iconType: 'reset_circuit_breaker',
+        group: 'actions',
+        action: async () => {
+          await resetOpenAICircuitBreaker();
+          resetAiBreaker();
+          setQuotaSummary(getQuotaSummarySync());
           onClose();
         },
       },
@@ -399,6 +419,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         );
       case 'split_panes':
         return <Columns2 size={16} color={isSelected ? activeColor : '#10B981'} />;
+      case 'reset_circuit_breaker':
+        return <RefreshCw size={15} color={isSelected ? activeColor : '#EC4899'} />;
       case 'session':
       default:
         return (
@@ -741,9 +763,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               </View>
             </View>
 
-            <Text style={[styles.footerBrand, { color: theme.textMuted }]}>
-              Tomorrow v4.5
-            </Text>
+            <View style={styles.footerRight}>
+              <Text style={[styles.footerQuota, { color: theme.textMuted }]}>
+                {quotaSummary.statusText}
+              </Text>
+              <Text style={[styles.footerBrand, { color: theme.textMuted }]}>
+                Tomorrow v4.5.1
+              </Text>
+            </View>
           </View>
         </View>
       </View>
@@ -911,6 +938,16 @@ const styles = StyleSheet.create({
   footerHintText: {
     fontSize: 11,
     fontWeight: '500',
+  },
+  footerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  footerQuota: {
+    fontSize: 10,
+    fontWeight: '500',
+    opacity: 0.85,
   },
   footerBrand: {
     fontSize: 11,

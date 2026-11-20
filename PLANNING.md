@@ -1,7 +1,7 @@
-# TOMORROW (PROTO-JARVIS) — 60-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.5` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+# TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.5.1` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
-Tài liệu này theo dõi toàn bộ tiến trình phát triển 60 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
+Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
 ---
 
@@ -13,14 +13,16 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 60 ngày của
 
 ---
 
-## 2. BẢNG TIẾN ĐỘ TỔNG QUAN (60 NGÀY)
+## 2. BẢNG TIẾN ĐỘ TỔNG QUAN (90 NGÀY - 6 GIAI ĐOẠN)
 
 | Giai đoạn | Nội dung trọng tâm | Thời gian | Trạng thái |
 | :--- | :--- | :--- | :--- |
-| **Phase 1** | **Core Foundation & Bộ não Phản xạ 3 Lớp** | Ngày 1 – 15 | 🟡 Đang hoàn thiện (Ngày 1-3 Xong, Tiếp tục Ngày 4-5) |
+| **Phase 1** | **Core Foundation, 3-Layer Reflex, Quota Shield & Vision Lab** | Ngày 1 – 15 | 🟡 Đang hoàn thiện (Ngày 1-9 Xong, v4.5.1 Xong) |
 | **Phase 2** | **Tri thức Chuyên sâu, Khoa học & Thị trường** | Ngày 16 – 30 | ⚪ Chưa bắt đầu |
 | **Phase 3** | **Voice HUD, Realtime Waveform & Voiceprint** | Ngày 31 – 45 | ⚪ Chưa bắt đầu |
 | **Phase 4** | **Camera MediaPipe Nội bộ (100% Private RAM)** | Ngày 46 – 60 | ⚪ Chưa bắt đầu |
+| **Phase 5** | **Autonomous Local Memory & Knowledge Synthesis** | Ngày 61 – 75 | ⚪ Chưa bắt đầu |
+| **Phase 6** | **Multi-Provider Gateway & Desktop Native Matrix** | Ngày 76 – 90 | ⚪ Đã khởi tạo cổng nền tảng `types/providers.ts` |
 
 ---
 
@@ -55,7 +57,7 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 60 ngày của
 
 ---
 
-#### 🎯 Mục tiêu kế tiếp ngay lập tức (Next Sprints):
+#### 🎯 Các bước nâng cấp đã hoàn thành:
 
 - [x] **Ngày 4: `perf/hybrid-ai-router` (Tomorrow v4.0 - Hybrid AI Router, 7s OpenAI Timeout & Silent Circuit Breaker)**
   - Tích hợp chuỗi xoay vòng Model tự động:
@@ -107,6 +109,15 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 60 ngày của
   - Tích hợp vào `buildLocalReflexDirective`, `SYSTEM_INSTRUCTION` (442 từ < 450 từ), `localResilientFallback`, và cập nhật `recentContext` trong `UserMemoryVault`.
   - Cập nhật live badge header: `Online • v4.5`. Bộ kiểm thử 13/13 scenarios đạt 130/130 điểm hoàn hảo.
 
+- [x] **Ngày 9+ (Foundation 90 Ngày): `feat/day9-plus-90d-foundation` (Tomorrow v4.5.1 — 90-Day Jarvis Foundation: Domain Sub-Router (STEM/Finance/Code/Vision), Student Quota Shield & Instant Vision Paste)**
+  - **Bộ định tuyến chuyên môn con cục bộ (`detectExpertDomain` trong `services/aiService.ts`):** Chạy trong `< 1ms`, phân loại 7 nhánh: `VISION_LAB`, `STEM_PHYSICS_MECH`, `STEM_CHEM_BIO`, `STEM_ELECTRONICS`, `CODE_CS`, `FINANCE_QUANT`, `GENERAL`.
+  - **Chỉ đạo chuyên môn con 1 dòng tinh gọn:** Gắn đúng 1 dòng chỉ đạo đặc thù vào `buildLocalReflexDirective` (công thức LaTeX cho Lý/Hóa, an toàn điện áp/chân pin cho Điện tử, code sạch cho CS, bảng số liệu & cảnh báo rủi ro cho Tài chính, đọc chữ viết tay/linh kiện cho Vision Lab), giữ nguyên 100% quyền ưu tiên của `STOP_SIGNAL` và `CASUAL_FRIEND`.
+  - **Cấp phát token động & nhiệt độ chính xác:** `dynamicMaxTokens` 2000 / 15s (`temperature: 0.35`) cho STEM/Code/Vision; 1200 / 12s (`temperature: 0.35`) cho Tài chính; giữ nguyên 250 tokens (`temperature: 0.75`) cho chat bạn bè. Ưu tiên chuỗi Smart Flash Models (`gemini-2.5-flash`, `gemini-2.0-flash`) cho STEM/Vision.
+  - **Lá chắn Quota sinh viên (`services/quotaShield.ts`):** Quản lý lưu trữ AsyncStorage khóa `TOMORROW_QUOTA_STATS_V1`, tự động reset theo ngày `YYYY-MM-DD`, theo dõi độc lập 2 key OpenAI & Gemini, ước lượng token an toàn `tokens ≈ Math.ceil(chars / 3.5)`, hiển thị dòng trạng thái tinh gọn ở footer của `CommandPalette` (`Cmd+K`) kèm tùy chọn nhanh `"Reset cờ OpenAI (Thử kết nối lại)"`.
+  - **Nâng cấp Vision Lab trên MacBook:** Bộ nén Canvas `utils/imageOptimizer.ts` tự động thu phóng giữ nguyên tỷ lệ <= 1024px JPEG 0.82 (giảm 60–80% dung lượng base64); hỗ trợ dán ảnh `Cmd+V`, kéo-thả (Drag & Drop) trực tiếp với viền sáng macOS; gửi ảnh độc lập tự động gán ngữ cảnh phân tích.
+  - **Cổng Provider tương lai:** Tạo file chuẩn `types/providers.ts` sẵn sàng mở rộng cho Claude, DeepSeek, Local Ollama.
+  - Cập nhật live badge header: **`Online • v4.5.1`**. Bộ kiểm thử tự luyện 17/17 scenarios đạt 170/170 điểm hoàn hảo.
+
 - [ ] **Ngày 10 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
   - Tìm kiếm toàn văn (Full-text search) trên danh sách phiên trò chuyện trong Sidebar.
@@ -139,6 +150,20 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 60 ngày của
 
 ---
 
+### GIAI ĐOẠN 5: AUTONOMOUS LOCAL MEMORY & KNOWLEDGE SYNTHESIS (NGÀY 61 – 75)
+- [ ] **Autonomous Memory Compactor:** Tự động hợp nhất và tối ưu hóa các ghi chú mâu thuẫn trong `UserMemoryVault` trong lúc máy nhàn rỗi (idle state).
+- [ ] **Local Vector Store / Semantic Graph:** Tạo đồ thị ngữ nghĩa cục bộ lưu trữ thói quen, bài tập và dự án cá nhân với độ trễ tìm kiếm < 5ms.
+- [ ] **Cross-Session Reasoning:** Khả năng kết nối tri thức giữa các phiên làm việc cách xa nhiều ngày mà không làm tràn Context Window.
+
+---
+
+### GIAI ĐOẠN 6: MULTI-PROVIDER GATEWAY & DESKTOP NATIVE MATRIX (NGÀY 76 – 90)
+- [ ] **Multi-Provider Dynamic Engine (dựa trên `types/providers.ts`):** Kích hoạt Claude 3.5 Sonnet cho STEM sâu, DeepSeek cho Quant/Code, và Local Ollama khi offline hoàn toàn.
+- [ ] **Apple Silicon Hardware Acceleration (CoreML / Metal):** Nhúng model lượng tử hóa (Quantized GGUF/CoreML) chạy trực tiếp trên Neural Engine của Mac (M1/M2/M3/M4).
+- [ ] **Full Desktop Native Matrix:** Menu bar tray icon, system global hotkeys, Touch Bar HUD visualizer, và tự khởi động cùng macOS.
+
+---
+
 ## 4. QUY TRÌNH KIỂM CHỨNG TRƯỚC MỌI BẢN DEPLOY
 Mỗi bước cập nhật tính năng mới phải tuân thủ nghiêm ngặt 3 bước sau:
 
@@ -151,9 +176,9 @@ Mỗi bước cập nhật tính năng mới phải tuân thủ nghiêm ngặt 3
    ```bash
    node train_simulator.js
    ```
-   *Yêu cầu bắt buộc: 13/13 kịch bản phải PASS (130/130 điểm) trước khi tạo commit.*
+   *Yêu cầu bắt buộc: 17/17 kịch bản phải PASS (170/170 điểm) trước khi tạo commit.*
 3. **Tăng Version Header & Deploy Production:**
-   - Cập nhật số phiên bản trên `App.tsx` (VD: `Online • v4.4.1` -> `Online • v4.5`).
+   - Cập nhật số phiên bản trên `App.tsx` (VD: `Online • v4.5` -> `Online • v4.5.1`).
    - Kiểm tra `.gitignore` đảm bảo không sót `.env` hoặc file nhạy cảm.
    - Deploy Vercel Production:
      ```bash
