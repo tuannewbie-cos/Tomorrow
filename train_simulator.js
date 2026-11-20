@@ -1,8 +1,8 @@
 /**
- * TOMORROW V4.2 — RICH MARKDOWN ENGINE, CODE/TABLE BLOCKS & DYNAMIC TOKEN ROUTING
+ * TOMORROW V4.5 — DAY 8 CHRONO PRO, BACKGROUND CMD+N CONTINUITY, VS CODE SPLIT PANES & DAY 9 ON-DEVICE MICRO-PSYCHOLOGY PROFILER
  * Automated Training & Verification Simulator
  * 
- * 8 Scenarios:
+ * 13 Scenarios:
  * 1. Test_Pronoun_No_Bro: Xưng "t - m", 0% "bro", max_tokens 250, thuần văn bản, lưu thần tượng Ronaldo vào Memory Vault.
  * 2. Test_Stop_Signal_Okk_Sybau: Tín hiệu dừng "okk" & "sybau" -> MODE=STOP_SIGNAL, max_tokens 250, 1 bong bóng <= 4 từ, 0 dấu "?".
  * 3. Test_Web_No_Stalling: Tra cứu Web đưa kết quả kèm URL ngay lập tức, max_tokens 1200, 0% hứa suông câu giờ.
@@ -11,10 +11,62 @@
  * 6. Test_Jarvis_Expert: Vận hành trí tuệ ChatGPT/Gemini-grade, max_tokens 1200, 12s timeout, Rich Markdown & Code Blocks an toàn, JSON 100% hợp lệ.
  * 7. Test_Jarvis_No_Web_Trigger: "cậu biết jarvis không" KHÔNG kích hoạt web search, trả lời trực tiếp trong 0.5s.
  * 8. Test_Emotional_No_Web_Error: "chán quá" không bao giờ trả về lỗi quét web chậm, thấu cảm tự nhiên.
+ * 9. Test_Chrono_Daytime_Guard: Gửi 10:15 sáng -> ALLOW_LATE_NIGHT_REMARK=false, AI 0% nhắc "thức khuya" / "chưa ngủ à".
+ * 10. Test_Chrono_LateNight_Context: Gửi 01:30 sáng -> PERIOD=LATE_NIGHT, ALLOW_LATE_NIGHT_REMARK=true.
+ * 11. Test_Psych_Lowercase_Slang_Mirror: "nay fix bug mệt vl :3" -> ALL_LOWERCASE, slang=true, STRESSED_OVERWHELMED, 0% bro.
+ * 12. Test_Psych_Masked_Sadness: "k sao đâu ổn mà..." + ngập ngừng -> MASKED_SADNESS, hesitation=HIGH, hạ tông ấm áp, không truy vấn dồn dập.
+ * 13. Test_Psych_Excited_Hyped: "XONG RỒI ĐỈNH VL!!!" + gõ nhanh -> EXCITED_HYPED, phản hồi phấn khích ăn mừng cùng user.
  */
 
 const fs = require('fs');
 const path = require('path');
+const ts = require('typescript');
+
+function loadTsModule(filePath) {
+  const code = fs.readFileSync(filePath, 'utf8');
+  const res = ts.transpileModule(code, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      esModuleInterop: true,
+    },
+  });
+  const m = { exports: {} };
+  const fn = new Function('require', 'module', 'exports', '__dirname', '__filename', res.outputText);
+  fn(
+    (mod) => {
+      if (mod === '@react-native-async-storage/async-storage') {
+        return {
+          getItem: async () => null,
+          setItem: async () => {},
+          removeItem: async () => {},
+          multiRemove: async () => {},
+        };
+      }
+      if (mod === 'react-native') {
+        return {
+          Platform: { OS: 'web' },
+        };
+      }
+      if (mod.startsWith('.')) {
+        const resolved = path.resolve(path.dirname(filePath), mod);
+        if (fs.existsSync(resolved + '.ts')) return loadTsModule(resolved + '.ts');
+        if (fs.existsSync(resolved + '.tsx')) return loadTsModule(resolved + '.tsx');
+        if (fs.existsSync(resolved + '.js')) return require(resolved + '.js');
+        if (fs.existsSync(resolved)) return require(resolved);
+      }
+      return require(mod);
+    },
+    m,
+    m.exports,
+    path.dirname(filePath),
+    filePath
+  );
+  return m.exports;
+}
+
+const aiService = loadTsModule(path.resolve(__dirname, 'services/aiService.ts'));
+const profiler = loadTsModule(path.resolve(__dirname, 'services/microPsychProfiler.ts'));
 
 // 1. BỘ LỌC TIÊU ĐỀ RÁC (Đồng bộ storage/chatStorage.ts)
 function isPlaceholderOrNoiseTitle(title) {
@@ -468,9 +520,9 @@ function simulateAIProcess(userText, history = [], vault = DEFAULT_USER_MEMORY_V
   };
 }
 
-// ==================== BẮT ĐẦU CHẠY 8 KỊCH BẢN KIỂM THỬ ====================
+// ==================== BẮT ĐẦU CHẠY 13 KỊCH BẢN KIỂM THỬ ====================
 console.log('='.repeat(75));
-console.log('🚀 TOMORROW V4.2: RICH MARKDOWN, CODE BLOCKS & DYNAMIC TOKEN BUDGETING');
+console.log('🚀 TOMORROW V4.5: CHRONO PRO, SPLIT PANES & MICRO-PSYCHOLOGY PROFILER');
 console.log('='.repeat(75));
 
 const results = [];
@@ -690,11 +742,158 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
 }
 
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 8 SCENARIOS (TOMORROW V4.2):');
+// TEST 9: Test_Chrono_Daytime_Guard
+{
+  const daytime = new Date(2026, 3, 15, 10, 15); // 10:15 Sáng
+  const chrono = aiService.buildChronoContext(daytime);
+  const isMorning = chrono.period === 'MORNING';
+  const noLateNightRemark = chrono.allowLateNightRemark === false;
+  const tagHasFalse = chrono.directiveTag.includes('ALLOW_LATE_NIGHT_REMARK=false');
+
+  const fallback = aiService.localResilientFallback('chào bạn', false, undefined, chrono);
+  const allReplies = (fallback.replies || []).join(' ').toLowerCase();
+  const hasLateNightKeywords =
+    allReplies.includes('thức khuya') ||
+    allReplies.includes('chưa ngủ') ||
+    allReplies.includes('thức đêm');
+
+  const score = (isMorning && noLateNightRemark && tagHasFalse && !hasLateNightKeywords) ? 10 : 0;
+
+  results.push({
+    name: 'Test_Chrono_Daytime_Guard',
+    input: '10:15 AM (Ban ngày) -> chào bạn',
+    mode: `CHRONO_${chrono.period}`,
+    output: fallback.replies,
+    score,
+    passed: score === 10,
+    details: `Khung giờ MORNING (10:15), ALLOW_LATE_NIGHT_REMARK=false, 0% hỏi 'thức khuya' hay 'chưa ngủ à'`,
+  });
+}
+
+// TEST 10: Test_Chrono_LateNight_Context
+{
+  const nightTime = new Date(2026, 3, 15, 1, 30); // 01:30 Đêm
+  const chrono = aiService.buildChronoContext(nightTime);
+  const isLateNight = chrono.period === 'LATE_NIGHT';
+  const allowLateNightRemark = chrono.allowLateNightRemark === true;
+  const tagHasTrue = chrono.directiveTag.includes('ALLOW_LATE_NIGHT_REMARK=true');
+
+  const score = (isLateNight && allowLateNightRemark && tagHasTrue) ? 10 : 0;
+
+  results.push({
+    name: 'Test_Chrono_LateNight_Context',
+    input: '01:30 AM (Đêm muộn)',
+    mode: `CHRONO_${chrono.period}`,
+    output: [chrono.directiveTag],
+    score,
+    passed: score === 10,
+    details: `PERIOD=LATE_NIGHT (01:30), ALLOW_LATE_NIGHT_REMARK=true chuẩn xác`,
+  });
+}
+
+// TEST 11: Test_Psych_Lowercase_Slang_Mirror
+{
+  const userMsg = 'nay fix bug mệt vl :3';
+  const telemetry = {
+    typingDurationMs: 2200,
+    charsPerSecond: 7.2,
+    backspaceCount: 1,
+    backspaceRatio: 0.05,
+    burstCount: 1,
+  };
+  const profile = profiler.analyzeMicroPsychology(userMsg, telemetry);
+  const isLowercase = profile.linguisticStyle.caseStyle === 'ALL_LOWERCASE';
+  const hasSlang = profile.linguisticStyle.hasSlang === true;
+  const isStressed = profile.psychState === 'STRESSED_OVERWHELMED';
+
+  const fallback = aiService.localResilientFallback(userMsg, false, undefined);
+  const fallbackText = (fallback.replies || []).join(' ');
+  const hasBro = /\bbro\b/i.test(fallbackText);
+  const score = (isLowercase && hasSlang && isStressed && !hasBro) ? 10 : 0;
+
+  results.push({
+    name: 'Test_Psych_Lowercase_Slang_Mirror',
+    input: userMsg,
+    mode: `PSYCH_${profile.psychState}`,
+    output: fallback.replies,
+    score,
+    passed: score === 10,
+    details: `Nhận diện style: ALL_LOWERCASE, hasSlang=true, tâm lý STRESSED_OVERWHELMED, AI đáp thân mật 0% bro`,
+  });
+}
+
+// TEST 12: Test_Psych_Masked_Sadness
+{
+  const userMsg = 'k sao đâu ổn mà...';
+  const telemetry = {
+    typingDurationMs: 8000,
+    charsPerSecond: 1.8,
+    backspaceCount: 5,
+    backspaceRatio: 0.35,
+    burstCount: 1,
+  };
+  const profile = profiler.analyzeMicroPsychology(userMsg, telemetry);
+  const isMaskedSadness = profile.psychState === 'MASKED_SADNESS';
+  const isHighHesitation = profile.cadence?.hesitationLevel === 'HIGH';
+
+  const fallback = aiService.localResilientFallback(userMsg, false, undefined);
+  const fallbackText = (fallback.replies || []).join(' ');
+  const isWarmNoInterrogation =
+    !fallbackText.includes('?') &&
+    (fallbackText.includes('không sao mà') || fallbackText.includes('tâm sự'));
+
+  const score = (isMaskedSadness && isHighHesitation && isWarmNoInterrogation) ? 10 : 0;
+
+  results.push({
+    name: 'Test_Psych_Masked_Sadness',
+    input: userMsg,
+    mode: `PSYCH_${profile.psychState}`,
+    output: fallback.replies,
+    score,
+    passed: score === 10,
+    details: `Nhận diện MASKED_SADNESS, hesitation=HIGH (ngập ngừng ${Math.round(telemetry.backspaceRatio * 100)}%), hạ tông ấm áp, không tra hỏi dồn dập`,
+  });
+}
+
+// TEST 13: Test_Psych_Excited_Hyped
+{
+  const userMsg = 'XONG RỒI ĐỈNH VL!!!';
+  const telemetry = {
+    typingDurationMs: 1800,
+    charsPerSecond: 9.5,
+    backspaceCount: 0,
+    backspaceRatio: 0.0,
+    burstCount: 1,
+  };
+  const profile = profiler.analyzeMicroPsychology(userMsg, telemetry);
+  const isExcited = profile.psychState === 'EXCITED_HYPED';
+
+  const fallback = aiService.localResilientFallback(userMsg, false, undefined);
+  const fallbackText = (fallback.replies || []).join(' ');
+  const isCelebratory =
+    fallbackText.includes('đỉnh') ||
+    fallbackText.includes('chúc mừng') ||
+    fallbackText.includes('ngon');
+
+  const score = (isExcited && isCelebratory) ? 10 : 0;
+
+  results.push({
+    name: 'Test_Psych_Excited_Hyped',
+    input: userMsg,
+    mode: `PSYCH_${profile.psychState}`,
+    output: fallback.replies,
+    score,
+    passed: score === 10,
+    details: `Nhận diện EXCITED_HYPED (tốc độ gõ 9.5 chars/s), phản hồi phấn khích ăn mừng cùng user`,
+  });
+}
+
+// ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 13 SCENARIOS (TOMORROW V4.5):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
-  console.log(`${icon} [TEST ${idx + 1}] ${r.name.padEnd(28)} | Điểm: ${r.score}/10 | Mode: ${r.mode}`);
+  console.log(`${icon} [TEST ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(32)} | Điểm: ${r.score}/10 | Mode: ${r.mode}`);
   console.log(`   Input: "${r.input}"`);
   console.log(`   Output: ${JSON.stringify(r.output)}`);
   console.log(`   Chi tiết: ${r.details}`);
@@ -704,16 +903,16 @@ results.forEach((r, idx) => {
 const totalScore = results.reduce((acc, cur) => acc + cur.score, 0);
 const allPassed = results.every(r => r.passed);
 
-console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/80 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
+console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/130 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
 console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.2',
+  version: 'v4.5',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.2 - Rich Markdown Engine, Code/Table HUD & Dynamic Token Budgeting',
+  architecture: 'Tomorrow v4.5 - Day 8 Chrono Pro, Background Cmd+N Continuity, VS Code Split Chat Panes (Cmd+↑) & Day 9 On-Device Micro-Psychology Profiler',
   totalScore,
-  maxScore: 80,
+  maxScore: 130,
   allPassed,
   scenarios: results,
 };

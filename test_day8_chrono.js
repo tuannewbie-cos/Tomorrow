@@ -168,15 +168,31 @@ runTest('buildChronoContext formats directiveTag according to specification', ()
   const c = aiService.buildChronoContext(d);
   assert.strictEqual(
     c.directiveTag,
-    '[CHRONO: Thứ Sáu, 20/11/2026 08:15 | PERIOD=MORNING (buổi sáng) | ALLOW_LATE_NIGHT_REMARK=false]'
+    '[CHRONO: Thứ Sáu, 20/11/2026 08:15 | PERIOD=MORNING (buổi sáng) | GAP=FIRST_INTERACTION | ALLOW_LATE_NIGHT_REMARK=false]'
   );
 
   const dNight = new Date(2026, 10, 20, 23, 30);
   const cNight = aiService.buildChronoContext(dNight);
   assert.strictEqual(
     cNight.directiveTag,
-    '[CHRONO: Thứ Sáu, 20/11/2026 23:30 | PERIOD=LATE_NIGHT (đêm khuya) | ALLOW_LATE_NIGHT_REMARK=true]'
+    '[CHRONO: Thứ Sáu, 20/11/2026 23:30 | PERIOD=LATE_NIGHT (đêm khuya) | GAP=FIRST_INTERACTION | ALLOW_LATE_NIGHT_REMARK=true]'
   );
+
+  // Test gapType: CONTINUOUS (<15m)
+  const cContinuous = aiService.buildChronoContext(d, d.getTime() - 10 * 60 * 1000);
+  assert.strictEqual(cContinuous.gapType, 'CONTINUOUS');
+
+  // Test gapType: SAME_DAY_RETURN (e.g. 2 hours earlier on same day)
+  const cSameDay = aiService.buildChronoContext(d, d.getTime() - 2 * 60 * 60 * 1000);
+  assert.strictEqual(cSameDay.gapType, 'SAME_DAY_RETURN');
+
+  // Test gapType: NEXT_DAY
+  const cNextDay = aiService.buildChronoContext(d, d.getTime() - 24 * 60 * 60 * 1000);
+  assert.strictEqual(cNextDay.gapType, 'NEXT_DAY');
+
+  // Test gapType: MULTI_DAY_GAP (>= 2 days)
+  const cMultiDay = aiService.buildChronoContext(d, d.getTime() - 48 * 60 * 60 * 1000);
+  assert.strictEqual(cMultiDay.gapType, 'MULTI_DAY_GAP');
 });
 
 // -----------------------------------------------------------------------------
@@ -302,11 +318,14 @@ runTest('cleanNightNotesFromMemory purges night notes across memory profile and 
 });
 
 // -----------------------------------------------------------------------------
-// TEST 8: App.tsx displays Online • v4.4 / v4.4.1
+// TEST 8: App.tsx displays Online • v4.4 / v4.4.1 / v4.5
 // -----------------------------------------------------------------------------
-runTest('App.tsx Header displays Online • v4.4.1', () => {
+runTest('App.tsx Header displays Online • v4.4.1 or v4.5', () => {
   const appTsx = fs.readFileSync(path.resolve(__dirname, 'App.tsx'), 'utf8');
-  assert.ok(appTsx.includes('Online • v4.4.1') || appTsx.includes('Online • v4.4'), 'App.tsx must contain "Online • v4.4.1" in the header liveBadge');
+  assert.ok(
+    appTsx.includes('Online • v4.5') || appTsx.includes('Online • v4.4.1') || appTsx.includes('Online • v4.4'),
+    'App.tsx must contain "Online • v4.5" or "Online • v4.4.1" in the header liveBadge'
+  );
 });
 
 // -----------------------------------------------------------------------------

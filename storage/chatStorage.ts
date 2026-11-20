@@ -92,6 +92,7 @@ export function mergeMemoryNoteIntoVault(
 
   // Xác định xem có phải khung đêm khuya (23:00 - 03:59) hay không
   let isLateNight = false;
+  let currentDate = new Date();
   if (chronoOrDate && typeof chronoOrDate === 'object') {
     if ('period' in chronoOrDate && typeof chronoOrDate.period === 'string') {
       isLateNight = chronoOrDate.period === 'LATE_NIGHT';
@@ -100,11 +101,22 @@ export function mergeMemoryNoteIntoVault(
       isLateNight = h >= 23 || h < 4;
     }
   } else if (chronoOrDate instanceof Date) {
+    currentDate = chronoOrDate;
     const h = chronoOrDate.getHours();
     isLateNight = h >= 23 || h < 4;
   } else {
-    const h = new Date().getHours();
+    const h = currentDate.getHours();
     isLateNight = h >= 23 || h < 4;
+  }
+
+  const dayStr = String(currentDate.getDate()).padStart(2, '0');
+  const monthStr = String(currentDate.getMonth() + 1).padStart(2, '0');
+  const todayDateTag = `(${dayStr}/${monthStr})`;
+
+  // Tự động làm mới trạng thái nhất thời của ngày cũ khi sang ngày mới
+  const oldDateMatch = (updated.recentContext || '').match(/\((\d{2}\/\d{2})\)/);
+  if (oldDateMatch && oldDateMatch[0] !== todayDateTag) {
+    updated.recentContext = 'Trò chuyện cùng Tomorrow';
   }
 
   // 1. Cập nhật Pronouns
@@ -159,14 +171,16 @@ export function mergeMemoryNoteIntoVault(
     } else if (lowerNote.includes('thói quen') || lowerNote.includes('hay') || lowerNote.includes('ghét')) {
       if (!updated.habits.includes(cleanNote)) updated.habits.unshift(cleanNote);
     } else {
-      updated.recentContext = cleanNote;
+      const formattedNote = cleanNote.includes(todayDateTag) ? cleanNote : `${cleanNote} ${todayDateTag}`;
+      updated.recentContext = formattedNote;
     }
   }
 
   if (userText && userText.trim().length > 6 && !lowerText.includes('hello') && !lowerText.includes('yo')) {
     const isLateNightUserText = lowerText.includes('thức khuya') || lowerText.includes('thức đêm');
     if (!isLateNightUserText || isLateNight) {
-      updated.recentContext = userText.trim().slice(0, 80);
+      const cleanUserText = userText.trim().slice(0, 80);
+      updated.recentContext = cleanUserText.includes(todayDateTag) ? cleanUserText : `${cleanUserText} ${todayDateTag}`;
     }
   }
 

@@ -15,9 +15,18 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Image as ImageIcon, Send, X, Smile, Globe } from 'lucide-react-native';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
+import { KeystrokeTelemetry } from '../services/microPsychProfiler';
+
+export { KeystrokeTelemetry };
 
 export interface FloatingInputBarProps {
-  onSendMessage: (text: string, imageBase64?: string, imageUri?: string, forceWebSearch?: boolean) => void;
+  onSendMessage: (
+    text: string,
+    imageBase64?: string,
+    imageUri?: string,
+    forceWebSearch?: boolean,
+    telemetry?: KeystrokeTelemetry
+  ) => void;
   isLoading: boolean;
   disabled?: boolean;
   isTomorrowTyping?: boolean;
@@ -46,6 +55,10 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
 
   const textInputRef = useRef<TextInputInstance>(null);
   const lastSendTimestampRef = useRef<number>(0);
+  const typingStartTimeRef = useRef<number | null>(null);
+  const backspaceCountRef = useRef<number>(0);
+  const totalKeystrokesRef = useRef<number>(0);
+  const recentSendTimestampsRef = useRef<number[]>([]);
 
   const [inputText, setInputText] = useState('');
   const [inputHeight, setInputHeight] = useState(44);
@@ -62,12 +75,18 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
       setSelectedImage(null);
       setShowEmojiPicker(false);
       setInputHeight(44);
+      typingStartTimeRef.current = null;
+      backspaceCountRef.current = 0;
+      totalKeystrokesRef.current = 0;
     },
     reset: () => {
       setInputText('');
       setSelectedImage(null);
       setShowEmojiPicker(false);
       setInputHeight(44);
+      typingStartTimeRef.current = null;
+      backspaceCountRef.current = 0;
+      totalKeystrokesRef.current = 0;
     },
     setInputText: (text: string) => {
       setInputText(text);
@@ -119,20 +138,55 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
     if (isLoading || isTomorrowTyping) return;
 
     lastSendTimestampRef.current = now;
-    onSendMessage(trimmed, selectedImage?.base64, selectedImage?.uri, forceWebSearch);
+
+    // Đo lường nhịp gõ KeystrokeTelemetry cục bộ 100%
+    recentSendTimestampsRef.current = recentSendTimestampsRef.current.filter((t) => now - t <= 12000);
+    recentSendTimestampsRef.current.push(now);
+    const burstCount = recentSendTimestampsRef.current.length;
+
+    const typingDurationMs = typingStartTimeRef.current
+      ? Math.max(100, now - typingStartTimeRef.current)
+      : 1200;
+    const charsPerSecond = typingDurationMs > 0
+      ? Number(((trimmed.length / (typingDurationMs / 1000))).toFixed(1))
+      : 4.0;
+    const totalKeys = Math.max(1, totalKeystrokesRef.current);
+    const backspaceRatio = Number((backspaceCountRef.current / totalKeys).toFixed(3));
+
+    const telemetry: KeystrokeTelemetry = {
+      typingDurationMs,
+      charsPerSecond,
+      backspaceCount: backspaceCountRef.current,
+      backspaceRatio,
+      burstCount,
+    };
+
+    onSendMessage(trimmed, selectedImage?.base64, selectedImage?.uri, forceWebSearch, telemetry);
     setInputText('');
     setInputHeight(44); // Thu chiều cao ô nhập về 44px ngay lập tức khi gửi
     setSelectedImage(null);
     setShowEmojiPicker(false);
     setForceWebSearch(false);
+
+    // Reset bộ đo sau khi gửi
+    typingStartTimeRef.current = null;
+    backspaceCountRef.current = 0;
+    totalKeystrokesRef.current = 0;
   };
 
   const handleTextChange = (text: string) => {
     setInputText(text);
     if (!text.trim()) {
       setInputHeight(44);
+      typingStartTimeRef.current = null;
+      backspaceCountRef.current = 0;
+      totalKeystrokesRef.current = 0;
       return;
     }
+    if (typingStartTimeRef.current === null) {
+      typingStartTimeRef.current = Date.now();
+    }
+    totalKeystrokesRef.current++;
     if (Platform.OS === 'web') {
       const lines = text.split('\n').length;
       const estimated = Math.min(Math.max(44, lines * 22 + 16), 160);
@@ -152,13 +206,24 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
   const handleKeyPress = (e: any) => {
     if (Platform.OS === 'web') {
       const nativeEvent = e.nativeEvent || e;
+      const key = nativeEvent?.key || e.key;
+      const shiftKey = nativeEvent?.shiftKey ?? e.shiftKey;
+
+      if (key === 'Backspace') {
+        backspaceCountRef.current++;
+        totalKeystrokesRef.current++;
+      } else if (key && key.length === 1 && !nativeEvent?.metaKey && !nativeEvent?.ctrlKey) {
+        totalKeystrokesRef.current++;
+        if (typingStartTimeRef.current === null) {
+          typingStartTimeRef.current = Date.now();
+        }
+      }
+
       // BẢO VỆ TUYỆT ĐỐI CHO CMD+C, CMD+V, CMD+A, CMD+X, CMD+Z:
       // Nếu e.metaKey hoặc e.ctrlKey đang được nhấn, TUYỆT ĐỐI KHÔNG can thiệp để WKWebView/Browser copy/paste bình thường
       if (nativeEvent?.metaKey || nativeEvent?.ctrlKey) {
         return;
       }
-      const key = nativeEvent?.key || e.key;
-      const shiftKey = nativeEvent?.shiftKey ?? e.shiftKey;
       if (key === 'Enter' && !shiftKey) {
         if (typeof e.preventDefault === 'function') {
           e.preventDefault();

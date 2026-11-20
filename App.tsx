@@ -32,6 +32,7 @@ import {
   sendMessageToTomorrow,
   getColdGreetingText,
   localResilientFallback,
+  KeystrokeTelemetry,
 } from './services/aiService';
 import { ChatBubble } from './components/ChatBubble';
 import { ColdGreeting } from './components/ColdGreeting';
@@ -297,7 +298,8 @@ export default function App() {
     text: string,
     imageBase64?: string,
     imageUri?: string,
-    forceWebSearch?: boolean
+    forceWebSearch?: boolean,
+    telemetry?: KeystrokeTelemetry
   ) => {
     const pane = panesRef.current.find((p) => p.id === paneId) || panesRef.current[0];
     let targetSessionId = pane?.sessionId;
@@ -402,7 +404,9 @@ export default function App() {
               ? '🌐 Đang quét web & lấy đường dẫn...'
               : '💭 Đang suy nghĩ...',
           }));
-        }
+        },
+        undefined,
+        telemetry
       );
 
       const timeoutPromise = new Promise<never>((_, reject) =>
@@ -543,17 +547,18 @@ export default function App() {
     text: string,
     imageBase64?: string,
     imageUri?: string,
-    forceWebSearch?: boolean
+    forceWebSearch?: boolean,
+    telemetry?: KeystrokeTelemetry
   ) => {
-    return handleSendMessageInPane(activePaneIdRef.current, text, imageBase64, imageUri, forceWebSearch);
+    return handleSendMessageInPane(activePaneIdRef.current, text, imageBase64, imageUri, forceWebSearch, telemetry);
   };
 
-  // 3. TẠO CUỘC TRÒ CHUYỆN MỚI THỐNG NHẤT (handleNewChat)
+  // 3. TẠO CUỘC TRÒ CHUYỆN MỚI TRÊN PANE ĐANG ACTIVE (handleNewChat / handleNewChatInActivePane)
   const handleNewChat = useCallback(() => {
     // A. Tăng số UI turn để quản lý phiên giao diện nhưng KHÔNG hủy luồng async của phiên cũ
     currentSessionTurnIdRef.current++;
 
-    // B. Chuyển focus giao diện chính sang phiên mới trống (activeSessionId = null)
+    // B. Chuyển focus giao diện chính sang phiên mới trống trên pane đang active (sessionId = null)
     const activeId = activePaneIdRef.current;
     setPanes((prev) =>
       prev.map((p) => (p.id === activeId ? { ...p, sessionId: null } : p))
@@ -561,7 +566,7 @@ export default function App() {
     setCurrentSessionId(null);
     setMessages([]);
 
-    // C. Dọn ô nhập / ảnh tạm của khung đang soạn
+    // C. Dọn ô nhập / ảnh tạm của khung đang soạn trong pane đó
     inputBarRef.current?.clear?.();
     inputBarRef.current?.reset?.();
     inputBarRefs.current[activeId]?.clear?.();
@@ -576,6 +581,8 @@ export default function App() {
       inputBarRefs.current[activeId]?.focus();
     }, 50);
   }, [setCurrentSessionId, setMessages]);
+
+  const handleNewChatInActivePane = handleNewChat;
 
   const handleNewChatInPane = useCallback((paneId: string) => {
     setPanes((prev) =>
@@ -835,7 +842,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.4.1</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.5</Text>
               </View>
             </View>
           </View>
@@ -1262,8 +1269,8 @@ export default function App() {
                           inputBarRefs.current[pane.id] = r;
                           if (isActive) inputBarRef.current = r;
                         }}
-                        onSendMessage={(text, imgBase64, imgUri, forceWebSearch) =>
-                          handleSendMessageInPane(pane.id, text, imgBase64, imgUri, forceWebSearch)
+                        onSendMessage={(text, imgBase64, imgUri, forceWebSearch, telemetry) =>
+                          handleSendMessageInPane(pane.id, text, imgBase64, imgUri, forceWebSearch, telemetry)
                         }
                         isLoading={false}
                         isTomorrowTyping={isTyping}

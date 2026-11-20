@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 60-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.2` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.5` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 60 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -85,7 +85,29 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 60 ngày của
   - Khung nhập liệu co giãn đa dòng tự động `44px - 160px` (`FloatingInputBar.tsx`), phím `Enter` gửi ngay thu về `44px`, `Shift + Enter` xuống dòng.
   - Cập nhật phiên bản Header: `Online • v4.2`. Bộ kiểm thử 8/8 kịch bản đạt 80/80 điểm tuyệt đối.
 
-- [ ] **Ngày 7 – 15: Hoàn thiện Phase 1**
+- [x] **Ngày 7: `feat/clean-consecutive-history-and-code-streaming` (Tomorrow v4.3 - Consecutive Model Turn Merging & Markdown Code Streaming Guard)**
+  - Cơ chế gộp các tin nhắn `role: 'model'` liên tiếp trong lịch sử hội thoại gửi lên Gemini/OpenAI để triệt tiêu vĩnh viễn lỗi 400 Bad Request.
+  - Bảo vệ khối code và bảng biểu trong luồng phân tách bong bóng streaming, loại trừ hoàn toàn hiện tượng vỡ thẻ Markdown khi hiển thị đa bong bóng.
+
+- [x] **Ngày 8: `ai/realtime-chrono-context` (Tomorrow v4.4 & v4.4.1 - Realtime Chrono Pro, Circadian Rhythms & VS Code Split Chat Panes Cmd+↑ with Background Cmd+N Continuity)**
+  - Hoàn thiện hệ thống thời gian thực `buildChronoContext(now, lastTimestamp)`: 6 khung nhịp sinh học (`EARLY_MORNING`, `MORNING`, `NOON`, `AFTERNOON`, `EVENING`, `LATE_NIGHT`), tính `gapType` (`CONTINUOUS`, `SAME_DAY_RETURN`, `NEXT_DAY`, `MULTI_DAY_GAP`, `FIRST_INTERACTION`), và nhãn `[CHRONO: ... | ALLOW_LATE_NIGHT_REMARK=...]`.
+  - Khóa chặt guard chống hỏi "thức khuya" / "chưa ngủ à" khi không phải khung `LATE_NIGHT`.
+  - Tự động gắn mốc ngày cho Web Search (`resolveTemporalSearchQuery`), dọn sạch ghi chú thức khuya lệch pha trong `UserMemoryVault`, gắn nhãn ngày `(DD/MM)` cho `recentContext`.
+  - Cô lập trạng thái gõ theo từng `sessionId` (`typingSessionIds`), hỗ trợ Background Continuity: AI tiếp tục trả lời và lưu bền vững khi người dùng bấm `Cmd+N` hoặc chuyển chat.
+  - Bắt phím toàn cục `Cmd/Ctrl + N` với `{ capture: true }`, mở phiên mới trên pane đang active và focus ô nhập sau 50ms.
+  - Chia đôi cửa sổ chat song song kiểu VS Code bằng `Cmd/Ctrl + ArrowUp` (`panes`, `activePaneId`), hỗ trợ tối đa 3 pane trên Desktop, độc lập ô nhập, cuộn và thanh công cụ.
+
+- [x] **Ngày 9: `ai/micro-psychology-profiler` (Tomorrow v4.5 - On-Device Micro-Psychology Profiler, Keystroke Telemetry & Emotional Cadence Mirroring)**
+  - Bộ đo nhịp gõ cục bộ `KeystrokeTelemetry` (`typingDurationMs`, `charsPerSecond`, `backspaceRatio`, `burstCount`) qua `useRef` trong `FloatingInputBar.tsx` / `App.tsx` (không re-render, bảo mật 100%).
+  - Module `services/microPsychProfiler.ts` thực thi < 1ms:
+    + Giải mã DNA ngôn ngữ: `caseStyle`, `punctuationStyle`, `diacriticsMode`, `hasSlang`, `brevityLevel`.
+    + 7 trạng thái tâm lý ngầm: `STRESSED_OVERWHELMED`, `MASKED_SADNESS`, `LOW_DOWN_DEFLATED`, `IRRITATED_BLUNT`, `EXCITED_HYPED`, `FOCUSED_ANALYTICAL`, `NEUTRAL_CASUAL`.
+    + Đo lường độ ngập ngừng `hesitationLevel` (`HIGH`, `MEDIUM`, `LOW`).
+    + Định dạng nhãn chỉ đạo: `[PSYCH: STATE=... | STYLE=... | CADENCE=... | HINT=...]`.
+  - Tích hợp vào `buildLocalReflexDirective`, `SYSTEM_INSTRUCTION` (442 từ < 450 từ), `localResilientFallback`, và cập nhật `recentContext` trong `UserMemoryVault`.
+  - Cập nhật live badge header: `Online • v4.5`. Bộ kiểm thử 13/13 scenarios đạt 130/130 điểm hoàn hảo.
+
+- [ ] **Ngày 10 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
   - Tìm kiếm toàn văn (Full-text search) trên danh sách phiên trò chuyện trong Sidebar.
   - Đóng gói chuẩn ứng dụng Desktop macOS thông qua WebKit / Electron / PWA Wrapper nâng cao.
@@ -129,9 +151,9 @@ Mỗi bước cập nhật tính năng mới phải tuân thủ nghiêm ngặt 3
    ```bash
    node train_simulator.js
    ```
-   *Yêu cầu bắt buộc: 8/8 kịch bản phải PASS trước khi tạo commit.*
+   *Yêu cầu bắt buộc: 13/13 kịch bản phải PASS (130/130 điểm) trước khi tạo commit.*
 3. **Tăng Version Header & Deploy Production:**
-   - Cập nhật số phiên bản trên `App.tsx` (VD: `Online • v3.9` -> `Online • v4.0`).
+   - Cập nhật số phiên bản trên `App.tsx` (VD: `Online • v4.4.1` -> `Online • v4.5`).
    - Kiểm tra `.gitignore` đảm bảo không sót `.env` hoặc file nhạy cảm.
    - Deploy Vercel Production:
      ```bash

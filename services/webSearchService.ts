@@ -258,13 +258,50 @@ export function buildOptimizedSearchQuery(userText: string, recentHistory: any[]
 }
 
 /**
+ * Chuẩn hóa mốc ngày cho Web Search (resolveTemporalSearchQuery)
+ * Nếu câu hỏi chứa "hôm nay", "sáng nay", "trưa nay", "chiều nay", "tối nay", "mới nhất", "hiện tại"
+ * mà chưa có ngày/năm cụ thể -> tự động nối thêm ${chrono.dateStr} vào truy vấn để kết quả tìm kiếm bám sát ngày thực tế.
+ */
+export function resolveTemporalSearchQuery(query: string, chrono?: { dateStr: string }): string {
+  if (!query) return query;
+  const lower = query.toLowerCase();
+  const temporalWords = [
+    'hôm nay', 'hom nay',
+    'sáng nay', 'sang nay',
+    'trưa nay', 'trua nay',
+    'chiều nay', 'chieu nay',
+    'tối nay', 'toi nay',
+    'mới nhất', 'moi nhat',
+    'hiện tại', 'hien tai',
+  ];
+  const hasTemporal = temporalWords.some((w) => lower.includes(w));
+  if (!hasTemporal) return query;
+
+  // Kiểm tra xem đã có ngày cụ thể (DD/MM hoặc DD/MM/YYYY) hoặc năm (2024, 2025, 2026,...) chưa
+  const hasSpecificDateOrYear = /\b(\d{1,2}\/\d{1,2}(\/\d{2,4})?|20\d{2})\b/.test(query);
+  if (hasSpecificDateOrYear) return query;
+
+  let dateStr = chrono?.dateStr;
+  if (!dateStr) {
+    const now = new Date();
+    const d = String(now.getDate()).padStart(2, '0');
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const y = now.getFullYear();
+    dateStr = `${d}/${m}/${y}`;
+  }
+
+  return `${query} ${dateStr}`.trim();
+}
+
+/**
  * 3. THỰC HIỆN TÌM KIẾM ĐA TẦNG VỚI CLIENT-SIDE FALLBACK (performSmartWebSearch)
  * Giới hạn tối đa 3.5s và đảm bảo 100% không bao giờ ném lỗi (Graceful Fallback)
  */
 export async function performSmartWebSearch(
   userText: string,
   recentHistory: any[] = [],
-  forceSearch: boolean = false
+  forceSearch: boolean = false,
+  chrono?: { dateStr: string }
 ): Promise<WebSearchContext> {
   const fallbackEmpty: WebSearchContext = {
     searched: false,
@@ -279,7 +316,8 @@ export async function performSmartWebSearch(
       return fallbackEmpty;
     }
 
-    const { query, url } = buildOptimizedSearchQuery(userText, recentHistory);
+    let { query, url } = buildOptimizedSearchQuery(userText, recentHistory);
+    query = resolveTemporalSearchQuery(query, chrono);
 
     // 1. Thử gọi API endpoint /api/search (Vercel Serverless Function)
     let endpoint = '/api/search';

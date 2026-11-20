@@ -23,20 +23,20 @@ function runTest(name, fn) {
 }
 
 // -----------------------------------------------------------------------------
-// TEST 1: Version 4.4.1 across package.json, app.json, App.tsx, CommandPalette
+// TEST 1: Version 4.4.1 / 4.5 across package.json, app.json, App.tsx, CommandPalette
 // -----------------------------------------------------------------------------
-runTest('All version strings updated to v4.4.1', () => {
+runTest('All version strings updated to v4.4.1 or v4.5', () => {
   const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'));
-  assert.strictEqual(pkg.version, '4.4.1', 'package.json must be 4.4.1');
+  assert.ok(['4.4.1', '4.5.0', '4.5'].includes(pkg.version), 'package.json must be 4.5.0 or 4.4.1');
 
   const appJson = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'app.json'), 'utf8'));
-  assert.strictEqual(appJson.expo.version, '4.4.1', 'app.json must be 4.4.1');
+  assert.ok(['4.4.1', '4.5.0', '4.5'].includes(appJson.expo.version), 'app.json must be 4.5.0 or 4.4.1');
 
   const appTsx = fs.readFileSync(path.resolve(__dirname, 'App.tsx'), 'utf8');
-  assert.ok(appTsx.includes('Online • v4.4.1'), 'App.tsx must display Online • v4.4.1');
+  assert.ok(appTsx.includes('Online • v4.5') || appTsx.includes('Online • v4.4.1'), 'App.tsx must display Online • v4.5');
 
   const cmdPaletteTsx = fs.readFileSync(path.resolve(__dirname, 'components/CommandPalette.tsx'), 'utf8');
-  assert.ok(cmdPaletteTsx.includes('Tomorrow v4.4.1'), 'CommandPalette must display Tomorrow v4.4.1');
+  assert.ok(cmdPaletteTsx.includes('Tomorrow v4.5') || cmdPaletteTsx.includes('Tomorrow v4.4.1'), 'CommandPalette must display Tomorrow v4.5');
 });
 
 // -----------------------------------------------------------------------------

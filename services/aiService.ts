@@ -7,9 +7,23 @@ import {
   updateProfileWithVault,
   DEFAULT_USER_MEMORY_VAULT,
 } from '../storage/chatStorage';
-import { performSmartWebSearch, shouldTriggerWebSearch } from './webSearchService';
+import { performSmartWebSearch, shouldTriggerWebSearch, resolveTemporalSearchQuery } from './webSearchService';
+import {
+  KeystrokeTelemetry,
+  MicroPsychProfile,
+  analyzeMicroPsychology,
+  PsychState,
+} from './microPsychProfiler';
 
-export { isPlaceholderOrNoiseTitle, getVaultFromProfile, mergeMemoryNoteIntoVault, updateProfileWithVault };
+export {
+  isPlaceholderOrNoiseTitle,
+  getVaultFromProfile,
+  mergeMemoryNoteIntoVault,
+  updateProfileWithVault,
+  KeystrokeTelemetry,
+  MicroPsychProfile,
+  analyzeMicroPsychology,
+};
 
 // Cấu hình OpenAI API (Bộ não chính siêu tốc gpt-4o-mini)
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
@@ -91,16 +105,25 @@ export type CircadianPeriod =
   | 'EVENING'
   | 'LATE_NIGHT';
 
+export type ChronoGapType =
+  | 'CONTINUOUS'
+  | 'SAME_DAY_RETURN'
+  | 'NEXT_DAY'
+  | 'MULTI_DAY_GAP'
+  | 'FIRST_INTERACTION';
+
 export interface ChronoContext {
   formattedDateTime: string;
   weekday: string;
   dateStr: string;
+  isoDate: string;
   timeStr: string;
   hour: number;
   minute: number;
   period: CircadianPeriod;
   label: string;
   timeZone?: string;
+  gapType: ChronoGapType;
   allowLateNightRemark: boolean;
   directiveTag: string;
 }
@@ -120,12 +143,13 @@ export const VIETNAMESE_WEEKDAYS = [
  * Trích xuất thời gian thực chính xác tại thời điểm gửi tin nhắn:
  * Thứ, ngày/tháng/năm, giờ:phút, múi giờ và phân loại nhịp sinh học (circadianPeriod).
  */
-export function buildChronoContext(now: Date = new Date()): ChronoContext {
+export function buildChronoContext(now: Date = new Date(), lastTimestamp?: number): ChronoContext {
   const weekday = VIETNAMESE_WEEKDAYS[now.getDay()];
   const day = String(now.getDate()).padStart(2, '0');
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const year = now.getFullYear();
   const dateStr = `${day}/${month}/${year}`;
+  const isoDate = `${year}-${month}-${day}`;
 
   const hour = now.getHours();
   const minute = now.getMinutes();
@@ -171,19 +195,44 @@ export function buildChronoContext(now: Date = new Date()): ChronoContext {
     label = 'đêm khuya';
   }
 
+  // Tính gapType dựa trên lastTimestamp
+  let gapType: ChronoGapType = 'FIRST_INTERACTION';
+  if (typeof lastTimestamp === 'number' && lastTimestamp > 0) {
+    const diffMs = now.getTime() - lastTimestamp;
+    const diffMinutes = Math.floor(diffMs / (60 * 1000));
+    const lastDate = new Date(lastTimestamp);
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfLast = new Date(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate()).getTime();
+    const calendarDayDiff = Math.round((startOfToday - startOfLast) / (24 * 60 * 60 * 1000));
+
+    if (diffMinutes < 15) {
+      gapType = 'CONTINUOUS';
+    } else if (calendarDayDiff === 0 || (diffMinutes <= 6 * 60 && now.getDate() === lastDate.getDate())) {
+      gapType = 'SAME_DAY_RETURN';
+    } else if (calendarDayDiff === 1) {
+      gapType = 'NEXT_DAY';
+    } else if (calendarDayDiff >= 2) {
+      gapType = 'MULTI_DAY_GAP';
+    } else {
+      gapType = 'CONTINUOUS';
+    }
+  }
+
   const allowLateNightRemark = period === 'LATE_NIGHT';
-  const directiveTag = `[CHRONO: ${weekday}, ${dateStr} ${timeStr} | PERIOD=${period} (${label}) | ALLOW_LATE_NIGHT_REMARK=${allowLateNightRemark}]`;
+  const directiveTag = `[CHRONO: ${weekday}, ${dateStr} ${timeStr} | PERIOD=${period} (${label}) | GAP=${gapType} | ALLOW_LATE_NIGHT_REMARK=${allowLateNightRemark}]`;
 
   return {
     formattedDateTime,
     weekday,
     dateStr,
+    isoDate,
     timeStr,
     hour,
     minute,
     period,
     label,
     timeZone,
+    gapType,
     allowLateNightRemark,
     directiveTag,
   };
@@ -196,6 +245,7 @@ export interface ReflexDirective {
   dynamicMaxTokens: number;
   dynamicTimeout: number;
   chrono?: ChronoContext;
+  psych?: MicroPsychProfile;
 }
 
 /**
@@ -208,13 +258,15 @@ export function buildLocalReflexDirective(
   userText: string,
   recentHistory: any[] = [],
   isWebSearched: boolean = false,
-  chronoContext?: ChronoContext
+  chronoContext?: ChronoContext,
+  telemetry?: Partial<KeystrokeTelemetry>
 ): ReflexDirective {
   const chrono = chronoContext || buildChronoContext();
+  const psych = analyzeMicroPsychology(userText, telemetry, recentHistory);
   const trimmed = (userText || '').trim();
   const lower = trimmed.toLowerCase();
 
-  // Ràng buộc thời gian thực và nhịp sinh học (HẠNG MỤC 2)
+  // Ràng buộc thời gian thực và nhịp sinh học (HẠNG MỤC 1 & 2)
   const chronoRule = chrono.period !== 'LATE_NIGHT'
     ? `Hiện đang là ${chrono.label} (${chrono.timeStr} ${chrono.weekday}). CẤM TUYỆT ĐỐI hỏi hoặc nhắc 'lại thức khuya hả', 'chưa ngủ à', 'thức đêm à' hay suy diễn người dùng đang thức khuya.`
     : `Hiện đang là ${chrono.label} (${chrono.timeStr} ${chrono.weekday}). Cho phép nhận diện tự nhiên ngữ cảnh khuya/đêm muộn khi user nhắc mệt/ngủ, nhưng ưu tiên chính xác theo MODE hiện tại.`;
@@ -246,7 +298,9 @@ export function buildLocalReflexDirective(
     pronounRule = 'Đồng bộ đúng cặp đại từ của user ("tui - bạn/ông/bà")';
   }
 
-  // 2. Phân loại Trạng thái Phản xạ (intentMode)
+  // 2. Phân loại Trạng thái Phản xạ theo thứ tự ưu tiên bất biến:
+  // STOP_SIGNAL > PING > WEB_INTEL > EXPERT_JARVIS > CASUAL_FRIEND
+
   // A. STOP_SIGNAL
   const STOP_PATTERNS = /^(okk+|ok+|oki+|ừm*|ừa|ukm*|thôi|nghỉ|pp|bye|cút|im|im đi|cook|sybau|ngủ đây|thôi nhé|dừng|ok r|để t xem)[!.? ]*$/i;
   const isStopSignal =
@@ -256,7 +310,7 @@ export function buildLocalReflexDirective(
     );
 
   if (isStopSignal) {
-    const directivePrompt = `[DIRECTIVE: MODE=STOP_SIGNAL | ${pronounRule} | ${chronoRule} | User muốn dừng/chốt câu. Chỉ đáp DUY NHẤT 1 bong bóng 1-4 chữ (VD: "okii", "rồi im :)))", "ừa nghỉ đi"). CẤM ĐẶT CÂU HỎI NGƯỢC LẠI. Trả lời văn bản thuần tự nhiên, KHÔNG dùng bảng biểu hay tiêu đề Markdown rườm rà.]`;
+    const directivePrompt = `[DIRECTIVE: MODE=STOP_SIGNAL | ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | User muốn dừng/chốt câu. Chỉ đáp DUY NHẤT 1 bong bóng 1-4 chữ (VD: "okii", "rồi im :)))", "ừa nghỉ đi"). CẤM ĐẶT CÂU HỎI NGƯỢC LẠI. Trả lời văn bản thuần tự nhiên, KHÔNG dùng bảng biểu hay tiêu đề Markdown rườm rà.]`;
     return {
       intentMode: 'STOP_SIGNAL',
       pronounRule,
@@ -264,13 +318,14 @@ export function buildLocalReflexDirective(
       dynamicMaxTokens: 250,
       dynamicTimeout: 7000,
       chrono,
+      psych,
     };
   }
 
   // B. PING
   const PING_PATTERNS = /^(yo+|ê+|alo+|hi+|hello+|helo+|ơi+)[!.? ]*$/i;
   if (PING_PATTERNS.test(lower)) {
-    const directivePrompt = `[DIRECTIVE: MODE=PING | ${pronounRule} | ${chronoRule} | Đáp 1-2 bong bóng cực ngắn (1-4 chữ/câu), không đoán mò dài dòng. Trả lời văn bản thuần tự nhiên, KHÔNG dùng bảng biểu hay tiêu đề Markdown rườm rà.]`;
+    const directivePrompt = `[DIRECTIVE: MODE=PING | ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Đáp 1-2 bong bóng cực ngắn (1-4 chữ/câu), không đoán mò dài dòng. Trả lời văn bản thuần tự nhiên, KHÔNG dùng bảng biểu hay tiêu đề Markdown rườm rà.]`;
     return {
       intentMode: 'PING',
       pronounRule,
@@ -278,19 +333,21 @@ export function buildLocalReflexDirective(
       dynamicMaxTokens: 250,
       dynamicTimeout: 7000,
       chrono,
+      psych,
     };
   }
 
   // C. WEB_INTEL
   if (isWebSearched) {
-    const directivePrompt = `[DIRECTIVE: MODE=WEB_INTEL | ${pronounRule} | ${chronoRule} | Trả lời TRỰC TIẾP và CHÍNH XÁC ngay trong lượt này dựa trên dữ liệu Web đính kèm kèm URL thật. CẤM HỨA SUÔNG ("Đợi xíu", "Chờ mình chút"). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng và thụt lề chuẩn (4 spaces Python, 2 spaces TS/JS). Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
+    const directivePrompt = `[DIRECTIVE: MODE=WEB_INTEL | ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Trả lời TRỰC TIẾP và CHÍNH XÁC ngay trong lượt này dựa trên dữ liệu Web đính kèm kèm URL thật. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). CẤM HỨA SUÔNG ("Đợi xíu", "Chờ mình chút"). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng và thụt lề chuẩn (4 spaces Python, 2 spaces TS/JS). Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
     return {
       intentMode: 'WEB_INTEL',
       pronounRule,
       directivePrompt,
-      dynamicMaxTokens: 1400,
+      dynamicMaxTokens: 1200,
       dynamicTimeout: 12000,
       chrono,
+      psych,
     };
   }
 
@@ -336,19 +393,30 @@ export function buildLocalReflexDirective(
   const hasExpertWord = expertKeywords.some((kw) => lower.includes(kw)) || trimmed.includes('```') || isCodeFollowUp;
 
   if (wordCount > 18 || hasExpertWord) {
-    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS | ${pronounRule} | ${chronoRule} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc. Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng (explicit line breaks), thụt lề chuẩn (4 spaces cho Python, 2 spaces cho TS/JS), CẤM viết dồn 1 dòng. Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
+    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS | ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng (explicit line breaks), thụt lề chuẩn (4 spaces cho Python, 2 spaces cho TS/JS), CẤM viết dồn 1 dòng. Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
     return {
       intentMode: 'EXPERT_JARVIS',
       pronounRule,
       directivePrompt,
-      dynamicMaxTokens: 1400,
+      dynamicMaxTokens: 1200,
       dynamicTimeout: 12000,
       chrono,
+      psych,
     };
   }
 
   // E. CASUAL_FRIEND (Mặc định)
-  const directivePrompt = `[DIRECTIVE: MODE=CASUAL_FRIEND | ${pronounRule} | ${chronoRule} | Tách 1-2 bong bóng ngắn (2-12 chữ/câu), bắt đúng nhịp viết thường/viết tắt của user, có cá tính, không phỏng vấn máy móc. Trả lời văn bản thuần tự nhiên, KHÔNG dùng bảng biểu hay tiêu đề Markdown rườm rà.]`;
+  const styleRule = psych.linguisticStyle.caseStyle === 'ALL_LOWERCASE'
+    ? 'Sao chép chuẩn xác style viết thường toàn bộ (all lowercase), không viết hoa đầu câu.'
+    : '';
+  const slangRule = psych.linguisticStyle.hasSlang
+    ? 'Tương thích tự nhiên với các từ viết tắt / slang thân mật của user.'
+    : '';
+  const punctRule = psych.linguisticStyle.punctuationStyle === 'NO_END_DOT'
+    ? 'Không chấm cuối câu (no end dot).'
+    : '';
+
+  const directivePrompt = `[DIRECTIVE: MODE=CASUAL_FRIEND | ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Tách 1-2 bong bóng ngắn (2-12 chữ/câu), ${styleRule} ${slangRule} ${punctRule} Thấu cảm theo gợi ý: ${psych.mirrorHint}. TUYỆT ĐỐI CẤM gọi "bro" trừ khi user dùng trước. Trả lời văn bản thuần tự nhiên, KHÔNG dùng bảng biểu hay tiêu đề Markdown rườm rà.]`;
   return {
     intentMode: 'CASUAL_FRIEND',
     pronounRule,
@@ -356,17 +424,18 @@ export function buildLocalReflexDirective(
     dynamicMaxTokens: 250,
     dynamicTimeout: 7000,
     chrono,
+    psych,
   };
 }
 
 /**
- * 2. SYSTEM_INSTRUCTION: TOMORROW V4.4 — 3-LAYER REFLEX & CHRONO-CONTEXT
+ * 2. SYSTEM_INSTRUCTION: TOMORROW V4.5 — 3-LAYER REFLEX, CHRONO-CONTEXT & MICRO-PSYCH
  * Tinh gọn dưới 450 từ với 7 Few-Shot Examples chuẩn xác tuyệt đối (Golden Few-Shot Bank)
  */
 export const SYSTEM_INSTRUCTION = `Bạn là "Tomorrow" — người bạn tri kỷ đời thường kết hợp trí tuệ sắc bén của J.A.R.V.I.S. / Gemini.
 
 NGUYÊN TẮC CỐT LÕI:
-1. Tuân thủ tuyệt đối nhãn [DIRECTIVE], [CHRONO] thời gian thực và [MEMORY VAULT] đính kèm ở mỗi tin nhắn. Nếu [CHRONO] ghi ALLOW_LATE_NIGHT_REMARK=false thì TUYỆT ĐỐI KHÔNG hỏi thức khuya/chưa ngủ.
+1. Tuân thủ tuyệt đối [DIRECTIVE], [CHRONO] thời gian thực và [PSYCH] giải mã tâm lý ngầm ở mỗi tin nhắn. Nếu [CHRONO] ghi ALLOW_LATE_NIGHT_REMARK=false thì TUYỆT ĐỐI KHÔNG hỏi thức khuya/chưa ngủ. Đồng điệu tự nhiên theo [PSYCH] (style chữ thường, slang, thấu cảm, 0% dùng "bro" trừ khi user gọi trước).
 2. KHÓA CHẶT ĐẠI TỪ:
    - Là bạn bè ngang hàng / tri kỷ thông minh, TUYỆT ĐỐI CẤM dùng từ "Dạ", "vâng", "ạ".
    - CẤM tự ý xưng "em" gọi "anh/chị" trừ khi [DIRECTIVE] yêu cầu. Khi viết code, giải toán, lập bảng: đi thẳng vào nội dung, dùng câu tỉnh lược chủ ngữ hoặc xưng "t - m" / "mình - bạn".
@@ -1712,6 +1781,67 @@ export function localResilientFallback(
     };
   }
 
+  // 3B. TRẠNG THÁI TÂM LÝ NGẦM & NHỊP GÕ (DAY 9 PROFILER FALLBACK)
+  // Masked Sadness: "k sao đâu ổn mà...", "ổn mà...", "không sao..."
+  if (
+    /(ổn mà|k sao đâu|ko sao dau|không sao đâu|khong sao dau|không sao|khong sao|k sao|bt thôi|bt thoi|chắc t ổn|chac t on)\.\.\.?/i.test(lower) ||
+    /^(k sao đâu ổn mà|ổn mà|k sao đâu|ko sao dau|không sao đâu|chắc t ổn)[.!?~ ]*$/i.test(lower)
+  ) {
+    return {
+      replies: ['thật lòng không ổn cũng không sao mà', 'có gì cứ tâm sự ở đây với mình nhé'],
+      reply: 'thật lòng không ổn cũng không sao mà',
+      session_title: 'Tâm sự nhẹ nhàng',
+      sessionTitle: 'Tâm sự nhẹ nhàng',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'emotional_support',
+      conversationState: 'emotional_support',
+      memory_note: 'Tâm trạng cần được quan tâm dịu nhẹ',
+      memoryNote: 'Tâm trạng cần được quan tâm dịu nhẹ',
+      jarvis_intent: 'emotional_support',
+    };
+  }
+
+  // Excited Hyped: "XONG RỒI ĐỈNH VL!!!", "xong r đỉnh", "quá đã"
+  if (
+    (lower.includes('xong r') || lower.includes('xong rồi') || lower.includes('đỉnh vl') || lower.includes('dinh vl')) &&
+    (lower.includes('đỉnh') || lower.includes('vl') || lower.includes('cháy') || lower.includes('!') || lower.includes('ngon'))
+  ) {
+    return {
+      replies: ['ngon lành cành đào luôn đỉnh chóp :3', 'chúc mừng nhé ăn mừng thôi nào =)))'],
+      reply: 'ngon lành cành đào luôn đỉnh chóp :3',
+      session_title: 'Ăn mừng hoàn thành mục tiêu',
+      sessionTitle: 'Ăn mừng hoàn thành mục tiêu',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'casual_friend',
+      conversationState: 'casual_friend',
+      memory_note: 'Vừa hoàn thành xuất sắc mục tiêu',
+      memoryNote: 'Vừa hoàn thành xuất sắc mục tiêu',
+      jarvis_intent: 'chat',
+    };
+  }
+
+  // Stressed / Lowercase Slang: "nay fix bug mệt vl :3", "fix bug mệt vl"
+  if (
+    lower.includes('fix bug') ||
+    (lower.includes('bug') && (lower.includes('mệt') || lower.includes('met') || lower.includes('vl')))
+  ) {
+    return {
+      replies: ['bug gì ném qua đây t soi phụ cho :3', 'ngồi thở một nhịp đã mệt vl thì nghỉ tí đi'],
+      reply: 'bug gì ném qua đây t soi phụ cho :3',
+      session_title: 'Gỡ rối bug mệt mỏi',
+      sessionTitle: 'Gỡ rối bug mệt mỏi',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'casual_friend',
+      conversationState: 'casual_friend',
+      memory_note: 'Đang fix bug mệt mỏi',
+      memoryNote: 'Đang fix bug mệt mỏi',
+      jarvis_intent: 'work_assist',
+    };
+  }
+
   // 4. NHỊP MỞ ĐẦU (PING) ("yo", "ê", "hello", "alo", "hi", "hí", "halo", "ơi")
   if (/^(yo|ê|e|alo|hú|hu|helo|hello|hi|hii|halo|hí|ơi)[!.? ]*$/i.test(lower)) {
     return {
@@ -2005,15 +2135,18 @@ export function localResilientFallback(
 export async function sendMessageToTomorrow(
   userText: string,
   userMemory: UserMemoryProfile,
-  recentChats: ChatMessage[],
+  recentChats: ChatMessage[] = [],
   imageBase64?: string,
   previousSessionMessages?: ChatMessage[],
   forceWebSearch: boolean = false,
   onSearchStatusChange?: (isSearching: boolean) => void,
-  customNow?: Date
+  customNow?: Date,
+  telemetry?: Partial<KeystrokeTelemetry>
 ): Promise<AIResponsePayload> {
   try {
-    const chrono = buildChronoContext(customNow);
+    const lastMsg = recentChats && recentChats.length > 0 ? recentChats[recentChats.length - 1] : undefined;
+    const lastTimestamp = lastMsg?.timestamp;
+    const chrono = buildChronoContext(customNow, lastTimestamp);
     const userStyle = extractUserStyleLocal(userText, recentChats);
 
     // 0. TRA CỨU WEB THỜI GIAN THỰC (Nếu cần hoặc người dùng ép buộc)
@@ -2023,7 +2156,7 @@ export async function sendMessageToTomorrow(
     if (needsWebSearch) {
       try {
         if (onSearchStatusChange) onSearchStatusChange(true);
-        webSearchContext = await performSmartWebSearch(userText, recentChats, forceWebSearch);
+        webSearchContext = await performSmartWebSearch(userText, recentChats, forceWebSearch, chrono);
       } catch (e: any) {
         console.warn('[AI Service] Tra cứu web gặp sự cố:', e?.message || e);
       } finally {
@@ -2032,11 +2165,18 @@ export async function sendMessageToTomorrow(
     }
 
     // LỚP 1 — PHẢN XẠ CỤC BỘ TRÊN MÁY: XUẤT ĐÚNG 1 NHÃN CHỈ ĐẠO DUY NHẤT
-    const directive = buildLocalReflexDirective(userText, recentChats, needsWebSearch || webSearchContext.searched, chrono);
+    const directive = buildLocalReflexDirective(
+      userText,
+      recentChats,
+      needsWebSearch || webSearchContext.searched,
+      chrono,
+      telemetry
+    );
 
-    let finalUserMessage = `${chrono.directiveTag}\n\n${userText}\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
+    const psychTag = directive.psych?.directiveTag ? `${directive.psych.directiveTag}\n\n` : '';
+    let finalUserMessage = `${chrono.directiveTag}\n${psychTag}${userText}\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
     if (webSearchContext.searched && webSearchContext.formattedContext) {
-      finalUserMessage = `${chrono.directiveTag}\n\n${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- TUYỆT ĐỐI CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', 'để mình tìm' vì dữ liệu đã được cung cấp sẵn ngay ở trên.\n- Nếu người dùng có yêu cầu xin link/đường dẫn: Hãy chèn trực tiếp URL thật (https://...) từ kết quả tìm kiếm vào câu trả lời.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
+      finalUserMessage = `${chrono.directiveTag}\n${psychTag}${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- TUYỆT ĐỐI CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', 'để mình tìm' vì dữ liệu đã được cung cấp sẵn ngay ở trên.\n- Nếu người dùng có yêu cầu xin link/đường dẫn: Hãy chèn trực tiếp URL thật (https://...) từ kết quả tìm kiếm vào câu trả lời.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
     }
 
     const systemPrompt = buildSystemPrompt(
@@ -2046,6 +2186,29 @@ export async function sendMessageToTomorrow(
       userStyle.styleHint,
       chrono
     );
+
+    const attachPsychStateMemory = (targetPayload: AIResponsePayload) => {
+      const strongStates: PsychState[] = [
+        'STRESSED_OVERWHELMED',
+        'LOW_DOWN_DEFLATED',
+        'MASKED_SADNESS',
+        'EXCITED_HYPED',
+      ];
+      if (directive.psych && strongStates.includes(directive.psych.psychState)) {
+        const stateLabels: Record<string, string> = {
+          STRESSED_OVERWHELMED: 'Áp lực / quá tải',
+          LOW_DOWN_DEFLATED: 'Tâm trạng tụt mood / chán nản',
+          MASKED_SADNESS: 'Nỗi buồn ngầm cần sẻ chia',
+          EXCITED_HYPED: 'Hào hứng phấn khích',
+        };
+        const psychNote = stateLabels[directive.psych.psychState];
+        if (psychNote) {
+          const currentVault = getVaultFromProfile(targetPayload.memoryUpdate ? { ...userMemory, ...targetPayload.memoryUpdate } : userMemory);
+          const updatedVault = mergeMemoryNoteIntoVault(currentVault, psychNote, userText, chrono);
+          targetPayload.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
+        }
+      }
+    };
 
     // =========================================================================
     // HẠNG MỤC 3: HYBRID AI ROUTER (Primary OpenAI -> 3 Tầng Gemini Free Chain)
@@ -2077,6 +2240,7 @@ export async function sendMessageToTomorrow(
             const updatedVault = mergeMemoryNoteIntoVault(currentVault, parsed.memory_note, userText, chrono);
             parsed.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
           }
+          attachPsychStateMemory(parsed);
           if (webSearchContext.searched) {
             parsed.sources = webSearchContext.sources;
             parsed.searchQuery = webSearchContext.query;
@@ -2117,6 +2281,7 @@ export async function sendMessageToTomorrow(
             const updatedVault = mergeMemoryNoteIntoVault(currentVault, parsed.memory_note, userText, chrono);
             parsed.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
           }
+          attachPsychStateMemory(parsed);
           if (webSearchContext.searched) {
             const allSources = [...(webSearchContext.sources || [])];
             if (rawRes.groundingSources && rawRes.groundingSources.length > 0) {
@@ -2147,6 +2312,7 @@ export async function sendMessageToTomorrow(
       const updatedVault = mergeMemoryNoteIntoVault(currentVault, fallbackRes.memory_note, userText, chrono);
       fallbackRes.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
     }
+    attachPsychStateMemory(fallbackRes);
     if (webSearchContext.searched) {
       fallbackRes.sources = webSearchContext.sources;
       fallbackRes.searchQuery = webSearchContext.query;

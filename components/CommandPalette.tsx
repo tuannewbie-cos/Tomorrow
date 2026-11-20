@@ -155,8 +155,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       {
         id: 'act-new-chat',
         type: 'action',
-        title: 'Tạo cuộc trò chuyện mới',
-        subtitle: 'Bắt đầu một phiên trò chuyện mới sạch',
+        title: 'Cuộc trò chuyện mới (⌘N)',
+        subtitle: 'Bắt đầu một phiên trò chuyện mới sạch trên cửa sổ đang hoạt động',
         badge: '⌘N',
         iconType: 'new_chat',
         group: 'actions',
@@ -742,7 +742,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             </View>
 
             <Text style={[styles.footerBrand, { color: theme.textMuted }]}>
-              Tomorrow v4.4.1
+              Tomorrow v4.5
             </Text>
           </View>
         </View>
