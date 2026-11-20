@@ -62,7 +62,7 @@ import {
   THEME_STORAGE_KEY,
 } from './constants/theme';
 import { injectWebFonts } from './utils/webFont';
-import { compressImageForVision } from './utils/imageOptimizer';
+import { compressImageForVision, cleanBase64 } from './utils/imageOptimizer';
 
 // Kiểm tra câu chào ngắn xã giao hoặc placeholder (tương thích ngược)
 export const isGreetingOrTooShort = (text: string) => {
@@ -307,14 +307,19 @@ export default function App() {
     const pane = panesRef.current.find((p) => p.id === paneId) || panesRef.current[0];
     let targetSessionId = pane?.sessionId;
 
+    const resolvedBase64 = imageBase64 || (imageUri?.startsWith('data:image') ? cleanBase64(imageUri) : undefined);
+    const resolvedUri = imageUri?.startsWith('data:image')
+      ? imageUri
+      : (resolvedBase64 ? `data:image/jpeg;base64,${resolvedBase64}` : imageUri);
+
     const userMsg: ChatMessage = {
       id: `usr-${Date.now()}`,
       role: 'user',
       sender: 'user',
       text,
       timestamp: Date.now(),
-      imageUri,
-      imageBase64,
+      imageUri: resolvedUri,
+      imageBase64: resolvedBase64,
     };
 
     let currentSess = targetSessionId
@@ -392,9 +397,9 @@ export default function App() {
       const previousSession = sessionsRef.current.find((s) => s.id !== targetSessionId);
       const previousSessionMessages = previousSession?.messages?.slice(-3);
 
-      // HẠNG MỤC 2: Kiểm tra carry-over ảnh từ 2 tin nhắn gần nhất nếu câu hỏi mang tính tham chiếu hoặc lượt trước lỗi
-      const carriedOverImg = resolveCarriedOverVisionImage(text, updatedMessages, imageBase64 || imageUri);
-      const effectiveImage = imageBase64 || carriedOverImg;
+      // HẠNG MỤC 2: Kiểm tra carry-over ảnh từ các tin nhắn gần nhất nếu câu hỏi mang tính tham chiếu hoặc lượt trước lỗi
+      const carriedOverImg = resolveCarriedOverVisionImage(text, updatedMessages, resolvedBase64 || resolvedUri);
+      const effectiveImage = resolvedBase64 || carriedOverImg;
 
       const aiResponsePromise = sendMessageToTomorrow(
         text,
@@ -808,7 +813,7 @@ export default function App() {
             try {
               const opt = await compressImageForVision(file);
               const imgObj = {
-                uri: `data:${opt.mimeType};base64,${opt.base64}`,
+                uri: opt.dataUrl || `data:${opt.mimeType};base64,${opt.base64}`,
                 base64: opt.base64,
                 sizeKB: opt.sizeKB,
               };
@@ -848,7 +853,7 @@ export default function App() {
           try {
             const opt = await compressImageForVision(file);
             const imgObj = {
-              uri: `data:${opt.mimeType};base64,${opt.base64}`,
+              uri: opt.dataUrl || `data:${opt.mimeType};base64,${opt.base64}`,
               base64: opt.base64,
               sizeKB: opt.sizeKB,
             };
@@ -936,7 +941,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.5.2</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.5.3</Text>
               </View>
             </View>
           </View>

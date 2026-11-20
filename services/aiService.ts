@@ -74,6 +74,18 @@ export const SMART_FLASH_MODEL_CHAIN: string[] = [
   'gemini-2.0-flash-lite',
 ];
 
+/**
+ * Chuỗi xoay vòng Model hỗ trợ Đa phương thức (Multimodal Vision):
+ * Tuyệt đối không chứa các model chỉ nhận text thuần (như Gemma cũ).
+ */
+export const VISION_MODEL_CHAIN: string[] = [
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-1.5-flash',
+  'gemini-1.5-pro',
+];
+
 // Timeout 8.5 giây cho mỗi lần gọi để chống treo vô định
 const TIMEOUT_MS = 8500;
 
@@ -441,9 +453,29 @@ export function buildLocalReflexDirective(
   }
 
   // 2. Phân loại Trạng thái Phản xạ theo thứ tự ưu tiên bất biến:
-  // STOP_SIGNAL > PING > WEB_INTEL > EXPERT_JARVIS > CASUAL_FRIEND
+  // VISION_LAB (khi có ảnh) > STOP_SIGNAL > PING > WEB_INTEL > EXPERT_JARVIS > CASUAL_FRIEND
 
-  // A. STOP_SIGNAL (Giữ nguyên quyền ưu tiên cao nhất, cấm hỏi lại, budget 250t)
+  // 0. ƯU TIÊN SỐNG CÒN: VISION LAB & EXPERT JARVIS KHI CÓ ẢNH (HOẶC ẢNH KẾ THỪA)
+  if (hasImage) {
+    const domain: ExpertDomain = 'VISION_LAB';
+    const domainLine = getDomainDirectiveLine(domain);
+    const domainPart = domainLine ? ` ${domainLine} |` : '';
+    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS |${domainPart} ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc bài tập/hình ảnh được gửi. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức LaTeX). Khi viết code, BẮT BUỘC xuống dòng rõ ràng, thụt lề chuẩn, giải thích từng bước giải. Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies".]`;
+
+    return {
+      intentMode: 'EXPERT_JARVIS',
+      pronounRule,
+      directivePrompt,
+      dynamicMaxTokens: 2500,
+      dynamicTimeout: 35000,
+      temperature: 0.25,
+      domain: 'VISION_LAB',
+      chrono,
+      psych,
+    };
+  }
+
+  // A. STOP_SIGNAL (Giữ nguyên quyền ưu tiên cao nhất khi không có ảnh, cấm hỏi lại, budget 250t)
   const STOP_PATTERNS = /^(okk+|ok+|oki+|ừm*|ừa|ukm*|thôi|nghỉ|pp|bye|cút|im|im đi|cook|sybau|ngủ đây|thôi nhé|dừng|ok r|để t xem)[!.? ]*$/i;
   const isStopSignal =
     STOP_PATTERNS.test(lower) ||
@@ -556,12 +588,15 @@ export function buildLocalReflexDirective(
     let dynamicTimeout = 30000;
     let temperature = 0.7;
 
-    if (
+    if (domain === 'VISION_LAB') {
+      dynamicMaxTokens = 2500;
+      dynamicTimeout = 35000;
+      temperature = 0.25;
+    } else if (
       domain === 'STEM_PHYSICS_MECH' ||
       domain === 'STEM_CHEM_BIO' ||
       domain === 'STEM_ELECTRONICS' ||
-      domain === 'CODE_CS' ||
-      domain === 'VISION_LAB'
+      domain === 'CODE_CS'
     ) {
       dynamicMaxTokens = 2000;
       dynamicTimeout = 30000;
@@ -797,7 +832,99 @@ export interface NormalizedVisionImage {
 }
 
 /**
- * Chuẩn hóa dữ liệu ảnh đầu vào cho Vision AI (OpenAI & Gemini):
+ * Chuẩn hóa bất đồng bộ dữ liệu ảnh đầu vào cho Vision AI (OpenAI & Gemini) — HẠNG MỤC 2:
+ * - Hỗ trợ triệt để URL blob:... (WebKit/macOS) qua fetch và FileReader.
+ * - Bóc tách pureBase64 và mimeType hợp lệ.
+ * - Kiểm tra tính hợp lệ: pureBase64.length > 100 và KHÔNG chứa "blob:".
+ */
+export async function resolveValidVisionImage(
+  rawImage?: any
+): Promise<NormalizedVisionImage | null> {
+  if (!rawImage) return null;
+
+  // 1. Trường hợp là object { uri, base64, dataUrl }
+  if (typeof rawImage === 'object' && rawImage !== null) {
+    if (rawImage.dataUrl && typeof rawImage.dataUrl === 'string' && rawImage.dataUrl.startsWith('data:image/')) {
+      return resolveValidVisionImage(rawImage.dataUrl);
+    }
+    if (rawImage.base64 && typeof rawImage.base64 === 'string') {
+      const clean = rawImage.base64.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '').replace(/\s+/g, '');
+      if (clean.length > 100 && !clean.includes('blob:')) {
+        const mimeType = rawImage.mimeType || 'image/jpeg';
+        return {
+          mimeType,
+          pureBase64: clean,
+          dataUrl: `data:${mimeType};base64,${clean}`,
+        };
+      }
+    }
+    if (rawImage.uri) {
+      return resolveValidVisionImage(rawImage.uri);
+    }
+    return null;
+  }
+
+  // 2. Trường hợp là chuỗi
+  if (typeof rawImage === 'string') {
+    const trimmed = rawImage.trim();
+    if (!trimmed) return null;
+
+    // A. Xử lý blob:... qua fetch và FileReader trên Web/macOS
+    if (trimmed.startsWith('blob:')) {
+      if (typeof fetch !== 'undefined') {
+        try {
+          const res = await fetch(trimmed);
+          const blob = await res.blob();
+          if (typeof FileReader !== 'undefined') {
+            const dataUrl = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+            return await resolveValidVisionImage(dataUrl);
+          }
+        } catch (e) {
+          console.warn('[resolveValidVisionImage] Lỗi phân giải blob URL:', e);
+          return null;
+        }
+      }
+      return null;
+    }
+
+    // B. Xử lý Data URL data:image/...;base64,...
+    const prefixMatch = trimmed.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,(.+)$/s);
+    if (prefixMatch) {
+      const subtype = prefixMatch[1].toLowerCase();
+      const mimeType = `image/${subtype.includes('jpg') ? 'jpeg' : subtype}`;
+      const pureBase64 = prefixMatch[2].replace(/\s+/g, '');
+      if (pureBase64.length > 100 && !pureBase64.includes('blob:')) {
+        return {
+          mimeType,
+          pureBase64,
+          dataUrl: `data:${mimeType};base64,${pureBase64}`,
+        };
+      }
+      return null;
+    }
+
+    // C. Chuỗi Base64 thuần
+    const pureBase64 = trimmed.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '').replace(/\s+/g, '');
+    if (pureBase64.length > 100 && !pureBase64.includes('blob:') && !pureBase64.startsWith('http')) {
+      const mimeType = 'image/jpeg';
+      return {
+        mimeType,
+        pureBase64,
+        dataUrl: `data:${mimeType};base64,${pureBase64}`,
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Chuẩn hóa đồng bộ dữ liệu ảnh đầu vào cho Vision AI (OpenAI & Gemini):
  * - Tách chính xác mimeType (mặc định 'image/jpeg') và chuỗi pureBase64 (xóa sạch prefix data:image/...;base64,).
  * - Chuẩn bị sẵn dataUrl cho OpenAI: data:${mimeType};base64,${pureBase64}
  * - Chuẩn bị pureBase64 cho Gemini inlineData: { mimeType, data: pureBase64 }
@@ -813,22 +940,23 @@ export function normalizeVisionImage(
     rawStr = (rawImage.base64 || rawImage.uri || '').trim();
   }
 
-  if (!rawStr) return null;
+  if (!rawStr || rawStr.startsWith('blob:')) return null;
 
   let mimeType = 'image/jpeg';
-  let pureBase64 = rawStr;
+  let pureBase64 = '';
 
   const prefixMatch = rawStr.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,(.+)$/s);
   if (prefixMatch) {
     const subtype = prefixMatch[1].toLowerCase();
-    mimeType = `image/${subtype === 'jpg' ? 'jpeg' : subtype}`;
-    pureBase64 = prefixMatch[2];
+    mimeType = `image/${subtype.includes('jpg') ? 'jpeg' : subtype}`;
+    pureBase64 = prefixMatch[2].replace(/\s+/g, '');
   } else {
-    pureBase64 = rawStr.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
+    pureBase64 = rawStr.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '').replace(/\s+/g, '');
   }
 
-  pureBase64 = pureBase64.replace(/\s+/g, '');
-  if (!pureBase64) return null;
+  if (pureBase64.length <= 100 || pureBase64.includes('blob:') || pureBase64.startsWith('http')) {
+    return null;
+  }
 
   return {
     mimeType,
@@ -839,8 +967,8 @@ export function normalizeVisionImage(
 
 /**
  * Tự động tìm và kế thừa ảnh gần nhất cho câu hỏi nối tiếp (Vision Image Carry-Over)
- * Kiểm tra 2 tin nhắn gần nhất của user trong phiên chat:
- * - Nếu có ảnh (imageBase64 / imageUri) VÀ (câu hỏi mang tính tham chiếu HOẶC lượt trước bị lỗi/timeout):
+ * Kiểm tra 3 tin nhắn gần nhất của user trong phiên chat:
+ * - Nếu có ảnh (imageBase64 / imageUri) VÀ (câu hỏi mang tính tham chiếu HOẶC lượt trước bị lỗi/timeout/hỏi lại):
  *   -> tự động gắn lại ảnh gần nhất đó vào lượt gọi Vision hiện tại.
  */
 export function resolveCarriedOverVisionImage(
@@ -853,43 +981,45 @@ export function resolveCarriedOverVisionImage(
 
   const lower = userText.toLowerCase().trim();
   const REFERENCE_KEYWORDS = [
-    'bài trên', 'bai tren',
-    'ảnh trên', 'anh tren',
-    'hình trên', 'hinh tren',
-    'câu trên', 'cau tren',
-    'đề trên', 'de tren',
-    'giải lại', 'giai lai',
-    'làm lại', 'lam lai',
-    'tiếp đi', 'tiep di',
-    'làm tiếp', 'lam tiep',
-    'câu 2', 'cau 2',
-    'câu 3', 'cau 3',
-    'câu tiếp', 'cau tiep',
-    'bài này', 'bai nay',
-    'hình này', 'hinh nay',
-    'ảnh này', 'anh nay',
-    'giải hộ', 'giai ho',
-    'soi hộ', 'soi ho',
+    'bài 1', 'bai 1', 'bài 2', 'bai 2', 'bài 3', 'bai 3', 'bài 4', 'bai 4',
+    'bài tập', 'bai tap', 'bài trên', 'bai tren',
+    'ảnh trên', 'anh tren', 'hình trên', 'hinh tren',
+    'câu 1', 'cau 1', 'câu 2', 'cau 2', 'câu 3', 'cau 3',
+    'câu trên', 'cau tren', 'đề trên', 'de tren',
+    'giải hộ', 'giai ho', 'làm hộ', 'lam ho', 'xem hộ', 'xem ho',
+    'soi hộ', 'soi ho', 'giải lại', 'giai lai', 'làm lại', 'lam lai',
+    'tiếp đi', 'tiep di', 'làm tiếp', 'lam tiep', 'câu tiếp', 'cau tiep',
+    'bài này', 'bai nay', 'hình này', 'hinh nay', 'ảnh này', 'anh nay',
     'xem lại', 'xem lai',
   ];
 
   const hasReference = REFERENCE_KEYWORDS.some((kw) => lower.includes(kw));
 
-  // Kiểm tra nếu lượt model trước đó bị lỗi (chứa lỗi mạng, timeout, hoặc rỗng)
+  // Kiểm tra nếu lượt model trước đó bị lỗi (chứa lỗi mạng, timeout, hoặc câu hỏi lại/fallback)
   const lastModelMsg = [...recentChats]
     .reverse()
     .find((m) => m.role === 'model' || m.sender === 'ai');
-  const wasLastError = lastModelMsg ? isNetworkErrorMessage(lastModelMsg.text || '') : false;
+  const modelText = (lastModelMsg?.text || '').toLowerCase();
+  const wasLastError = lastModelMsg
+    ? (isNetworkErrorMessage(modelText) ||
+       modelText.includes('ảnh gì đây') ||
+       modelText.includes('giao diện hay bug') ||
+       modelText.includes('chưa nhận được phản hồi') ||
+       modelText.includes('chập chờn') ||
+       modelText.includes('đường truyền đang chập chờn'))
+    : false;
 
   if (hasReference || wasLastError) {
     const userMsgs = recentChats
       .filter((m) => m.role === 'user' || m.sender === 'user')
-      .slice(-2);
+      .slice(-3);
 
     for (let i = userMsgs.length - 1; i >= 0; i--) {
       const msg = userMsgs[i];
-      if (msg.imageBase64) return msg.imageBase64;
-      if (msg.imageUri && (msg.imageUri.startsWith('data:') || msg.imageUri.length > 50)) {
+      if (msg.imageBase64 && msg.imageBase64.length > 50 && !msg.imageBase64.includes('blob:')) {
+        return msg.imageBase64;
+      }
+      if (msg.imageUri && (msg.imageUri.startsWith('data:image/') || (msg.imageUri.length > 50 && !msg.imageUri.includes('blob:')))) {
         return msg.imageUri;
       }
     }
@@ -960,7 +1090,10 @@ export function normalizeHistoryForAPI(
       const lastTrim = last.text.trim();
       const currTrim = currentText.trim();
       if (lastTrim === currTrim || currTrim.startsWith(lastTrim) || lastTrim.startsWith(currTrim)) {
-        valid.pop();
+        const popped = valid.pop();
+        if (!currentImageBase64 && popped && (popped.imageBase64 || popped.imageUri)) {
+          currentImageBase64 = popped.imageBase64 || popped.imageUri;
+        }
       }
     }
   }
@@ -1084,35 +1217,41 @@ async function callOpenAI(
   const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
   try {
-    const normalizedHistory = normalizeChatHistory(recentChats, userMessageWithHint, imageBase64, 'openai');
+    const validVision = await resolveValidVisionImage(imageBase64);
+    const normalizedHistory = normalizeChatHistory(recentChats, userMessageWithHint, validVision?.pureBase64 || imageBase64, 'openai');
 
-    const openAiMessages = [
+    const openAiMessages: any[] = [
       { role: 'system', content: systemPrompt },
-      ...normalizedHistory.map((m) => {
-        if (m.imageBase64) {
-          const norm = normalizeVisionImage(m.imageBase64);
-          if (norm) {
-            return {
-              role: m.role,
-              content: [
-                { type: 'text', text: m.text },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: `data:${norm.mimeType};base64,${norm.pureBase64}`,
-                    detail: 'high',
-                  },
-                },
-              ],
-            };
-          }
-        }
-        return {
+    ];
+
+    for (let i = 0; i < normalizedHistory.length; i++) {
+      const m = normalizedHistory[i];
+      const isLastUserTurn = (i === normalizedHistory.length - 1) && m.role === 'user';
+      const msgVision = isLastUserTurn && validVision
+        ? validVision
+        : (m.imageBase64 ? normalizeVisionImage(m.imageBase64) : null);
+
+      if (msgVision) {
+        openAiMessages.push({
+          role: m.role,
+          content: [
+            { type: 'text', text: m.text || userMessageWithHint },
+            {
+              type: 'image_url',
+              image_url: {
+                url: msgVision.dataUrl,
+                detail: 'high',
+              },
+            },
+          ],
+        });
+      } else {
+        openAiMessages.push({
           role: m.role,
           content: m.text,
-        };
-      }),
-    ];
+        });
+      }
+    }
 
     const payload = {
       model: 'gpt-4o-mini',
@@ -1191,20 +1330,27 @@ async function executeApiCall(
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const normalized = normalizeChatHistory(recentChats, userMessageWithHint, imageBase64, 'gemini');
+    const validVision = await resolveValidVisionImage(imageBase64);
+    const hasVision = Boolean(validVision);
+    // QUY TẮC TRÁNH LỖI 400: Khi có ảnh, TUYỆT ĐỐI KHÔNG bật tools google_search vì một số model Gemini v1beta từ chối kết hợp đồng thời Grounding với Vision
+    const effectiveGrounding = hasVision ? false : enableGrounding;
 
-    const geminiContents = normalized.map((m) => {
+    const normalized = normalizeChatHistory(recentChats, userMessageWithHint, validVision?.pureBase64 || imageBase64, 'gemini');
+
+    const geminiContents = normalized.map((m, idx) => {
       const parts: any[] = [{ text: m.text }];
-      if (m.imageBase64) {
-        const norm = normalizeVisionImage(m.imageBase64);
-        if (norm) {
-          parts.unshift({
-            inlineData: {
-              mimeType: norm.mimeType,
-              data: norm.pureBase64,
-            },
-          });
-        }
+      const isLastUserTurn = (idx === normalized.length - 1) && m.role === 'user';
+      const msgVision = isLastUserTurn && validVision
+        ? validVision
+        : (m.imageBase64 ? normalizeVisionImage(m.imageBase64) : null);
+
+      if (msgVision) {
+        parts.push({
+          inlineData: {
+            mimeType: msgVision.mimeType,
+            data: msgVision.pureBase64,
+          },
+        });
       }
       return {
         role: m.role as 'user' | 'model',
@@ -1225,7 +1371,7 @@ async function executeApiCall(
     };
 
     // QUY TẮC SỐNG CÒN: Google Gemini API ném lỗi 400 Bad Request nếu bật cả google_search VÀ responseMimeType: 'application/json' cùng lúc!
-    if (enableGrounding) {
+    if (effectiveGrounding) {
       payload.tools = [{ google_search: {} }];
       // TUYỆT ĐỐI KHÔNG gán responseMimeType: 'application/json' khi có tools google_search
     } else {
@@ -1319,10 +1465,15 @@ async function callModelFallbackChain(
   timeoutMs: number = TIMEOUT_MS,
   recentChats: ChatMessage[] = [],
   temperature: number = 0.7,
-  preferSmartFlash: boolean = false
+  preferSmartFlash: boolean = false,
+  hasVision: boolean = false,
+  failoverTrace?: string[]
 ): Promise<ExecuteApiCallResult> {
   let lastError: any = null;
-  const chain = preferSmartFlash ? SMART_FLASH_MODEL_CHAIN : FREE_MODEL_CHAIN;
+  // Khi có ảnh, BẮT BUỘC dùng VISION_MODEL_CHAIN (100% multimodal, cấm model chỉ text)
+  const chain = hasVision
+    ? VISION_MODEL_CHAIN
+    : (preferSmartFlash ? SMART_FLASH_MODEL_CHAIN : FREE_MODEL_CHAIN);
 
   for (const model of chain) {
     const endpoints = getEndpointsForModel(model, apiKey);
@@ -1347,6 +1498,9 @@ async function callModelFallbackChain(
       } catch (err: any) {
         lastError = err;
         const msg = err?.message || String(err);
+        if (failoverTrace) {
+          failoverTrace.push(`Gemini(${model}):${msg.slice(0, 35)}`);
+        }
         console.warn(`[AI Fallback Chain] Model "${model}" gặp lỗi (${msg}), tự động fallback sang tầng tiếp theo...`);
       }
     }
@@ -1839,6 +1993,26 @@ export function parseAIResponseJson(
   } catch (e) {
     console.warn('[AI] Lỗi phân tích JSON:', e);
   }
+
+  // HẠNG MỤC 4: Chống sập khi AI sinh cú pháp C/C++ có ký tự đặc biệt (*q, *r, ngoặc nhọn, nháy kép chưa escape)
+  // Nếu parse JSON thất bại nhưng chuỗi raw có nội dung thật sự, TUYỆT ĐỐI KHÔNG ném lỗi để rơi vào offline/timeout:
+  if (raw && raw.trim().length > 0) {
+    const rawClean = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    return {
+      replies: [rawClean],
+      reply: rawClean,
+      conversation_state: 'expert_guidance',
+      conversationState: 'expert_guidance',
+      session_title: 'Giải bài tập C/C++',
+      sessionTitle: 'Giải bài tập C/C++',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      memory_note: 'Đang giải bài tập C/C++',
+      memoryNote: 'Đang giải bài tập C/C++',
+      jarvis_intent: 'work_assist',
+    };
+  }
+
   return null;
 }
 
@@ -1850,7 +2024,8 @@ export function localResilientFallback(
   userMessage: string,
   hasImage?: boolean,
   userMemory?: UserMemoryProfile,
-  chronoContext?: ChronoContext
+  chronoContext?: ChronoContext,
+  debugTrace?: string
 ): AIResponsePayload {
   const chrono = chronoContext || buildChronoContext();
   const text = userMessage.trim();
@@ -1859,9 +2034,30 @@ export function localResilientFallback(
   const vault = getVaultFromProfile(userMemory);
 
   if (hasImage) {
+    const isStudyOrSolving = /\b(bài|bai|giải|giai|soi|làm|lam|code|xem|hộ|ho|đề|de|tập|tap)\b/i.test(lower);
+    const debugNote = debugTrace ? `\n\n*[Debug: Failover All Models - ${debugTrace}]*` : '';
+
+    if (isStudyOrSolving) {
+      const replyMsg = `Mình đã nhận được ảnh đề bài của bạn, nhưng đường truyền đang chập chờn chưa tải được phân giải cao. Bạn bấm nút gửi lại hoặc kiểm tra kết nối giúp mình nhé!${debugNote}`;
+      return {
+        replies: [replyMsg],
+        reply: replyMsg,
+        session_title: 'Giải bài tập qua hình ảnh',
+        sessionTitle: 'Giải bài tập qua hình ảnh',
+        should_update_title: true,
+        shouldUpdateTitle: true,
+        conversation_state: 'expert_guidance',
+        conversationState: 'expert_guidance',
+        memory_note: 'Gửi ảnh bài tập cần giải',
+        memoryNote: 'Gửi ảnh bài tập cần giải',
+        jarvis_intent: 'work_assist',
+      };
+    }
+
+    const replyMsg = `Ảnh đã được gửi, nhưng đường truyền đang chập chờn chưa phân tích được chi tiết.${debugNote}`;
     return {
-      replies: ['ảnh gì đây', 'giao diện hay bug cần soi à :3'],
-      reply: 'ảnh gì đây',
+      replies: [replyMsg],
+      reply: replyMsg,
       session_title: 'Trao đổi về hình ảnh',
       sessionTitle: 'Trao đổi về hình ảnh',
       should_update_title: true,
@@ -2435,9 +2631,10 @@ export function localResilientFallback(
 
   // MẶC ĐỊNH
   const isTM = userMemory?.nickname === 'm' || /^(t|m|tao|mày)\b/i.test(text);
-  const defaultOfflineMsg = isTM
+  const debugNote = debugTrace ? `\n\n*[Debug: Failover All Models - ${debugTrace}]*` : '';
+  const defaultOfflineMsg = (isTM
     ? 'Hệ thống chưa kết nối được AI (Offline/Timeout), m nhắn lại sau vài giây nhé!'
-    : 'Hệ thống chưa kết nối được AI (Offline/Timeout), bạn nhắn lại sau vài giây nhé!';
+    : 'Hệ thống chưa kết nối được AI (Offline/Timeout), bạn nhắn lại sau vài giây nhé!') + debugNote;
   return {
     replies: [defaultOfflineMsg],
     reply: defaultOfflineMsg,
@@ -2546,6 +2743,8 @@ export async function sendMessageToTomorrow(
     // Cấp phát Token Động & Dynamic Timeout: 250 tokens / 8s cho chat ngắn;
     // 1200 tokens / 30s cho code/bảng/finance; 2000 tokens / 30s cho STEM/Vision.
     // =========================================================================
+    const failoverTrace: string[] = [];
+
     // 1. BỘ NÃO CHÍNH SIÊU TỐC: OPENAI (gpt-4o-mini, dynamic tokens/timeout, silent circuit breaker)
     if (OPENAI_API_KEY && !isOpenAIUnavailable) {
       try {
@@ -2581,7 +2780,9 @@ export async function sendMessageToTomorrow(
           return parsed;
         }
       } catch (err: any) {
-        console.warn('[AI Router Failover]:', `OpenAI gặp sự cố (${err?.message || err}), tự động chuyển ngầm sang Gemini`);
+        const errMsg = err?.message || String(err);
+        failoverTrace.push(`OpenAI:${errMsg.slice(0, 45)}`);
+        console.warn('[AI Router Failover]:', `OpenAI gặp sự cố (${errMsg}), tự động chuyển ngầm sang Gemini`);
       }
     }
 
@@ -2602,7 +2803,9 @@ export async function sendMessageToTomorrow(
           directive.dynamicTimeout,
           recentChats,
           directive.temperature ?? 0.7,
-          preferSmartFlash
+          preferSmartFlash,
+          hasImage,
+          failoverTrace
         );
         const parsed = parseAIResponseJson(rawRes.text, userText, recentChats, webSearchContext.sources);
         if (parsed && parsed.replies && parsed.replies.length > 0) {
@@ -2631,13 +2834,17 @@ export async function sendMessageToTomorrow(
           return parsed;
         }
       } catch (err: any) {
-        console.warn('[AI Router Failover]:', `API Key #${keyIdx + 1} lỗi (${err?.message || err}), thử key tiếp theo...`);
+        const errMsg = err?.message || String(err);
+        failoverTrace.push(`Key#${keyIdx + 1}:${errMsg.slice(0, 45)}`);
+        console.warn('[AI Router Failover]:', `API Key #${keyIdx + 1} lỗi (${errMsg}), thử key tiếp theo...`);
       }
     }
 
     // 3. CHỐNG SẬP TỨC THÌ: Local Resilient Fallback Engine chạy cục bộ
+    console.error('[Vision/AI Failover Trace]:', failoverTrace);
+    const debugCode = failoverTrace.map((t) => t.replace(/https?:\/\/[^\s]+/g, '').replace(/[{}"]/g, '')).join(' | ').slice(0, 150);
     console.warn('[AI Router Failover]:', 'Toàn bộ API Cloud đã cạn hoặc quá tải, kích hoạt Local Resilient Fallback Engine');
-    const fallbackRes = localResilientFallback(userText, !!effectiveImageBase64, userMemory, chrono);
+    const fallbackRes = localResilientFallback(userText, !!effectiveImageBase64, userMemory, chrono, debugCode);
     if (fallbackRes.memory_note) {
       if (chrono.period !== 'LATE_NIGHT' && (fallbackRes.memory_note.toLowerCase().includes('thức khuya') || fallbackRes.memory_note.toLowerCase().includes('thức đêm'))) {
         fallbackRes.memory_note = '';

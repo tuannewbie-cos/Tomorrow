@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.5.2` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.5.3` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -126,6 +126,24 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
   - **Làm sạch lịch sử API (`normalizeHistoryForAPI`):** Lọc bỏ 100% bong bóng lỗi mạng cũ/offline/timeout (`isNetworkErrorMessage`), gộp các tin nhắn cùng role liên tiếp, đảm bảo lịch sử luôn luân phiên chuẩn xác `user <-> model` (loại trừ vĩnh viễn lỗi HTTP 400 Bad Request từ Gemini).
   - **Failover Logging:** Bổ sung `console.warn('[AI Router Failover]:', ...)` minh bạch mọi sự cố trượt model.
   - Cập nhật live badge header: **`Online • v4.5.2`**. Toàn bộ 17/17 scenarios kiểm thử đạt 170/170 điểm hoàn hảo.
+
+- [x] **Ngày 9+++: `fix/v4.5.3-vision-payload-blind-force-expert-and-diagnostic-trace` (Tomorrow v4.5.3 — Fix Blind Vision Payload, Force Vision Expert Mode & Diagnostic Error Code)**
+  - **Khóa chặt đường truyền ảnh Base64 từ `Cmd+V` & Picker đến API (`utils/imageOptimizer.ts`, `FloatingInputBar.tsx`, `App.tsx`):**
+    + Bộ nén Canvas hỗ trợ triệt để URL `blob:...` qua fetch và `FileReader.readAsDataURL`, trả về Data URL chuẩn (`> 200` ký tự, không bao giờ chứa chuỗi rỗng hay `"blob:"`).
+    + Giữ chặt `imagePayload` trước khi `setSelectedImage(null)` để loại trừ hoàn toàn race condition mất payload ảnh khi gửi tin nhắn.
+    + Lưu trữ Data URL / pureBase64 đầy đủ vào `ChatMessage` và truyền thẳng vào `sendMessageToTomorrow`.
+  - **Chuẩn hóa Payload Đa phương thức (`resolveValidVisionImage` trong `services/aiService.ts`):**
+    + Hàm bất đồng bộ phân giải mọi dạng đầu vào (Data URL, pure base64, blob URL, object `{ uri, base64 }`), kiểm tra `pureBase64.length > 100 && !includes('blob:')`.
+    + Đính kèm ảnh chuẩn xác vào Turn cuối cùng của Payload API: OpenAI (`image_url` với `detail: 'high'`, cấm stream khi có ảnh); Gemini (`inlineData: { mimeType, data: pureBase64 }`, tắt hoàn toàn `google_search` grounding để triệt tiêu lỗi 400 Bad Request).
+    + Danh sách model Vision chuyên dụng: `VISION_MODEL_CHAIN` (`gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-2.0-flash-lite`, `gemini-1.5-flash`, `gemini-1.5-pro`), tuyệt đối cấm gọi các model chỉ nhận text thuần.
+  - **Ép chế độ Vision Expert Mode (`buildLocalReflexDirective`):**
+    + Khi `hasImage === true` (hoặc có ảnh kế thừa `effectiveImage`), ưu tiên tuyệt đối cấp 0: ép `intentMode = 'EXPERT_JARVIS'`, `domain = 'VISION_LAB'`, ngân sách `dynamicMaxTokens = 2500`, `dynamicTimeout = 35000ms`, `temperature = 0.25` (không bị rơi nhầm vào `CASUAL_FRIEND`, `PING` hay `STOP_SIGNAL`).
+    + Mở rộng `resolveCarriedOverVisionImage` quét 3 tin nhắn gần nhất với bộ từ khóa tham chiếu toàn diện (`bài 1`, `bài tập`, `làm hộ`, `giải hộ`, `câu 1`, etc.) hoặc khi bot vừa hỏi lại/báo lỗi.
+  - **Bảo vệ phản hồi & Mã chẩn đoán Fallback (Diagnostic Trace):**
+    + Khi AI sinh cú pháp C/C++ có ký tự đặc biệt (`*q`, `*r`, nháy kép chưa escape) khiến `safeParseAIJson` thất bại: bọc trực tiếp toàn bộ chuỗi text thô của AI vào cấu trúc `replies: [rawClean]` với trạng thái `expert_guidance`, không làm rơi vào màn hình lỗi.
+    + Khi tất cả các tầng API đều thất bại: ghi nhận `failoverTrace`, log `[Vision/AI Failover Trace]:`, và đính kèm `[Debug: Failover All Models - {mã lỗi}]` vào cuối câu trả lời fallback.
+    + Khi có ảnh đề bài/học tập, `localResilientFallback` trả lời nghiêm túc, chu đáo, không trả lời ngây ngô "ảnh gì đây / giao diện hay bug cần soi à :3".
+  - Cập nhật live badge header: **`Online • v4.5.3`**. Nâng cấp bộ kiểm thử lên 19/19 scenarios đạt 190/190 điểm hoàn hảo.
 
 - [ ] **Ngày 10 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.

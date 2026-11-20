@@ -16,7 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Image as ImageIcon, Send, X, Smile, Globe } from 'lucide-react-native';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
 import { KeystrokeTelemetry } from '../services/microPsychProfiler';
-import { compressImageForVision } from '../utils/imageOptimizer';
+import { compressImageForVision, cleanBase64 } from '../utils/imageOptimizer';
 
 export { KeystrokeTelemetry };
 
@@ -123,14 +123,16 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
         try {
           const opt = await compressImageForVision(asset.base64 || asset.uri);
           setSelectedImage({
-            uri: `data:${opt.mimeType};base64,${opt.base64}`,
+            uri: opt.dataUrl || `data:${opt.mimeType};base64,${opt.base64}`,
             base64: opt.base64,
             sizeKB: opt.sizeKB,
           });
         } catch {
+          const rawBase64 = asset.base64 ? cleanBase64(asset.base64) : undefined;
+          const uri = rawBase64 ? `data:image/jpeg;base64,${rawBase64}` : asset.uri;
           setSelectedImage({
-            uri: asset.uri,
-            base64: asset.base64 || undefined,
+            uri,
+            base64: rawBase64,
           });
         }
       }
@@ -171,8 +173,15 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
       burstCount,
     };
 
-    const effectiveText = trimmed || (selectedImage ? 'Hãy phân tích nội dung trong ảnh này giúp mình' : '');
-    onSendMessage(effectiveText, selectedImage?.base64, selectedImage?.uri, forceWebSearch, telemetry);
+    // Bắt buộc lưu imagePayload trước khi reset state tránh mất payload do race condition
+    const imagePayload = selectedImage;
+    const effectiveBase64 = imagePayload?.base64 || (imagePayload?.uri?.startsWith('data:image') ? cleanBase64(imagePayload.uri) : undefined);
+    const effectiveUri = imagePayload?.uri?.startsWith('data:image')
+      ? imagePayload.uri
+      : (effectiveBase64 ? `data:image/jpeg;base64,${effectiveBase64}` : imagePayload?.uri);
+    const effectiveText = trimmed || (imagePayload ? 'Hãy phân tích nội dung trong ảnh này giúp mình' : '');
+
+    onSendMessage(effectiveText, effectiveBase64, effectiveUri, forceWebSearch, telemetry);
     setInputText('');
     setInputHeight(44); // Thu chiều cao ô nhập về 44px ngay lập tức khi gửi
     setSelectedImage(null);
