@@ -55,13 +55,11 @@ const ALL_GEMINI_KEYS = [PRIMARY_GEMINI_KEY, ...BACKUP_GEMINI_KEYS].filter((k) =
  * - gemini-2.5-flash, gemini-2.0-flash, gemini-2.0-flash-lite, gemini-1.5-flash (Chuẩn Google API)
  */
 export const FREE_MODEL_CHAIN: string[] = [
-  'gemini-3.5-flash-lite',
-  'gemini-flash-lite-latest',
-  'gemini-3.1-flash-lite',
   'gemini-2.5-flash',
   'gemini-2.0-flash',
   'gemini-2.0-flash-lite',
   'gemini-1.5-flash',
+  'gemini-1.5-pro',
 ];
 
 /**
@@ -72,9 +70,7 @@ export const SMART_FLASH_MODEL_CHAIN: string[] = [
   'gemini-2.5-flash',
   'gemini-2.0-flash',
   'gemini-1.5-flash',
-  'gemini-3.5-flash-lite',
-  'gemini-flash-lite-latest',
-  'gemini-3.1-flash-lite',
+  'gemini-1.5-pro',
   'gemini-2.0-flash-lite',
 ];
 
@@ -462,7 +458,7 @@ export function buildLocalReflexDirective(
       pronounRule,
       directivePrompt,
       dynamicMaxTokens: 250,
-      dynamicTimeout: 7000,
+      dynamicTimeout: 8000,
       temperature: 0.75,
       domain: 'GENERAL',
       chrono,
@@ -479,7 +475,7 @@ export function buildLocalReflexDirective(
       pronounRule,
       directivePrompt,
       dynamicMaxTokens: 250,
-      dynamicTimeout: 7000,
+      dynamicTimeout: 8000,
       temperature: 0.75,
       domain: 'GENERAL',
       chrono,
@@ -501,7 +497,7 @@ export function buildLocalReflexDirective(
       pronounRule,
       directivePrompt,
       dynamicMaxTokens: 1200,
-      dynamicTimeout: 12000,
+      dynamicTimeout: 30000,
       temperature: isFinance ? 0.35 : 0.7,
       domain,
       chrono,
@@ -557,7 +553,7 @@ export function buildLocalReflexDirective(
     const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS |${domainPart} ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng (explicit line breaks), thụt lề chuẩn (4 spaces cho Python, 2 spaces cho TS/JS), CẤM viết dồn 1 dòng. Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
 
     let dynamicMaxTokens = 1200;
-    let dynamicTimeout = 12000;
+    let dynamicTimeout = 30000;
     let temperature = 0.7;
 
     if (
@@ -568,11 +564,11 @@ export function buildLocalReflexDirective(
       domain === 'VISION_LAB'
     ) {
       dynamicMaxTokens = 2000;
-      dynamicTimeout = 15000;
+      dynamicTimeout = 30000;
       temperature = 0.35;
     } else if (domain === 'FINANCE_QUANT') {
       dynamicMaxTokens = 1200;
-      dynamicTimeout = 12000;
+      dynamicTimeout = 30000;
       temperature = 0.35;
     }
 
@@ -606,7 +602,7 @@ export function buildLocalReflexDirective(
     pronounRule,
     directivePrompt,
     dynamicMaxTokens: 250,
-    dynamicTimeout: 7000,
+    dynamicTimeout: 8000,
     temperature: 0.75,
     domain: 'GENERAL',
     chrono,
@@ -794,6 +790,114 @@ export interface NormalizedChatMessage {
   imageBase64?: string;
 }
 
+export interface NormalizedVisionImage {
+  mimeType: string;
+  pureBase64: string;
+  dataUrl: string;
+}
+
+/**
+ * Chuẩn hóa dữ liệu ảnh đầu vào cho Vision AI (OpenAI & Gemini):
+ * - Tách chính xác mimeType (mặc định 'image/jpeg') và chuỗi pureBase64 (xóa sạch prefix data:image/...;base64,).
+ * - Chuẩn bị sẵn dataUrl cho OpenAI: data:${mimeType};base64,${pureBase64}
+ * - Chuẩn bị pureBase64 cho Gemini inlineData: { mimeType, data: pureBase64 }
+ */
+export function normalizeVisionImage(
+  rawImage?: string | { uri?: string; base64?: string } | null
+): NormalizedVisionImage | null {
+  if (!rawImage) return null;
+  let rawStr = '';
+  if (typeof rawImage === 'string') {
+    rawStr = rawImage.trim();
+  } else if (typeof rawImage === 'object') {
+    rawStr = (rawImage.base64 || rawImage.uri || '').trim();
+  }
+
+  if (!rawStr) return null;
+
+  let mimeType = 'image/jpeg';
+  let pureBase64 = rawStr;
+
+  const prefixMatch = rawStr.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,(.+)$/s);
+  if (prefixMatch) {
+    const subtype = prefixMatch[1].toLowerCase();
+    mimeType = `image/${subtype === 'jpg' ? 'jpeg' : subtype}`;
+    pureBase64 = prefixMatch[2];
+  } else {
+    pureBase64 = rawStr.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, '');
+  }
+
+  pureBase64 = pureBase64.replace(/\s+/g, '');
+  if (!pureBase64) return null;
+
+  return {
+    mimeType,
+    pureBase64,
+    dataUrl: `data:${mimeType};base64,${pureBase64}`,
+  };
+}
+
+/**
+ * Tự động tìm và kế thừa ảnh gần nhất cho câu hỏi nối tiếp (Vision Image Carry-Over)
+ * Kiểm tra 2 tin nhắn gần nhất của user trong phiên chat:
+ * - Nếu có ảnh (imageBase64 / imageUri) VÀ (câu hỏi mang tính tham chiếu HOẶC lượt trước bị lỗi/timeout):
+ *   -> tự động gắn lại ảnh gần nhất đó vào lượt gọi Vision hiện tại.
+ */
+export function resolveCarriedOverVisionImage(
+  userText: string,
+  recentChats: ChatMessage[] = [],
+  currentImage?: string
+): string | undefined {
+  if (currentImage) return currentImage;
+  if (!recentChats || recentChats.length === 0) return undefined;
+
+  const lower = userText.toLowerCase().trim();
+  const REFERENCE_KEYWORDS = [
+    'bài trên', 'bai tren',
+    'ảnh trên', 'anh tren',
+    'hình trên', 'hinh tren',
+    'câu trên', 'cau tren',
+    'đề trên', 'de tren',
+    'giải lại', 'giai lai',
+    'làm lại', 'lam lai',
+    'tiếp đi', 'tiep di',
+    'làm tiếp', 'lam tiep',
+    'câu 2', 'cau 2',
+    'câu 3', 'cau 3',
+    'câu tiếp', 'cau tiep',
+    'bài này', 'bai nay',
+    'hình này', 'hinh nay',
+    'ảnh này', 'anh nay',
+    'giải hộ', 'giai ho',
+    'soi hộ', 'soi ho',
+    'xem lại', 'xem lai',
+  ];
+
+  const hasReference = REFERENCE_KEYWORDS.some((kw) => lower.includes(kw));
+
+  // Kiểm tra nếu lượt model trước đó bị lỗi (chứa lỗi mạng, timeout, hoặc rỗng)
+  const lastModelMsg = [...recentChats]
+    .reverse()
+    .find((m) => m.role === 'model' || m.sender === 'ai');
+  const wasLastError = lastModelMsg ? isNetworkErrorMessage(lastModelMsg.text || '') : false;
+
+  if (hasReference || wasLastError) {
+    const userMsgs = recentChats
+      .filter((m) => m.role === 'user' || m.sender === 'user')
+      .slice(-2);
+
+    for (let i = userMsgs.length - 1; i >= 0; i--) {
+      const msg = userMsgs[i];
+      if (msg.imageBase64) return msg.imageBase64;
+      if (msg.imageUri && (msg.imageUri.startsWith('data:') || msg.imageUri.length > 50)) {
+        return msg.imageUri;
+      }
+    }
+  }
+
+  return undefined;
+}
+
 /**
  * Phát hiện các câu thông báo lỗi mạng / ngắt kết nối để lọc bỏ khỏi lịch sử trò chuyện
  */
@@ -801,6 +905,10 @@ export function isNetworkErrorMessage(text: string): boolean {
   if (!text) return false;
   const lower = text.toLowerCase();
   return (
+    lower.includes('chưa nhận được phản hồi từ ai') ||
+    lower.includes('offline/timeout') ||
+    lower.includes('offline') ||
+    lower.includes('timeout') ||
     lower.includes('mạng bên t đang hơi lag') ||
     lower.includes('mạng bên mình đang hơi lag') ||
     lower.includes('hơi lag chút') ||
@@ -814,19 +922,20 @@ export function isNetworkErrorMessage(text: string): boolean {
     lower.includes('network error') ||
     lower.includes('lỗi hệ thống') ||
     lower.includes('loi he thong') ||
-    lower.includes('chưa nhận được phản hồi từ ai') ||
-    lower.includes('hệ thống chưa kết nối được ai')
+    lower.includes('hệ thống chưa kết nối được ai') ||
+    lower.includes('thử gửi lại giúp') ||
+    lower.includes('nhắn lại sau vài giây')
   );
 }
 
 /**
  * Chuẩn hóa lịch sử hội thoại trước khi gửi lên API (OpenAI / Gemini) — normalizeHistoryForAPI:
- * - Lọc bỏ thông báo lỗi mạng cũ, lỗi hệ thống và tin nhắn rỗng.
+ * - Lọc bỏ hoàn toàn các tin nhắn lỗi mạng cũ, offline/timeout, lỗi hệ thống và tin rỗng.
  * - Loại bỏ tin nhắn người dùng cuối bị trùng lặp nếu recentChats đã chứa tin nhắn hiện tại.
- * - Nếu trong lịch sử cũ có khối code dài (> 400 ký tự) ở các lượt xa (> 4 lượt gần nhất), rút gọn để tiết kiệm token và tránh tràn context.
+ * - Rút gọn khối code dài (> 400 ký tự) ở các lượt xa (> 4 lượt gần nhất) để tiết kiệm token.
  * - Đảm bảo tin nhắn đầu tiên gửi đến API LUÔN có role 'user'.
- * - Gộp TẤT CẢ các tin nhắn liên tiếp cùng role (đặc biệt là các bong bóng model kề nhau) thành 1 tin nhắn duy nhất (nối bằng \n\n).
- * - Đảm bảo tin nhắn cuối cùng trong mảng gửi lên API luôn là tin nhắn hiện tại của user.
+ * - Gộp TẤT CẢ các tin nhắn liên tiếp cùng role thành 1 tin nhắn duy nhất (luôn luân phiên chuẩn xác user <-> model).
+ * - Đảm bảo tin nhắn cuối cùng luôn là của user, gộp an toàn nếu lượt model trước bị lỗi.
  */
 export function normalizeHistoryForAPI(
   recentChats: ChatMessage[] = [],
@@ -878,7 +987,7 @@ export function normalizeHistoryForAPI(
     return {
       role: isUser ? 'user' : (target === 'gemini' ? 'model' : 'assistant'),
       text: m.text || '',
-      imageBase64: m.imageBase64,
+      imageBase64: m.imageBase64 || (m.imageUri?.startsWith('data:') ? m.imageUri : undefined),
     };
   });
 
@@ -909,9 +1018,14 @@ export function normalizeHistoryForAPI(
   if (currentText.trim() || currentImageBase64) {
     const userRole: 'user' = 'user';
     if (merged.length > 0 && merged[merged.length - 1].role === userRole) {
-      merged[merged.length - 1].text = currentText;
+      const prev = merged[merged.length - 1];
+      if (prev.text && prev.text !== currentText) {
+        prev.text = `${prev.text}\n\n[Tin nhắn tiếp theo]: ${currentText}`;
+      } else {
+        prev.text = currentText;
+      }
       if (currentImageBase64) {
-        merged[merged.length - 1].imageBase64 = currentImageBase64;
+        prev.imageBase64 = currentImageBase64;
       }
     } else {
       merged.push({
@@ -953,8 +1067,8 @@ export function cleanReplyPreservingCode(rep: string, cleanerFn: (text: string) 
 
 /**
  * 2. GỌI OPENAI API (gpt-4o-mini) SIÊU TỐC VỚI CIRCUIT BREAKER & DYNAMIC TIMEOUT
- * Cấp phát động max_tokens (250 cho chat ngắn, 1200 cho code/bảng/chuyên sâu)
- * và timeout (7000ms cho chat ngắn, 12000ms cho chuyên sâu).
+ * Cấp phát động max_tokens (250 cho chat ngắn, 1200 cho code/bảng/chuyên sâu, 2000 cho STEM/Vision)
+ * và timeout (8000ms cho chat ngắn, 30000ms cho chuyên sâu/ảnh).
  */
 async function callOpenAI(
   systemPrompt: string,
@@ -962,10 +1076,10 @@ async function callOpenAI(
   recentChats: ChatMessage[],
   imageBase64?: string,
   maxTokens: number = 250,
-  timeoutMs: number = 7000,
+  timeoutMs: number = 8000,
   temperature: number = 0.75
 ): Promise<string> {
-  const effectiveTimeout = Math.min(timeoutMs, 5000);
+  const effectiveTimeout = timeoutMs;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
@@ -976,16 +1090,22 @@ async function callOpenAI(
       { role: 'system', content: systemPrompt },
       ...normalizedHistory.map((m) => {
         if (m.imageBase64) {
-          const clean = m.imageBase64.startsWith('data:')
-            ? m.imageBase64
-            : `data:image/jpeg;base64,${m.imageBase64}`;
-          return {
-            role: m.role,
-            content: [
-              { type: 'text', text: m.text },
-              { type: 'image_url', image_url: { url: clean, detail: 'low' } },
-            ],
-          };
+          const norm = normalizeVisionImage(m.imageBase64);
+          if (norm) {
+            return {
+              role: m.role,
+              content: [
+                { type: 'text', text: m.text },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: `data:${norm.mimeType};base64,${norm.pureBase64}`,
+                    detail: 'high',
+                  },
+                },
+              ],
+            };
+          }
         }
         return {
           role: m.role,
@@ -1014,10 +1134,15 @@ async function callOpenAI(
 
     if (!res.ok) {
       const status = res.status;
-      isOpenAIUnavailable = true;
-      setOpenAICircuitBreakerState(true).catch(() => {});
+      const isAuthOrQuota = [401, 402, 403, 429].includes(status);
+      if (isAuthOrQuota) {
+        isOpenAIUnavailable = true;
+        setOpenAICircuitBreakerState(true).catch(() => {});
+        console.warn(`[AI Router Failover]: OpenAI HTTP ${status} (Hết hạn mức/Xác thực), kích hoạt Circuit Breaker sang Gemini chain.`);
+      } else {
+        console.warn(`[AI Router Failover]: OpenAI HTTP ${status}, trượt sang Gemini chain cho lượt này.`);
+      }
       recordApiUsage('openai', 'gpt-4o-mini', userMessageWithHint.length, 0, true).catch(() => {});
-      console.warn(`[OpenAI Circuit Breaker]: HTTP ${status}, switching silently to Gemini chain.`);
       const errText = await res.text().catch(() => '');
       throw new Error(`OpenAI HTTP ${status}: ${errText.slice(0, 100)}`);
     }
@@ -1030,10 +1155,11 @@ async function callOpenAI(
     return rawText;
   } catch (err: any) {
     if (err?.name === 'AbortError' || controller.signal.aborted) {
-      isOpenAIUnavailable = true;
-      setOpenAICircuitBreakerState(true).catch(() => {});
+      // HẠNG MỤC 1: KHÔNG khóa vĩnh viễn OpenAI khi chỉ bị Timeout ảnh nặng hoặc mạng trễ
       recordApiUsage('openai', 'gpt-4o-mini', userMessageWithHint.length, 0, true).catch(() => {});
-      console.warn(`[OpenAI Timeout]: ${effectiveTimeout}ms timeout reached, aborting and switching silently to Gemini chain.`);
+      console.warn(`[AI Router Failover]: OpenAI timeout sau ${effectiveTimeout}ms, trượt sang Gemini chain (không khóa vĩnh viễn OpenAI).`);
+    } else {
+      console.warn('[AI Router Failover]:', `OpenAI lỗi (${err?.message || err}), tự động trượt sang Gemini chain...`);
     }
     throw err;
   } finally {
@@ -1070,13 +1196,15 @@ async function executeApiCall(
     const geminiContents = normalized.map((m) => {
       const parts: any[] = [{ text: m.text }];
       if (m.imageBase64) {
-        const cleanBase64 = m.imageBase64.replace(/^data:image\/\w+;base64,/, '');
-        parts.unshift({
-          inline_data: {
-            mime_type: 'image/jpeg',
-            data: cleanBase64,
-          },
-        });
+        const norm = normalizeVisionImage(m.imageBase64);
+        if (norm) {
+          parts.unshift({
+            inlineData: {
+              mimeType: norm.mimeType,
+              data: norm.pureBase64,
+            },
+          });
+        }
       }
       return {
         role: m.role as 'user' | 'model',
@@ -2364,7 +2492,9 @@ export async function sendMessageToTomorrow(
     }
 
     // LỚP 1 — PHẢN XẠ CỤC BỘ TRÊN MÁY: XUẤT ĐÚNG 1 NHÃN CHỈ ĐẠO DUY NHẤT
-    const hasImage = Boolean(imageBase64);
+    // HẠNG MỤC 2: Tự động kế thừa ảnh từ 2 tin nhắn gần nhất nếu câu hỏi mang tính tham chiếu hoặc lượt trước lỗi
+    const effectiveImageBase64 = imageBase64 || resolveCarriedOverVisionImage(userText, recentChats, imageBase64);
+    const hasImage = Boolean(effectiveImageBase64);
     const directive = buildLocalReflexDirective(
       userText,
       recentChats,
@@ -2413,8 +2543,8 @@ export async function sendMessageToTomorrow(
 
     // =========================================================================
     // HẠNG MỤC 3: HYBRID AI ROUTER (Primary OpenAI -> 3 Tầng Gemini Free Chain)
-    // Cấp phát Token Động & Dynamic Timeout: 250 tokens / 7s cho chat ngắn;
-    // 1200 tokens / 12s cho code/bảng/finance; 2000 tokens / 15s cho STEM/Vision.
+    // Cấp phát Token Động & Dynamic Timeout: 250 tokens / 8s cho chat ngắn;
+    // 1200 tokens / 30s cho code/bảng/finance; 2000 tokens / 30s cho STEM/Vision.
     // =========================================================================
     // 1. BỘ NÃO CHÍNH SIÊU TỐC: OPENAI (gpt-4o-mini, dynamic tokens/timeout, silent circuit breaker)
     if (OPENAI_API_KEY && !isOpenAIUnavailable) {
@@ -2423,7 +2553,7 @@ export async function sendMessageToTomorrow(
           systemPrompt,
           finalUserMessage,
           recentChats,
-          imageBase64,
+          effectiveImageBase64,
           directive.dynamicMaxTokens,
           directive.dynamicTimeout,
           directive.temperature ?? 0.75
@@ -2451,7 +2581,7 @@ export async function sendMessageToTomorrow(
           return parsed;
         }
       } catch (err: any) {
-        console.warn('[AI Service] OpenAI gặp sự cố, tự động chuyển ngầm sang Gemini:', err?.message || err);
+        console.warn('[AI Router Failover]:', `OpenAI gặp sự cố (${err?.message || err}), tự động chuyển ngầm sang Gemini`);
       }
     }
 
@@ -2466,7 +2596,7 @@ export async function sendMessageToTomorrow(
           key,
           systemPrompt,
           finalUserMessage,
-          imageBase64,
+          effectiveImageBase64,
           webSearchContext.searched,
           directive.dynamicMaxTokens,
           directive.dynamicTimeout,
@@ -2501,13 +2631,13 @@ export async function sendMessageToTomorrow(
           return parsed;
         }
       } catch (err: any) {
-        console.warn(`[AI Service] API Key #${keyIdx + 1} lỗi:`, err?.message || err);
+        console.warn('[AI Router Failover]:', `API Key #${keyIdx + 1} lỗi (${err?.message || err}), thử key tiếp theo...`);
       }
     }
 
     // 3. CHỐNG SẬP TỨC THÌ: Local Resilient Fallback Engine chạy cục bộ
-    console.log('[AI Service] Kích hoạt Local Resilient Fallback Engine cho Tomorrow');
-    const fallbackRes = localResilientFallback(userText, !!imageBase64, userMemory, chrono);
+    console.warn('[AI Router Failover]:', 'Toàn bộ API Cloud đã cạn hoặc quá tải, kích hoạt Local Resilient Fallback Engine');
+    const fallbackRes = localResilientFallback(userText, !!effectiveImageBase64, userMemory, chrono);
     if (fallbackRes.memory_note) {
       if (chrono.period !== 'LATE_NIGHT' && (fallbackRes.memory_note.toLowerCase().includes('thức khuya') || fallbackRes.memory_note.toLowerCase().includes('thức đêm'))) {
         fallbackRes.memory_note = '';

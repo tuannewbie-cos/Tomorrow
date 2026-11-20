@@ -1,5 +1,5 @@
 /**
- * TOMORROW V4.5.1 — 90-DAY JARVIS FOUNDATION: DOMAIN SUB-ROUTER (STEM/FINANCE/CODE/VISION), STUDENT QUOTA SHIELD & INSTANT VISION PASTE
+ * TOMORROW V4.5.2 — DYNAMIC TIMEOUT FOR VISION/STEM, VISION IMAGE CARRY-OVER & CLEAN HISTORY NORMALIZATION
  * Automated Training & Verification Simulator
  * 
  * 17 Scenarios:
@@ -1012,9 +1012,9 @@ console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.5.1',
+  version: 'v4.5.2',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.5.1 — 90-Day Jarvis Foundation: Domain Sub-Router (STEM/Finance/Code/Vision), Student Quota Shield & Instant Vision Paste',
+  architecture: 'Tomorrow v4.5.2 — Dynamic Timeout for Vision/STEM, Vision Image Carry-Over & Clean History Normalization',
   totalScore,
   maxScore: 170,
   allPassed,

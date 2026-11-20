@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.5.1` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.5.2` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -117,6 +117,15 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
   - **Nâng cấp Vision Lab trên MacBook:** Bộ nén Canvas `utils/imageOptimizer.ts` tự động thu phóng giữ nguyên tỷ lệ <= 1024px JPEG 0.82 (giảm 60–80% dung lượng base64); hỗ trợ dán ảnh `Cmd+V`, kéo-thả (Drag & Drop) trực tiếp với viền sáng macOS; gửi ảnh độc lập tự động gán ngữ cảnh phân tích.
   - **Cổng Provider tương lai:** Tạo file chuẩn `types/providers.ts` sẵn sàng mở rộng cho Claude, DeepSeek, Local Ollama.
   - Cập nhật live badge header: **`Online • v4.5.1`**. Bộ kiểm thử tự luyện 17/17 scenarios đạt 170/170 điểm hoàn hảo.
+
+- [x] **Ngày 9++: `fix/v4.5.2-vision-stem-dynamic-timeout-and-image-carry-over` (Tomorrow v4.5.2 - Dynamic Timeout for Vision/STEM, Vision Image Carry-Over & Clean History Normalization)**
+  - **Dynamic Timeout 30s:** Cấp phát `dynamicTimeout = 30000ms` (30s) cho các bài toán phức tạp (`VISION_LAB`, `STEM_*`, `CODE_CS`, `EXPERT_JARVIS`, `WEB_INTEL`); 8s (`8000ms`) cho nhánh chat nhanh. Cởi bỏ hoàn toàn giới hạn cứng 5s trong `callOpenAI` và nâng watchdog `App.tsx` lên 35s.
+  - **Silent Circuit Breaker chuẩn xác:** Chỉ khóa cờ `isOpenAIUnavailable = true` khi gặp lỗi 401, 402, 403, 429; nếu chỉ bị AbortError (timeout) thì trượt êm sang chuỗi Gemini dự phòng mà không khóa vĩnh viễn OpenAI ở các lượt chat sau.
+  - **Chuẩn hóa Payload ảnh Vision (`normalizeVisionImage`):** Bóc tách chính xác `mimeType` và `pureBase64` (loại bỏ sạch tiền tố `data:image/...;base64,`); gửi `image_url` với `detail: 'high'` cho OpenAI và `inlineData: { mimeType, data: pureBase64 }` cho Gemini.
+  - **Tự động kế thừa ảnh nối tiếp (`resolveCarriedOverVisionImage`):** Tự động phát hiện các câu hỏi nối tiếp mang tính tham chiếu (`"bài trên"`, `"câu 2"`, `"giải lại"`, `"làm lại"`, `"tiếp đi"`) hoặc khi lượt trước bị lỗi/timeout để nạp lại ảnh từ 2 tin nhắn gần nhất của user.
+  - **Làm sạch lịch sử API (`normalizeHistoryForAPI`):** Lọc bỏ 100% bong bóng lỗi mạng cũ/offline/timeout (`isNetworkErrorMessage`), gộp các tin nhắn cùng role liên tiếp, đảm bảo lịch sử luôn luân phiên chuẩn xác `user <-> model` (loại trừ vĩnh viễn lỗi HTTP 400 Bad Request từ Gemini).
+  - **Failover Logging:** Bổ sung `console.warn('[AI Router Failover]:', ...)` minh bạch mọi sự cố trượt model.
+  - Cập nhật live badge header: **`Online • v4.5.2`**. Toàn bộ 17/17 scenarios kiểm thử đạt 170/170 điểm hoàn hảo.
 
 - [ ] **Ngày 10 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.

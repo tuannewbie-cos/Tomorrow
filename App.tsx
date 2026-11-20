@@ -33,6 +33,7 @@ import {
   getColdGreetingText,
   localResilientFallback,
   KeystrokeTelemetry,
+  resolveCarriedOverVisionImage,
 } from './services/aiService';
 import { ChatBubble } from './components/ChatBubble';
 import { ColdGreeting } from './components/ColdGreeting';
@@ -391,11 +392,15 @@ export default function App() {
       const previousSession = sessionsRef.current.find((s) => s.id !== targetSessionId);
       const previousSessionMessages = previousSession?.messages?.slice(-3);
 
+      // HẠNG MỤC 2: Kiểm tra carry-over ảnh từ 2 tin nhắn gần nhất nếu câu hỏi mang tính tham chiếu hoặc lượt trước lỗi
+      const carriedOverImg = resolveCarriedOverVisionImage(text, updatedMessages, imageBase64 || imageUri);
+      const effectiveImage = imageBase64 || carriedOverImg;
+
       const aiResponsePromise = sendMessageToTomorrow(
         text,
         userMemoryRef.current,
         updatedMessages,
-        imageBase64,
+        effectiveImage,
         previousSessionMessages,
         forceWebSearch,
         (isSearching) => {
@@ -411,8 +416,11 @@ export default function App() {
         telemetry
       );
 
+      // HẠNG MỤC 1: Timeout Watchdog linh hoạt: 35s cho tác vụ Vision/STEM/Chuyên sâu/Web search, 15s cho chat nhanh
+      const isDeepOrVision = Boolean(effectiveImage || text.length > 80 || forceWebSearch);
+      const watchdogMs = isDeepOrVision ? 35000 : 15000;
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('WATCHDOG_TIMEOUT')), 12000)
+        setTimeout(() => reject(new Error('WATCHDOG_TIMEOUT')), watchdogMs)
       );
 
       let aiResponse: any;
@@ -421,7 +429,7 @@ export default function App() {
       } catch (err: any) {
         const errMsg = err?.message || 'Unknown error';
         console.error('[AI Error Detail]:', errMsg);
-        aiResponse = localResilientFallback(text, false, userMemoryRef.current);
+        aiResponse = localResilientFallback(text, Boolean(effectiveImage), userMemoryRef.current);
         if (!aiResponse || !aiResponse.replies || aiResponse.replies.length === 0) {
           const isTM =
             userMemoryRef.current.nickname === 'm' || /^(t|m|tao|mày)\b/i.test(text);
@@ -928,7 +936,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.5.1</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.5.2</Text>
               </View>
             </View>
           </View>
