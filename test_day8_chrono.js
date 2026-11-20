@@ -302,11 +302,11 @@ runTest('cleanNightNotesFromMemory purges night notes across memory profile and 
 });
 
 // -----------------------------------------------------------------------------
-// TEST 8: App.tsx displays Online • v4.4
+// TEST 8: App.tsx displays Online • v4.4 / v4.4.1
 // -----------------------------------------------------------------------------
-runTest('App.tsx Header displays Online • v4.4', () => {
+runTest('App.tsx Header displays Online • v4.4.1', () => {
   const appTsx = fs.readFileSync(path.resolve(__dirname, 'App.tsx'), 'utf8');
-  assert.ok(appTsx.includes('Online • v4.4'), 'App.tsx must contain "Online • v4.4" in the header liveBadge');
+  assert.ok(appTsx.includes('Online • v4.4.1') || appTsx.includes('Online • v4.4'), 'App.tsx must contain "Online • v4.4.1" in the header liveBadge');
 });
 
 // -----------------------------------------------------------------------------

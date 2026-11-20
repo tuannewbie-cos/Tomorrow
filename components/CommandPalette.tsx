@@ -20,6 +20,7 @@ import {
   Clock,
   SearchX,
   CornerDownLeft,
+  Columns2,
 } from 'lucide-react-native';
 import { ChatSession } from '../types/chat';
 import { ThemeColors, ThemeMode } from '../constants/theme';
@@ -34,6 +35,8 @@ export interface CommandPaletteProps {
   onNewChat?: () => void;
   onToggleSidebar: () => void;
   onToggleTheme: () => void;
+  onToggleSplitPanes?: () => void;
+  isSplitPanes?: boolean;
   theme: ThemeColors;
   themeMode: ThemeMode;
 }
@@ -47,7 +50,7 @@ export interface PaletteItem {
   subtitle?: string;
   snippet?: string;
   badge?: string;
-  iconType: 'new_chat' | 'toggle_sidebar' | 'toggle_theme' | 'session';
+  iconType: 'new_chat' | 'toggle_sidebar' | 'toggle_theme' | 'session' | 'split_panes';
   sessionId?: string;
   action?: () => void;
   group: 'actions' | 'recent' | 'search';
@@ -115,6 +118,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onNewChat,
   onToggleSidebar,
   onToggleTheme,
+  onToggleSplitPanes,
+  isSplitPanes = false,
   theme,
   themeMode,
 }) => {
@@ -186,8 +191,23 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           onClose();
         },
       },
+      {
+        id: 'act-toggle-split',
+        type: 'action',
+        title: isSplitPanes ? 'Gộp cửa sổ trò chuyện (Toàn màn hình)' : 'Chia đôi cửa sổ trò chuyện (Split Panes)',
+        subtitle: isSplitPanes
+          ? 'Đóng chế độ chia đôi, trở về 1 cửa sổ chính'
+          : 'Mở 2 cửa sổ chat song song kiểu VS Code',
+        badge: '⌘↑',
+        iconType: 'split_panes',
+        group: 'actions',
+        action: () => {
+          onToggleSplitPanes?.();
+          onClose();
+        },
+      },
     ],
-    [themeMode, handleTriggerNewChat, onToggleSidebar, onToggleTheme, onClose]
+    [themeMode, isSplitPanes, handleTriggerNewChat, onToggleSidebar, onToggleTheme, onToggleSplitPanes, onClose]
   );
 
   // Nhóm Các Phiên Gần Đây (hiển thị khi chưa tìm kiếm)
@@ -252,6 +272,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       'tối'.includes(q)
     ) {
       matchedActions.push(quickActions[2]);
+    }
+    if (
+      'chia đôi gộp cửa sổ song song split panes pane màn hình'.includes(q) ||
+      'split'.includes(q) ||
+      'pane'.includes(q) ||
+      'chia'.includes(q) ||
+      'song song'.includes(q)
+    ) {
+      matchedActions.push(quickActions[3]);
     }
 
     const matchedSessions: PaletteItem[] = [];
@@ -368,6 +397,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         ) : (
           <Moon size={16} color={isSelected ? activeColor : '#6366F1'} />
         );
+      case 'split_panes':
+        return <Columns2 size={16} color={isSelected ? activeColor : '#10B981'} />;
       case 'session':
       default:
         return (
@@ -711,7 +742,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             </View>
 
             <Text style={[styles.footerBrand, { color: theme.textMuted }]}>
-              Tomorrow v4.4
+              Tomorrow v4.4.1
             </Text>
           </View>
         </View>
