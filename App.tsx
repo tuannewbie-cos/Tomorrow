@@ -35,6 +35,9 @@ import {
   KeystrokeTelemetry,
   resolveCarriedOverVisionImage,
   flattenReplyToMarkdown,
+  detectExpertDomain,
+  buildLocalReflexDirective,
+  resolveDualPersona,
 } from './services/aiService';
 import { ChatBubble } from './components/ChatBubble';
 import { ColdGreeting } from './components/ColdGreeting';
@@ -377,22 +380,37 @@ export default function App() {
       await saveSessions(nextSessions);
     }
 
+    // HẠNG MỤC 4: Phản hồi trạng thái chuyên môn tinh tế trên UI theo Dual-Persona Router
+    const effectiveImg = resolvedBase64 || resolvedUri;
+    const preDomain = detectExpertDomain(text, Boolean(effectiveImg));
+    const preDirective = buildLocalReflexDirective(
+      text,
+      updatedMessages,
+      forceWebSearch,
+      undefined,
+      telemetry,
+      Boolean(effectiveImg)
+    );
+    const prePersona = resolveDualPersona({
+      intentMode: preDirective.intentMode,
+      expertDomain: preDomain,
+      psychProfile: preDirective.psych,
+      chrono: preDirective.chrono,
+      hasImage: Boolean(effectiveImg),
+      userText: text,
+    });
+
     // Đặt trạng thái đang gõ/xử lý theo targetSessionId
     setTypingSessionIds((prev) => ({ ...prev, [targetSessionId]: true }));
-    setTypingStatusBySession((prev) => ({ ...prev, [targetSessionId]: undefined }));
+    // COMPANION_MIRROR: chỉ hiện 3 chấm • • • (undefined). JARVIS_LAB: hiển thị statusHint tinh tế
+    const initialStatus = prePersona.persona === 'JARVIS_LAB' ? prePersona.statusHint : undefined;
+    setTypingStatusBySession((prev) => ({ ...prev, [targetSessionId]: initialStatus }));
     setSearchingWebBySession((prev) => ({ ...prev, [targetSessionId]: false }));
     setIsLoading(true);
 
     setTimeout(() => {
       flatListRefs.current[paneId]?.scrollToEnd({ animated: true });
     }, 20);
-
-    const deepThinkingTimer = setTimeout(() => {
-      setTypingStatusBySession((prev) => ({
-        ...prev,
-        [targetSessionId]: !prev[targetSessionId] ? '💭 Đang suy nghĩ...' : prev[targetSessionId],
-      }));
-    }, 2000);
 
     try {
       const previousSession = sessionsRef.current.find((s) => s.id !== targetSessionId);
@@ -414,8 +432,8 @@ export default function App() {
           setTypingStatusBySession((prev) => ({
             ...prev,
             [targetSessionId]: isSearching
-              ? '🌐 Đang quét web & lấy đường dẫn...'
-              : '💭 Đang suy nghĩ...',
+              ? '🌐 Đang quét web...'
+              : (prePersona.persona === 'JARVIS_LAB' ? prePersona.statusHint : undefined),
           }));
         },
         undefined,
@@ -449,7 +467,6 @@ export default function App() {
           };
         }
       } finally {
-        clearTimeout(deepThinkingTimer);
         setTypingStatusBySession((prev) => ({ ...prev, [targetSessionId]: undefined }));
         setSearchingWebBySession((prev) => ({ ...prev, [targetSessionId]: false }));
       }
@@ -952,7 +969,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.5.5</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.6</Text>
               </View>
             </View>
           </View>

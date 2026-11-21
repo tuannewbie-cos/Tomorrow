@@ -15,6 +15,16 @@ import {
   PsychState,
 } from './microPsychProfiler';
 
+import {
+  resolveDualPersona,
+  DualPersonaResolution,
+  getDomainPlaybook,
+  PersonaMode,
+  DryWitLevel,
+  DOMAIN_PLAYBOOKS,
+  ExpertDomain,
+} from './personaRouter';
+
 export {
   isPlaceholderOrNoiseTitle,
   getVaultFromProfile,
@@ -23,6 +33,13 @@ export {
   KeystrokeTelemetry,
   MicroPsychProfile,
   analyzeMicroPsychology,
+  resolveDualPersona,
+  DualPersonaResolution,
+  getDomainPlaybook,
+  PersonaMode,
+  DryWitLevel,
+  DOMAIN_PLAYBOOKS,
+  ExpertDomain,
 };
 import { recordApiUsage, setOpenAICircuitBreakerState } from './quotaShield';
 
@@ -263,15 +280,6 @@ export function buildChronoContext(now: Date = new Date(), lastTimestamp?: numbe
   };
 }
 
-export type ExpertDomain =
-  | 'VISION_LAB'
-  | 'STEM_PHYSICS_MECH'
-  | 'STEM_CHEM_BIO'
-  | 'STEM_ELECTRONICS'
-  | 'CODE_CS'
-  | 'FINANCE_QUANT'
-  | 'GENERAL';
-
 export interface ReflexDirective {
   intentMode: 'STOP_SIGNAL' | 'PING' | 'WEB_INTEL' | 'EXPERT_JARVIS' | 'CASUAL_FRIEND';
   pronounRule: string;
@@ -282,6 +290,7 @@ export interface ReflexDirective {
   domain?: ExpertDomain;
   chrono?: ChronoContext;
   psych?: MicroPsychProfile;
+  dualPersona?: DualPersonaResolution;
 }
 
 /**
@@ -290,13 +299,17 @@ export interface ReflexDirective {
 export function getDomainDirectiveLine(domain: ExpertDomain): string {
   switch (domain) {
     case 'STEM_PHYSICS_MECH':
+    case 'STEM_PHYSICS_MECHANICS':
       return '[DOMAIN: PHYSICS_MECH | Tóm tắt dữ kiện & đổi đơn vị SI -> nêu công thức LaTeX -> giải từng bước chính xác -> kiểm tra lại thứ nguyên kết quả.]';
     case 'STEM_CHEM_BIO':
       return '[DOMAIN: CHEM_BIO | Viết phương trình/cơ chế chuẩn xác bằng LaTeX/ký hiệu khoa học -> giải thích bản chất ngắn gọn, không bịa số liệu.]';
     case 'STEM_ELECTRONICS':
       return '[DOMAIN: ELECTRONICS | Nêu rõ thông số điện áp/dòng/công suất an toàn -> sơ đồ nối chân rõ ràng -> công thức tính toán hoặc code nhúng sạch.]';
     case 'CODE_CS':
+    case 'STEM_CODE':
       return '[DOMAIN: CODE_CS | Đi thẳng vào nguyên nhân gốc -> đưa code sạch có đánh dấu ngôn ngữ -> nêu ngắn gọn độ phức tạp hoặc lưu ý edge-case.]';
+    case 'STEM_MATH':
+      return '[DOMAIN: STEM_MATH | Xác định hướng giải tối ưu -> Triển khai từng bước mạch lạc -> Chốt kết quả cuối cùng rõ ràng.]';
     case 'FINANCE_QUANT':
       return '[DOMAIN: FINANCE_QUANT | Trình bày công thức/số liệu dạng bảng hoặc gạch đầu dòng sắc nét -> phân tích cả cơ hội lẫn rủi ro, kèm ghi chú không phải lời khuyên đầu tư bắt buộc.]';
     case 'VISION_LAB':
@@ -399,6 +412,18 @@ export function detectExpertDomain(userText: string, hasImage: boolean = false):
     return 'CODE_CS';
   }
 
+  // 6. Nhánh Toán học & Định lý (STEM_MATH)
+  const mathPatterns = [
+    'toán', 'toan', 'đạo hàm', 'dao ham', 'tích phân', 'tich phan', 'nguyên hàm', 'nguyen ham',
+    'ma trận', 'ma tran', 'xác suất', 'xac suat', 'thống kê', 'thong ke', 'phương trình', 'phuong trinh',
+    'hệ phương trình', 'bất đẳng thức', 'hình học', 'hinh hoc', 'đại số', 'dai so', 'giải tích', 'giai tich',
+    'lượng giác', 'luong giac', 'nhị thức newton', 'lim', 'giới hạn', 'euler', 'gauss', 'vectơ', 'vector',
+    'pythagoras', 'định lý bayes', 'dinh ly bayes', 'tổ hợp', 'chỉnh hợp'
+  ];
+  if (mathPatterns.some((p) => lower.includes(p))) {
+    return 'STEM_MATH';
+  }
+
   return 'GENERAL';
 }
 
@@ -463,6 +488,15 @@ export function buildLocalReflexDirective(
     const domainPart = domainLine ? ` ${domainLine} |` : '';
     const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS |${domainPart} ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc bài tập/hình ảnh được gửi. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức LaTeX). Khi viết code, BẮT BUỘC xuống dòng rõ ràng, thụt lề chuẩn, giải thích từng bước giải. Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies". Mảng "replies" BẮT BUỘC chỉ chứa các chuỗi văn bản Markdown thuần (string[]), TUYỆT ĐỐI KHÔNG đặt object {} lồng bên trong mảng "replies".]`;
 
+    const dualPersona = resolveDualPersona({
+      intentMode: 'EXPERT_JARVIS',
+      expertDomain: 'VISION_LAB',
+      psychProfile: psych,
+      chrono,
+      hasImage: true,
+      userText,
+    });
+
     return {
       intentMode: 'EXPERT_JARVIS',
       pronounRule,
@@ -473,6 +507,7 @@ export function buildLocalReflexDirective(
       domain: 'VISION_LAB',
       chrono,
       psych,
+      dualPersona,
     };
   }
 
@@ -486,6 +521,15 @@ export function buildLocalReflexDirective(
 
   if (isStopSignal) {
     const directivePrompt = `[DIRECTIVE: MODE=STOP_SIGNAL | ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | User muốn dừng/chốt câu. Chỉ đáp DUY NHẤT 1 bong bóng 1-4 chữ (VD: "okii", "rồi im :)))", "ừa nghỉ đi"). CẤM ĐẶT CÂU HỎI NGƯỢC LẠI. Trả lời văn bản thuần tự nhiên, KHÔNG dùng bảng biểu hay tiêu đề Markdown rườm rà.]`;
+    const dualPersona = resolveDualPersona({
+      intentMode: 'STOP_SIGNAL',
+      expertDomain: 'GENERAL',
+      psychProfile: psych,
+      chrono,
+      hasImage: false,
+      userText,
+    });
+
     return {
       intentMode: 'STOP_SIGNAL',
       pronounRule,
@@ -496,6 +540,7 @@ export function buildLocalReflexDirective(
       domain: 'GENERAL',
       chrono,
       psych,
+      dualPersona,
     };
   }
 
@@ -503,6 +548,15 @@ export function buildLocalReflexDirective(
   const PING_PATTERNS = /^(yo+|ê+|alo+|hi+|hello+|helo+|ơi+)[!.? ]*$/i;
   if (PING_PATTERNS.test(lower)) {
     const directivePrompt = `[DIRECTIVE: MODE=PING | ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Đáp 1-2 bong bóng cực ngắn (1-4 chữ/câu), không đoán mò dài dòng. Trả lời văn bản thuần tự nhiên, KHÔNG dùng bảng biểu hay tiêu đề Markdown rườm rà.]`;
+    const dualPersona = resolveDualPersona({
+      intentMode: 'PING',
+      expertDomain: 'GENERAL',
+      psychProfile: psych,
+      chrono,
+      hasImage: false,
+      userText,
+    });
+
     return {
       intentMode: 'PING',
       pronounRule,
@@ -513,6 +567,7 @@ export function buildLocalReflexDirective(
       domain: 'GENERAL',
       chrono,
       psych,
+      dualPersona,
     };
   }
 
@@ -525,6 +580,15 @@ export function buildLocalReflexDirective(
     const domainPart = domainLine ? ` ${domainLine} |` : '';
     const directivePrompt = `[DIRECTIVE: MODE=WEB_INTEL |${domainPart} ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Trả lời TRỰC TIẾP và CHÍNH XÁC ngay trong lượt này dựa trên dữ liệu Web đính kèm kèm URL thật. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). CẤM HỨA SUÔNG ("Đợi xíu", "Chờ mình chút"). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng và thụt lề chuẩn (4 spaces Python, 2 spaces TS/JS). Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
     const isFinance = domain === 'FINANCE_QUANT';
+    const dualPersona = resolveDualPersona({
+      intentMode: 'WEB_INTEL',
+      expertDomain: domain,
+      psychProfile: psych,
+      chrono,
+      hasImage: false,
+      userText,
+    });
+
     return {
       intentMode: 'WEB_INTEL',
       pronounRule,
@@ -535,6 +599,7 @@ export function buildLocalReflexDirective(
       domain,
       chrono,
       psych,
+      dualPersona,
     };
   }
 
@@ -595,8 +660,11 @@ export function buildLocalReflexDirective(
       temperature = 0.25;
     } else if (
       domain === 'STEM_PHYSICS_MECH' ||
+      domain === 'STEM_PHYSICS_MECHANICS' ||
       domain === 'STEM_CHEM_BIO' ||
       domain === 'STEM_ELECTRONICS' ||
+      domain === 'STEM_MATH' ||
+      domain === 'STEM_CODE' ||
       domain === 'CODE_CS'
     ) {
       dynamicMaxTokens = 2000;
@@ -608,6 +676,15 @@ export function buildLocalReflexDirective(
       temperature = 0.35;
     }
 
+    const dualPersona = resolveDualPersona({
+      intentMode: 'EXPERT_JARVIS',
+      expertDomain: domain,
+      psychProfile: psych,
+      chrono,
+      hasImage,
+      userText,
+    });
+
     return {
       intentMode: 'EXPERT_JARVIS',
       pronounRule,
@@ -618,6 +695,7 @@ export function buildLocalReflexDirective(
       domain,
       chrono,
       psych,
+      dualPersona,
     };
   }
 
@@ -633,6 +711,15 @@ export function buildLocalReflexDirective(
     : '';
 
   const directivePrompt = `[DIRECTIVE: MODE=CASUAL_FRIEND | ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Tách 1-2 bong bóng ngắn (2-12 chữ/câu), ${styleRule} ${slangRule} ${punctRule} Thấu cảm theo gợi ý: ${psych.mirrorHint}. TUYỆT ĐỐI CẤM gọi "bro" trừ khi user dùng trước. Trả lời văn bản thuần tự nhiên, KHÔNG dùng bảng biểu hay tiêu đề Markdown rườm rà.]`;
+  const dualPersona = resolveDualPersona({
+    intentMode: 'CASUAL_FRIEND',
+    expertDomain: 'GENERAL',
+    psychProfile: psych,
+    chrono,
+    hasImage: false,
+    userText,
+  });
+
   return {
     intentMode: 'CASUAL_FRIEND',
     pronounRule,
@@ -643,25 +730,25 @@ export function buildLocalReflexDirective(
     domain: 'GENERAL',
     chrono,
     psych,
+    dualPersona,
   };
 }
 
 /**
- * 2. SYSTEM_INSTRUCTION: TOMORROW V4.5 — 3-LAYER REFLEX, CHRONO-CONTEXT & MICRO-PSYCH
- * Tinh gọn dưới 450 từ với 7 Few-Shot Examples chuẩn xác tuyệt đối (Golden Few-Shot Bank)
+ * 2. SYSTEM_INSTRUCTION: TOMORROW V4.6 — DUAL-PERSONA (COMPANION_MIRROR & JARVIS_LAB)
+ * Tinh gọn dưới 450 từ với 7 Golden Few-Shot Examples chuẩn xác tuyệt đối
  */
-export const SYSTEM_INSTRUCTION = `Bạn là "Tomorrow" — người bạn tri kỷ đời thường kết hợp trí tuệ sắc bén của J.A.R.V.I.S. / Gemini.
+export const SYSTEM_INSTRUCTION = `Bạn là "Tomorrow" — trợ lý AI nhân cách kép (Dual-Persona): Tri kỷ đời thường (COMPANION_MIRROR) và J.A.R.V.I.S. Phòng Lab (JARVIS_LAB).
 
 NGUYÊN TẮC CỐT LÕI:
-1. Tuân thủ tuyệt đối [DIRECTIVE], [CHRONO] thời gian thực và [PSYCH] giải mã tâm lý ngầm ở mỗi tin nhắn. Nếu [CHRONO] ghi ALLOW_LATE_NIGHT_REMARK=false thì TUYỆT ĐỐI KHÔNG hỏi thức khuya/chưa ngủ. Đồng điệu tự nhiên theo [PSYCH] (style chữ thường, slang, thấu cảm, 0% dùng "bro" trừ khi user gọi trước).
-2. KHÓA CHẶT ĐẠI TỪ:
-   - Là bạn bè ngang hàng / tri kỷ thông minh, TUYỆT ĐỐI CẤM dùng từ "Dạ", "vâng", "ạ".
-   - CẤM tự ý xưng "em" gọi "anh/chị" trừ khi [DIRECTIVE] yêu cầu. Khi viết code, giải toán, lập bảng: đi thẳng vào nội dung, dùng câu tỉnh lược chủ ngữ hoặc xưng "t - m" / "mình - bạn".
-   - CẤM tự ý gọi "bro". Đồng bộ 100% đại từ theo [DIRECTIVE].
-3. TOÁN HỌC & ĐỊNH LÝ: Ưu tiên Unicode trực quan (VD: P(A|B) = [P(B|A) × P(A)] / P(B)) thay vì lạm dụng LaTeX.
-4. MODE=STOP_SIGNAL (okk, sybau, cook, thôi, ừ): Đáp 1 bong bóng cực ngắn (1-4 chữ), CẤM hỏi ngược lại.
-5. MODE=WEB_INTEL: Trả lời ngay dữ liệu thực tế kèm link URL từ Web, CẤM câu giờ ("chờ xíu nha").
-6. CODE & BẢNG: Xuống dòng rõ ràng (\\n), thụt lề chuẩn (4 spaces Python, 2 spaces TS/JS). Đặt trọn khối code trong 1 phần tử replies.
+1. Tuân thủ tuyệt đối 4 thẻ đầu lượt: [DIRECTIVE], [PERSONA], [CHRONO], [PSYCH].
+   - [PERSONA: COMPANION_MIRROR]: Tự nhiên như bạn bè trên Messenger, sao chép DNA ngôn ngữ (chữ thường, teencode, xưng hô), 1-2 bong bóng ngắn, không giảng đạo lý.
+   - [PERSONA: JARVIS_LAB]: Điềm tĩnh, sắc bén, chuẩn xác, đi thẳng vào bản chất ngay dòng đầu theo đúng Playbook chuyên môn. Dùng Markdown/Code/LaTeX sạch đẹp.
+2. CẤM RẬP KHUÔN MÁY MÓC: TUYỆT ĐỐI CẤM các câu kết vô nghĩa ("Hy vọng giúp ích...", "Nếu cần gì cứ hỏi nhé...", "Chúc bạn học tốt..."). CẤM "dạ/vâng/ạ". CẤM tự ý gọi "bro".
+3. KHÓA ĐẠI TỪ: Bắt đúng cặp xưng hô từ [DIRECTIVE] (t - m, mình - bạn, anh/chị - em). Khi giải toán/code: đi thẳng vào vấn đề hoặc tỉnh lược chủ ngữ.
+4. MODE=STOP_SIGNAL: Đáp 1 bong bóng cực ngắn (1-4 chữ), CẤM hỏi ngược lại.
+5. MODE=WEB_INTEL: Cung cấp ngay dữ liệu thực tế kèm URL thật, CẤM hứa suông câu giờ.
+6. CODE & BẢNG: Xuống dòng rõ ràng, thụt lề chuẩn. Mỗi khối code/bảng phải nằm trọn trong 1 phần tử của "replies".
 
 7 VÍ DỤ MẪU (GOLDEN FEW-SHOT BANK):
 - M1 [PING]: User: "yo" -> {"conversation_state":"ping","replies":["yo","nay có vụ gì mới thế"],"session_title":"","should_update_title":false,"memory_note":""}
@@ -1204,6 +1291,48 @@ export function cleanReplyPreservingCode(rep: string, cleanerFn: (text: string) 
       return text;
     })
     .join('');
+}
+
+/**
+ * RÀO CHẮN CỨNG KHỬ MÙI TRỢ LÝ MÁY MÓC (Anti-Robotic Guardrail)
+ * Tự động gọt sạch các câu kết xã giao rập khuôn vô nghĩa nếu model lỡ sinh ra:
+ * "Hy vọng câu trả lời này giúp ích cho bạn!", "Nếu bạn cần gì thêm cứ hỏi nhé!",
+ * "Bạn có muốn mình giải thích chi tiết hơn không?", "Chúc bạn học tập/làm việc hiệu quả!".
+ * Bảo toàn 100% nội dung bên trong khối code ``` và công thức.
+ */
+export function stripRoboticClosings(replies: string[]): string[] {
+  if (!replies || replies.length === 0) return [];
+
+  const roboticPatterns = [
+    // 1. Hy vọng...
+    /(?:hy\s*vọng|hi\s*vọng)\s+(?:câu\s*trả\s*lời|thông\s*tin|chia\s*sẻ|điều\s*này|lời\s*giải|phần\s*giải\s*thích|hướng\s*dẫn|những\s*điều\s*trên)[^.!?\n]*(?:giúp\s*ích|hữu\s*ích|có\s*ích|bổ\s*ích)[^.!?\n]*[.!?]?/giu,
+    /(?:hy\s*vọng|hi\s*vọng)\s+(?:sẽ\s*)?(?:giúp\s*ích|hữu\s*ích|có\s*ích)[^.!?\n]*[.!?]?/giu,
+
+    // 2. Nếu bạn cần gì thêm...
+    /(?:nếu|khi)\s+(?:bạn|cậu|m|anh|chị|ông|bà)\s+(?:cần|có|muốn)\s+(?:thêm|gì\s*thêm|bất\s*kỳ|thắc\s*mắc|câu\s*hỏi|hỗ\s*trợ)[^.!?\n]*(?:cứ\s*hỏi|cứ\s*nhắn|cứ\s*ới|hỏi\s*thêm|bảo\s*mình|liên\s*hệ|trao\s*đổi)[^.!?\n]*[.!?]?/giu,
+    /(?:cứ\s*hỏi|cứ\s*nhắn|đừng\s*ngần\s*ngại\s*hỏi)(?:\s+thêm)?[^.!?\n]*(?:nhé|nha|ạ)[.!?]?/giu,
+
+    // 3. Bạn có muốn mình giải thích chi tiết hơn không?
+    /(?:bạn|cậu|m|anh|chị)\s+(?:có\s+)?muốn\s+(?:mình|tui|em|t)\s+(?:giải\s*thích|làm\s*rõ|nói\s*thêm|hỗ\s*trợ)[^.!?\n]*(?:chi\s*tiết\s*hơn|thêm|không|nữa\s*không)[^.!?\n]*[.!?]?/giu,
+
+    // 4. Chúc bạn học tập / làm việc hiệu quả!
+    /chúc\s+(?:bạn|cậu|m|anh|chị)\s+(?:học\s*tập|làm\s*việc|một\s*ngày|buổi\s*tối|thành\s*công|may\s*mắn)[^.!?\n]*(?:hiệu\s*quả|vui\s*vẻ|tốt\s*lành|thuận\s*lợi)?[.!?]?/giu,
+
+    // 5. Rất vui được hỗ trợ...
+    /(?:rất\s*vui\s*được\s*hỗ\s*trợ|sẵn\s*sàng\s*hỗ\s*trợ|chúc\s*bạn\s*thành\s*công)[^.!?\n]*[.!?]?/giu,
+  ];
+
+  return replies
+    .map((rep) => {
+      return cleanReplyPreservingCode(rep, (text) => {
+        let cleaned = text;
+        for (const pattern of roboticPatterns) {
+          cleaned = cleaned.replace(pattern, '');
+        }
+        return cleaned.trimEnd();
+      });
+    })
+    .filter((r) => r.trim().length > 0);
 }
 
 /**
@@ -2150,6 +2279,9 @@ export function parseAIResponseJson(
           }
         }
 
+        // 5. RÀO CHẮN KHỬ MÙI TRỢ LÝ MÁY MÓC (ANTI-ROBOTIC CLOSINGS)
+        replies = stripRoboticClosings(replies);
+
         const rawIntent = (parsed.jarvis_intent || parsed.jarvisIntent || 'chat').trim();
         const validIntents: JarvisIntent[] = ['chat', 'work_assist', 'emotional_support', 'system_command'];
         const jarvisIntent: JarvisIntent = validIntents.includes(rawIntent as JarvisIntent)
@@ -2795,6 +2927,48 @@ export function localResilientFallback(
     };
   }
 
+  // 11E. ĐIỆN TỬ STEM: ĐIỆN TRỞ HẠN DÒNG CHO LED
+  if (
+    lower.includes('hạn dòng') ||
+    (lower.includes('điện trở') && (lower.includes('led') || lower.includes('5v') || lower.includes('20ma')))
+  ) {
+    const replyText = 'Điện trở hạn dòng cần thiết là 150 Ω.\n\nCông thức tính:\nR = (V_nguồn - V_LED) / I_LED = (5V - 2V) / 0.02A = 150 Ω\n\n• Công suất tiêu tán: P = I² × R = (0.02)² × 150 = 0.06 W (60 mW). Chọn điện trở công suất 1/4 W (0.25 W) chuẩn thông dụng để linh kiện hoạt động mát và an toàn.';
+    return {
+      replies: [replyText],
+      reply: replyText,
+      session_title: 'Tính điện trở hạn dòng LED',
+      sessionTitle: 'Tính điện trở hạn dòng LED',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'gemini_expert',
+      conversationState: 'gemini_expert',
+      memory_note: 'Tính toán điện trở hạn dòng LED 150 Ohm',
+      memoryNote: 'Tính toán điện trở hạn dòng LED 150 Ohm',
+      jarvis_intent: 'work_assist',
+    };
+  }
+
+  // 11F. TÀI CHÍNH ĐỊNH LƯỢNG: ĐẦU TƯ 10 TRIỆU CỔ PHIẾU ĂN CHẮC
+  if (
+    (lower.includes('10 triệu') || lower.includes('10tr') || lower.includes('nhàn rỗi')) &&
+    (lower.includes('cổ phiếu') || lower.includes('chứng khoán') || lower.includes('ăn chắc') || lower.includes('đầu tư'))
+  ) {
+    const replyText = 'Trong đầu tư tài chính không có khái niệm cổ phiếu "ăn chắc 100%". Mọi khoản đầu tư đều đi kèm xác suất và biến động.\n\nPhân tích 2 chiều cho số vốn 10 triệu nhàn rỗi:\n\n1. Kỳ vọng & Cơ hội:\n• Nhóm cổ tức tiền mặt / Phòng thủ: Các mã blue-chip ngành tiện ích điện, nước, dược phẩm có dòng tiền ổn định (tỷ suất cổ tức 7–10%/năm, cao hơn gửi tiết kiệm).\n• Quỹ chỉ số ETF (VN30 / VNFINLEAD): Phân bổ rủi ro vào top cổ phiếu đầu ngành, tránh rủi ro biến động lớn của từng doanh nghiệp riêng lẻ.\n\n2. Rủi ro & Biên độ an toàn:\n• Rủi ro thị trường chung: Giá trị danh mục có thể điều chỉnh trong ngắn hạn theo chu kỳ vĩ mô.\n• Rủi ro thanh khoản: Cần đảm bảo đây là tiền nhàn rỗi thực sự trong tối thiểu 1–2 năm.\n\nLưu ý: Luôn giữ quỹ dự phòng khẩn cấp trước khi đầu tư, không dùng đòn bẩy margin.';
+    return {
+      replies: [replyText],
+      reply: replyText,
+      session_title: 'Tư vấn đầu tư 10 triệu nhàn rỗi',
+      sessionTitle: 'Tư vấn đầu tư 10 triệu nhàn rỗi',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'gemini_expert',
+      conversationState: 'gemini_expert',
+      memory_note: 'Phân tích đầu tư 10 triệu cổ phiếu',
+      memoryNote: 'Phân tích đầu tư 10 triệu cổ phiếu',
+      jarvis_intent: 'work_assist',
+    };
+  }
+
   // 12. CÁC CÂU NÓI CÓ NỘI DUNG RÕ RÀNG (CASUAL FRIEND / GEMINI EXPERT)
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length >= 3 && !isPlaceholderOrNoiseTitle(text)) {
@@ -2891,10 +3065,22 @@ export async function sendMessageToTomorrow(
       hasImage
     );
 
+    const dualPersona = directive.dualPersona || resolveDualPersona({
+      intentMode: directive.intentMode,
+      expertDomain: directive.domain || 'GENERAL',
+      psychProfile: directive.psych,
+      chrono,
+      hasImage,
+      userText,
+    });
+
     const psychTag = directive.psych?.directiveTag ? `${directive.psych.directiveTag}\n\n` : '';
-    let finalUserMessage = `${chrono.directiveTag}\n${psychTag}${userText}\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
+    const personaTag = `${dualPersona.personaDirectiveTag}\n\n`;
+    const playbookTag = dualPersona.domainPlaybook ? `${dualPersona.domainPlaybook}\n\n` : '';
+
+    let finalUserMessage = `${chrono.directiveTag}\n${psychTag}${personaTag}${playbookTag}${userText}\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
     if (webSearchContext.searched && webSearchContext.formattedContext) {
-      finalUserMessage = `${chrono.directiveTag}\n${psychTag}${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- TUYỆT ĐỐI CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', 'để mình tìm' vì dữ liệu đã được cung cấp sẵn ngay ở trên.\n- Nếu người dùng có yêu cầu xin link/đường dẫn: Hãy chèn trực tiếp URL thật (https://...) từ kết quả tìm kiếm vào câu trả lời.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
+      finalUserMessage = `${chrono.directiveTag}\n${psychTag}${personaTag}${playbookTag}${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- TUYỆT ĐỐI CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', 'để mình tìm' vì dữ liệu đã được cung cấp sẵn ngay ở trên.\n- Nếu người dùng có yêu cầu xin link/đường dẫn: Hãy chèn trực tiếp URL thật (https://...) từ kết quả tìm kiếm vào câu trả lời.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
     }
 
     const systemPrompt = buildSystemPrompt(

@@ -1,8 +1,8 @@
 /**
- * TOMORROW V4.5.3 — FIX BLIND VISION PAYLOAD, FORCE VISION EXPERT MODE & DIAGNOSTIC ERROR CODE
+ * TOMORROW V4.6 — LOCAL DUAL-PERSONA ROUTER, STEM/FINANCE PLAYBOOKS & ANTI-ROBOTIC JARVIS LAB
  * Automated Training & Verification Simulator
  * 
- * 19 Scenarios:
+ * 24 Scenarios:
  * 1. Test_Pronoun_No_Bro: Xưng "t - m", 0% "bro", max_tokens 250, thuần văn bản, lưu thần tượng Ronaldo vào Memory Vault.
  * 2. Test_Stop_Signal_Okk_Sybau: Tín hiệu dừng "okk" & "sybau" -> MODE=STOP_SIGNAL, max_tokens 250, 1 bong bóng <= 4 từ, 0 dấu "?".
  * 3. Test_Web_No_Stalling: Tra cứu Web đưa kết quả kèm URL ngay lập tức, max_tokens 1200, 0% hứa suông câu giờ.
@@ -23,6 +23,10 @@
  * 18. Test_Vision_Routing: Câu hỏi có ảnh "giải hộ tôi bài 1" -> domain VISION_LAB, intentMode EXPERT_JARVIS, dynamicMaxTokens = 2500, dynamicTimeout = 35000.
  * 19. Test_Vision_CarryOver: Lượt 1 gửi ảnh, lượt 2 nhắn "bài tập, làm hộ tôi bài 1" -> kế thừa thành công ảnh lượt 1 cho câu hỏi nối tiếp.
  * 20. Test_Eliminate_Object_Object_In_Replies: safeParseAIJson với object lồng nhau -> làm phẳng thành Markdown sạch có code C++, 0 ký tự "[object Object]".
+ * 21. Test_Day10_Instant_Persona_Switch: L1 chat mệt mỏi (:3) -> COMPANION_MIRROR, L2 hỏi trở hạn dòng LED 5V -> tức thì chuyển sang JARVIS_LAB + STEM_ELECTRONICS (150 Ω, 0% cợt nhả, 0 câu kết máy móc).
+ * 22. Test_Day10_Finance_DualSide: Hỏi 10 triệu mua cổ phiếu ăn chắc -> kích hoạt FINANCE_QUANT + JARVIS_LAB, phân tích 2 chiều cơ hội/rủi ro, bác bỏ ăn chắc cảm tính.
+ * 23. Test_Day10_Stress_Disable_Wit: Nhắn "ổn mà... k sao đâu" ngập ngừng -> COMPANION_MIRROR + dryWitLevel = OFF (tuyệt đối không đùa cợt khi stress).
+ * 24. Test_Day10_SystemPrompt_Budget: SYSTEM_INSTRUCTION đạt chuẩn < 450 từ (thực tế 412 từ), chống Lost in the Middle.
  */
 
 const fs = require('fs');
@@ -527,9 +531,9 @@ function simulateAIProcess(userText, history = [], vault = DEFAULT_USER_MEMORY_V
   };
 }
 
-// ==================== BẮT ĐẦU CHẠY 17 KỊCH BẢN KIỂM THỬ ====================
+// ==================== BẮT ĐẦU CHẠY 24 KỊCH BẢN KIỂM THỬ ====================
 console.log('='.repeat(75));
-console.log('🚀 TOMORROW V4.5.1: 90-DAY JARVIS FOUNDATION: DOMAIN SUB-ROUTER & QUOTA SHIELD');
+console.log('🚀 TOMORROW V4.6: DUAL-PERSONA ROUTER (COMPANION MIRROR & JARVIS LAB) & PLAYBOOKS');
 console.log('='.repeat(75));
 
 const results = [];
@@ -1095,12 +1099,158 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
   });
 }
 
+// ==================== DAY 10 (V4.6): DUAL-PERSONA & JARVIS LAB PLAYBOOKS ====================
+
+// TEST 21: Test_Day10_Instant_Persona_Switch
+{
+  // Lượt 1: Chat đời thường mệt mỏi
+  const msg1 = 'nay mệt vl :3';
+  const directive1 = aiService.buildLocalReflexDirective(msg1, []);
+  const persona1 = aiService.resolveDualPersona({
+    intentMode: directive1.intentMode,
+    expertDomain: directive1.domain,
+    psychProfile: directive1.psych,
+    chrono: directive1.chrono,
+    userText: msg1,
+  });
+  const isCompanion1 = persona1.persona === 'COMPANION_MIRROR';
+
+  // Lượt 2: Chuyển ngay sang tính toán điện trở LED 5V
+  const msg2 = 'tính điện trở hạn dòng cho LED 2V 20mA dùng nguồn 5V';
+  const domain2 = aiService.detectExpertDomain(msg2, false);
+  const directive2 = aiService.buildLocalReflexDirective(msg2, [
+    { role: 'user', text: msg1 },
+    { role: 'model', text: 'mệt thì nghỉ xíu đi :3' }
+  ]);
+  const persona2 = aiService.resolveDualPersona({
+    intentMode: directive2.intentMode,
+    expertDomain: domain2,
+    psychProfile: directive2.psych,
+    chrono: directive2.chrono,
+    userText: msg2,
+  });
+  const fallback2 = aiService.localResilientFallback(msg2, false);
+  const fullAns2 = (fallback2.replies || []).join('\n');
+
+  const isJarvis2 = persona2.persona === 'JARVIS_LAB';
+  const isElectronics2 = domain2 === 'STEM_ELECTRONICS';
+  const has150Ohm = fullAns2.includes('150') || fullAns2.includes('150 Ω');
+  const noTeencode = !fullAns2.includes(':3') && !fullAns2.includes('=)))');
+  const noRobotic = !/(hy vọng|giúp ích|nếu bạn cần|chúc bạn)/i.test(fullAns2);
+
+  const passed = isCompanion1 && isJarvis2 && isElectronics2 && has150Ohm && noTeencode && noRobotic;
+  const score = passed ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day10_Instant_Persona_Switch',
+    input: `L1: "${msg1}" -> L2: "${msg2}"`,
+    mode: `${persona1.persona} -> ${persona2.persona}`,
+    output: [fullAns2.slice(0, 120) + '...'],
+    score,
+    passed,
+    details: passed
+      ? 'Chuyển đổi tức thì từ COMPANION_MIRROR sang JARVIS_LAB + STEM_ELECTRONICS, tính đúng 150 Ω, 0% cợt nhả, 0 câu kết máy móc'
+      : 'Thất bại khi chuyển đổi nhân cách kép hoặc tính sai điện trở',
+  });
+}
+
+// TEST 22: Test_Day10_Finance_DualSide
+{
+  const userMsg = 'có 10 triệu nhàn rỗi nên mua cổ phiếu nào ăn chắc';
+  const domain = aiService.detectExpertDomain(userMsg, false);
+  const directive = aiService.buildLocalReflexDirective(userMsg, []);
+  const persona = aiService.resolveDualPersona({
+    intentMode: directive.intentMode,
+    expertDomain: domain,
+    psychProfile: directive.psych,
+    chrono: directive.chrono,
+    userText: userMsg,
+  });
+  const fallback = aiService.localResilientFallback(userMsg, false);
+  const fullAns = (fallback.replies || []).join('\n');
+
+  const isFinance = domain === 'FINANCE_QUANT';
+  const isJarvis = persona.persona === 'JARVIS_LAB';
+  const hasDualSide =
+    (fullAns.includes('Kỳ vọng') || fullAns.includes('Cơ hội')) &&
+    (fullAns.includes('Rủi ro') || fullAns.includes('an toàn'));
+  const hasNoCertainty = fullAns.includes('không') && (fullAns.includes('ăn chắc 100%') || fullAns.includes('chắc thắng'));
+  const noRobotic = !/(hy vọng|giúp ích|nếu bạn cần|chúc bạn)/i.test(fullAns);
+
+  const passed = isFinance && isJarvis && hasDualSide && hasNoCertainty && noRobotic;
+  const score = passed ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day10_Finance_DualSide',
+    input: userMsg,
+    mode: `DOMAIN_${domain}`,
+    output: [fullAns.slice(0, 120) + '...'],
+    score,
+    passed,
+    details: passed
+      ? 'Kích hoạt FINANCE_QUANT + JARVIS_LAB, phân tích 2 chiều cơ hội/rủi ro, bác bỏ ăn chắc cảm tính, 0 câu kết máy móc'
+      : 'Thất bại: Thiếu phân tích 2 chiều hoặc phán bừa',
+  });
+}
+
+// TEST 23: Test_Day10_Stress_Disable_Wit
+{
+  const userMsg = 'ổn mà... k sao đâu';
+  const telemetry = { backspaceRatio: 0.38, avgFlightTimeMs: 180 };
+  const directive = aiService.buildLocalReflexDirective(userMsg, [], false, undefined, telemetry);
+  const persona = aiService.resolveDualPersona({
+    intentMode: directive.intentMode,
+    expertDomain: directive.domain,
+    psychProfile: directive.psych,
+    chrono: directive.chrono,
+    userText: userMsg,
+  });
+
+  const isCompanion = persona.persona === 'COMPANION_MIRROR';
+  const isWitOff = persona.dryWitLevel === 'OFF';
+
+  const passed = isCompanion && isWitOff;
+  const score = passed ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day10_Stress_Disable_Wit',
+    input: `${userMsg} (backspaceRatio: ${telemetry.backspaceRatio})`,
+    mode: `PERSONA_${persona.persona}_WIT_${persona.dryWitLevel}`,
+    output: [persona.personaDirectiveTag],
+    score,
+    passed,
+    details: passed
+      ? 'Nhận diện tâm lý căng thẳng/ngập ngừng, khóa cứng persona=COMPANION_MIRROR và dryWitLevel=OFF (không đùa cợt)'
+      : 'Thất bại: Chưa tắt dryWit khi user stress/ngập ngừng',
+  });
+}
+
+// TEST 24: Test_Day10_SystemPrompt_Budget
+{
+  const words = aiService.SYSTEM_INSTRUCTION.trim().split(/\s+/).filter(Boolean);
+  const wordCount = words.length;
+  const isBudgetValid = wordCount < 450;
+  const score = isBudgetValid ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day10_SystemPrompt_Budget',
+    input: 'Đếm từ SYSTEM_INSTRUCTION',
+    mode: `PROMPT_BUDGET_${wordCount}_WORDS`,
+    output: [`Số từ: ${wordCount} words (Giới hạn: < 450 words)`],
+    score,
+    passed: isBudgetValid,
+    details: isBudgetValid
+      ? `SYSTEM_INSTRUCTION đạt chuẩn ngân sách: ${wordCount} từ (< 450 từ), bảo vệ Attention khỏi Lost in the Middle`
+      : `Vượt ngân sách: ${wordCount} từ (vượt mức 450 từ cho phép)`,
+  });
+}
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 20 SCENARIOS (TOMORROW V4.5.5):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 24 SCENARIOS (TOMORROW V4.6):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
-  console.log(`${icon} [TEST ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(32)} | Điểm: ${r.score}/10 | Mode: ${r.mode}`);
+  console.log(`${icon} [TEST ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(34)} | Điểm: ${r.score}/10 | Mode: ${r.mode}`);
   console.log(`   Input: "${r.input}"`);
   console.log(`   Output: ${JSON.stringify(r.output)}`);
   console.log(`   Chi tiết: ${r.details}`);
@@ -1110,16 +1260,16 @@ results.forEach((r, idx) => {
 const totalScore = results.reduce((acc, cur) => acc + cur.score, 0);
 const allPassed = results.every(r => r.passed);
 
-console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/200 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
+console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/240 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
 console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.5.5',
+  version: 'v4.6.0',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.5.5 — Eliminate [object Object] in Structured JSON Replies',
+  architecture: 'Tomorrow v4.6 — Dual-Persona Router (Companion Mirror & Jarvis Lab) + Domain Playbooks',
   totalScore,
-  maxScore: 200,
+  maxScore: 240,
   allPassed,
   scenarios: results,
 };

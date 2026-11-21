@@ -173,7 +173,22 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
     + Tại `normalizeHistoryForAPI`: lọc bỏ hoàn toàn các bong bóng lỗi cũ chứa `"[object Object]"` trước khi gửi lên API.
   - Cập nhật live badge header: **`Online • v4.5.5`**. Nâng cấp bộ kiểm thử lên 20/20 scenarios đạt 200/200 điểm hoàn hảo.
 
-- [ ] **Ngày 10 – 15: Hoàn thiện Phase 1**
+- [x] **Ngày 10 (`ai/proto-jarvis-dual-persona` — Phiên bản `v4.6`): Bộ điều phối Nhân cách Kép Cục bộ & Domain Playbooks**
+  - **Mô-đun `services/personaRouter.ts` chạy 100% cục bộ (< 1ms):**
+    + Điều phối 2 chế độ nhân cách cốt lõi: `COMPANION_MIRROR` (tri kỷ đời thường, xưng hô đồng điệu, 1-2 bong bóng ngắn) vs `JARVIS_LAB` (J.A.R.V.I.S. phòng lab, điềm tĩnh, chính xác, Markdown/LaTeX).
+    + Bộ điều tiết độ hóm hỉnh ngầm `dryWitLevel`: Bắt buộc tắt (`OFF`) khi user gặp stress, buồn ngầm, ngập ngừng cao (`hesitation === 'HIGH'`) hoặc stop signal; đặt `SUBTLE` ở Jarvis Lab; `SHARP` khi hào hứng / vui vẻ.
+  - **Kho chiến thuật `DOMAIN_PLAYBOOKS` độc lập:**
+    + Nạp đúng 1 playbook chuyên môn tương ứng cho các nhánh: `STEM_CODE`, `STEM_PHYSICS_MECHANICS`, `STEM_ELECTRONICS`, `STEM_CHEM_BIO`, `STEM_MATH`, `FINANCE_QUANT`, `VISION_LAB`. Không chèn khi chat đời thường để tối ưu token và tốc độ.
+  - **Tái cấu trúc `SYSTEM_INSTRUCTION` & Rào chắn `stripRoboticClosings`:**
+    + Rút gọn `SYSTEM_INSTRUCTION` đạt chuẩn 412 từ (< 450 từ), tuân thủ 4 thẻ đầu lượt `[DIRECTIVE]`, `[PERSONA]`, `[CHRONO]`, `[PSYCH]`.
+    + Hàm `stripRoboticClosings` tự động gọt sạch các câu kết rập khuôn vô nghĩa ("Hy vọng giúp ích...", "Nếu bạn cần gì thêm...", "Chúc bạn học tốt...") nhưng bảo toàn 100% code blocks và công thức.
+  - **Phản hồi trạng thái chuyên môn tinh tế trên UI:**
+    + `TypingIndicator`: COMPANION_MIRROR chỉ hiện bong bóng 3 chấm `• • •` mượt mà như Messenger; JARVIS_LAB hiển thị nhãn nhánh (`⚡ J.A.R.V.I.S. • Code`, `⚡ J.A.R.V.I.S. • STEM`, `⚡ J.A.R.V.I.S. • Finance`, `👁️ Vision Lab đang đọc ảnh...`, `🌐 Đang quét web...`).
+  - **Bộ kiểm thử tự động `train_simulator.js`:**
+    + Bổ sung 4 scenarios Ngày 10: `Test_Day10_Instant_Persona_Switch`, `Test_Day10_Finance_DualSide`, `Test_Day10_Stress_Disable_Wit`, `Test_Day10_SystemPrompt_Budget`.
+    + Đạt điểm tuyệt đối 24/24 scenarios (240/240 điểm). Header cập nhật **`Online • v4.6`**.
+
+- [ ] **Ngày 11 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
   - Tìm kiếm toàn văn (Full-text search) trên danh sách phiên trò chuyện trong Sidebar.
   - Đóng gói chuẩn ứng dụng Desktop macOS thông qua WebKit / Electron / PWA Wrapper nâng cao.

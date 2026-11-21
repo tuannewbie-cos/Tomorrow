@@ -1,4 +1,4 @@
-# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.5.5)
+# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.6)
 
 ## 1. MÔI TRƯỜNG, NỀN TẢNG CỐT LÕI & CÁC KHÓA LƯU TRỮ
 - **Hệ điều hành phát triển & vận hành:** macOS (Ứng dụng đích chạy tại `/Applications/Tomorrow.app` kết nối Vercel Production). Mọi script/shell dùng chuẩn Unix/macOS, không dùng cú pháp Windows.
@@ -9,6 +9,7 @@
   3. `TOMORROW_THEME_MODE`: Trạng thái giao diện Sáng / Tối (`dark` | `light`).
   4. `TOMORROW_QUOTA_STATS_V1`: Thống kê hạn mức và lưu lượng gọi API theo ngày của OpenAI và Gemini (`services/quotaShield.ts`).
 - **Các module nền tảng của Master Plan 90 Ngày:**
+  - `services/personaRouter.ts`: Bộ điều phối nhân cách kép cục bộ (< 1ms): `COMPANION_MIRROR` (tri kỷ đời thường) vs `JARVIS_LAB` (J.A.R.V.I.S. phòng lab), bộ điều tiết độ hóm hỉnh `dryWitLevel` ('OFF' | 'SUBTLE' | 'SHARP'), và kho chiến thuật `DOMAIN_PLAYBOOKS`.
   - `services/quotaShield.ts`: Lá chắn Quota sinh viên, theo dõi 2 API key độc lập, reset theo ngày `YYYY-MM-DD`, cảnh báo quota và hỗ trợ reset cờ OpenAI.
   - `utils/imageOptimizer.ts`: Bộ nén Canvas Web/macOS cho Vision Lab (tối đa 1024px, JPEG 0.82, giảm 60–80% dung lượng base64).
   - `types/providers.ts`: Cổng định nghĩa trừu tượng sẵn sàng mở rộng đa nhà cung cấp (OpenAI, Gemini, Claude, DeepSeek, Local Ollama).
@@ -35,42 +36,48 @@
   + Công thức Toán học LaTeX Unicode (`$$...$$` hộp căn giữa viền Indigo `#6366F1`, `$...$` nội dòng).
   + Nút Quick Copy phản hồi ở góc dưới bên phải cho tin nhắn >120 ký tự hoặc có rich block.
 - **Thanh Nhập Liệu Co Giãn Đa Dòng (`FloatingInputBar.tsx`):** Co giãn từ `44px` đến `160px` theo nội dung; thu về `44px` sau khi gửi; đo đạc nhịp gõ ẩn `KeystrokeTelemetry` bằng `useRef` (zero re-render).
-- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.5.5`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.6`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
 
-## 3. LUẬT BỘ NÃO PHẢN XẠ 3 LỚP, ĐỊNH TUYẾN CHUYÊN MÔN CON & CHUẨN HÓA VISION (`services/aiService.ts`)
-- **Lớp 1 (Local Reflex & Dynamic Budgeting):**
-  - Chạy cục bộ < 1ms thông qua `buildLocalReflexDirective`, `detectExpertDomain`, `buildChronoContext`, và `microPsychProfiler`.
+## 3. LUẬT BỘ NÃO PHẢN XẠ NHÂN CÁCH KÉP, ĐỊNH TUYẾN CHUYÊN MÔN CON & CHUẨN HÓA VISION (`services/aiService.ts` & `services/personaRouter.ts`)
+- **Lớp 1 (Local Dual-Persona & Reflex Budgeting):**
+  - Chạy cục bộ < 1ms thông qua `resolveDualPersona`, `buildLocalReflexDirective`, `detectExpertDomain`, `buildChronoContext`, và `microPsychProfiler`.
+  - Phân nhánh 2 chế độ nhân cách cốt lõi:
+    + `COMPANION_MIRROR`: Kích hoạt khi chat đời thường, tâm sự, ping hoặc stop signal. Sao chép DNA ngôn ngữ, xưng hô đồng điệu, 1-2 bong bóng ngắn, không giảng đạo lý. TypingIndicator chỉ hiện 3 chấm • • • mượt mà.
+    + `JARVIS_LAB`: Kích hoạt tức thì khi gặp câu hỏi STEM / Tài chính / Code / Vision / Web. Điềm tĩnh, chuẩn xác, Markdown/LaTeX sạch đẹp, nạp đúng 1 playbook tương ứng từ `DOMAIN_PLAYBOOKS`. TypingIndicator hiển thị nhãn nhánh chuyên môn tinh tế (`⚡ J.A.R.V.I.S. • Code`, `⚡ J.A.R.V.I.S. • STEM`, `⚡ J.A.R.V.I.S. • Finance`, `👁️ Vision Lab đang đọc ảnh...`, `🌐 Đang quét web...`).
+  - **Bộ điều tiết độ hóm hỉnh ngầm (`dryWitLevel`):** Khóa cứng `OFF` khi phát hiện stress, masked sadness, ngập ngừng cao (`hesitation === 'HIGH'`) hoặc stop signal; đặt `SUBTLE` ở Jarvis Lab; `SHARP` khi người dùng hào hứng hoặc trêu đùa.
+  - **Rào chắn cứng khử mùi trợ lý máy móc (`stripRoboticClosings`):** Tự động gọt sạch các câu kết rập khuôn vô nghĩa ("Hy vọng giúp ích...", "Nếu cần gì cứ hỏi nhé...", "Chúc bạn học tốt...") nhưng bảo toàn 100% code blocks và công thức.
   - Phân nhánh và cấp phát Token / Dynamic Timeout / Temperature:
-    + `STOP_SIGNAL` (`"okk"`, `"ok"`, `"ừ"`, `"thôi"`, `"sybau"`, `"cook"`, `"cút"`, `"pp"`): `max_tokens: 250`, `timeout: 8000ms`. Trả về DUY NHẤT 1 bong bóng ngắn (1-4 chữ), cấm hỏi ngược, thuần văn bản.
-    + `PING` (`"yo"`, `"ê"`, `"hello"`): `max_tokens: 250`, `timeout: 8000ms`. Đáp 1-2 bong bóng cực ngắn, giữ nguyên `session_title: ""`.
+    + `STOP_SIGNAL`: `max_tokens: 250`, `timeout: 8000ms`. Trả về DUY NHẤT 1 bong bóng ngắn (1-4 chữ), cấm hỏi ngược, thuần văn bản.
+    + `PING`: `max_tokens: 250`, `timeout: 8000ms`. Đáp 1-2 bong bóng cực ngắn, giữ nguyên `session_title: ""`.
     + `CASUAL_FRIEND`: `max_tokens: 250`, `timeout: 8000ms`, `temperature: 0.75`.
     + `WEB_INTEL`: `max_tokens: 1200`, `timeout: 30000ms`. Quét web thật, đưa link nguồn trực tiếp, không hứa suông.
     + **Bộ định tuyến chuyên môn con (`detectExpertDomain`):**
-      * `STEM_PHYSICS_MECH`: `max_tokens: 2000`, `timeout: 30000ms`, `temperature: 0.35`, chỉ đạo LaTeX & thứ nguyên.
-      * `STEM_CHEM_BIO`: `max_tokens: 2000`, `timeout: 30000ms`, `temperature: 0.35`, chỉ đạo phương trình LaTeX & cơ chế.
-      * `STEM_ELECTRONICS`: `max_tokens: 2000`, `timeout: 30000ms`, `temperature: 0.35`, chỉ đạo an toàn điện áp/chân pin.
-      * `CODE_CS`: `max_tokens: 2000`, `timeout: 30000ms`, `temperature: 0.35`, chỉ đạo code sạch & nguyên nhân gốc.
-      * `FINANCE_QUANT`: `max_tokens: 1200`, `timeout: 30000ms`, `temperature: 0.35`, chỉ đạo bảng số liệu & rủi ro.
-      * `VISION_LAB`: `max_tokens: 2000`, `timeout: 30000ms`, `temperature: 0.35`, chỉ đạo đọc chi tiết chữ viết tay/linh kiện/biểu đồ.
+      * `STEM_PHYSICS_MECH` / `STEM_PHYSICS_MECHANICS`: `max_tokens: 2000`, `timeout: 30000ms`, `temperature: 0.35`.
+      * `STEM_CHEM_BIO`: `max_tokens: 2000`, `timeout: 30000ms`, `temperature: 0.35`.
+      * `STEM_ELECTRONICS`: `max_tokens: 2000`, `timeout: 30000ms`, `temperature: 0.35`.
+      * `CODE_CS` / `STEM_CODE`: `max_tokens: 2000`, `timeout: 30000ms`, `temperature: 0.35`.
+      * `STEM_MATH`: `max_tokens: 2000`, `timeout: 30000ms`, `temperature: 0.35`.
+      * `FINANCE_QUANT`: `max_tokens: 1200 - 1500`, `timeout: 30000ms`, `temperature: 0.35`.
+      * `VISION_LAB`: `max_tokens: 2500`, `timeout: 35000ms`, `temperature: 0.25`.
   - **Chuẩn hóa Payload ảnh Vision (`normalizeVisionImage`):** Tách `mimeType` và `pureBase64` sạch sẽ. OpenAI nhận `image_url` với `detail: 'high'`; Gemini nhận `inlineData: { mimeType, data: pureBase64 }`.
   - **Kế thừa ảnh cho câu hỏi nối tiếp (`resolveCarriedOverVisionImage`):** Tự động phát hiện các câu hỏi tham chiếu (`bài trên`, `câu 2`, `giải lại`, `làm lại`) hoặc khi lượt trước bị lỗi để nạp lại ảnh từ 2 tin nhắn gần nhất của user.
-  - **Làm sạch lịch sử gửi API (`normalizeHistoryForAPI`):** Lọc bỏ 100% tin nhắn lỗi mạng (`isNetworkErrorMessage`), gộp các tin nhắn cùng role liên tiếp, đảm bảo lịch sử luôn luân phiên chuẩn xác `user <-> model` (loại trừ vĩnh viễn lỗi HTTP 400 Bad Request từ Gemini).
+  - **Làm sạch lịch sử gửi API (`normalizeHistoryForAPI`):** Lọc bỏ 100% tin nhắn lỗi mạng (`isNetworkErrorMessage`), gộp các tin nhắn cùng role liên tiếp, đảm bảo lịch sử luôn luân phiên chuẩn xác `user <-> model`.
   - **Bảo vệ ngữ cảnh thời gian thực (`buildChronoContext`):** 6 khung nhịp sinh học, cấm nhận xét thức khuya lệch pha khi không phải khung `LATE_NIGHT`.
   - **Bộ ghép nối an toàn (`sanitizeAndMergeBrokenBlocks`):** Tự động phát hiện và nối gộp khối code bị mở ```` ``` ```` mà chưa đóng sang phần tử kế tiếp trong mảng `replies`.
 - **Lớp 2 (Hồ sơ Trí nhớ `UserMemoryVault`):**
   - Giới hạn tối đa 5 mục mỗi mảng (`pronouns`, `favorites`, `activeProjects`, `habits`, `recentContext`) để giữ prompt dưới 120 tokens.
   - **Luật Đại Từ Xưng Hô:** CẤM tự ý gọi người dùng là `"bro"` trừ khi người dùng chủ động gọi trước. Nếu user xưng `"t - m"`, khóa cứng cặp đại từ `"t - m"` xuyên suốt.
 - **Lớp 3 (`SYSTEM_INSTRUCTION` Tinh Gọn):**
-  - Giữ nghiêm ngặt dưới 450 từ (hiện tại: 442 từ) kèm 6 ví dụ Few-Shot chuẩn xác đã kiểm chứng qua `train_simulator.js`. CẤM nhồi nhét thêm quy tắc văn bản trùng lặp gây hiện tượng "Lost in the Middle".
+  - Giữ nghiêm ngặt dưới 450 từ (hiện tại: 412 từ) với bản sắc Dual-Persona rõ rệt kèm 7 ví dụ Golden Few-Shot Bank đã kiểm chứng qua `train_simulator.js`. CẤM nhồi nhét thêm quy tắc văn bản trùng lặp gây hiện tượng "Lost in the Middle".
 - **Chuỗi Xoay Vòng Model (Hybrid Router):**
   - Ưu tiên `callOpenAI` (`gpt-4o-mini`). Silent Circuit Breaker chỉ ngắt khi lỗi HTTP 401, 402, 403, 429; AbortError timeout chỉ trượt lượt đó sang Gemini mà KHÔNG khóa vĩnh viễn OpenAI.
   - Fallback sang chuỗi Gemini miễn phí thông minh (`gemini-2.5-flash` / `gemini-2.0-flash` -> `gemini-1.5-flash` / `gemini-1.5-pro` -> `gemma-4-31b-it`).
   - Lưu ý: Trên Gemini API, không bật đồng thời `google_search` grounding và `responseMimeType: "application/json"` trong cùng 1 request nếu gây lỗi HTTP 400.
 
-## 4. LUẬT BẢO MẬT & QUY TRÌNH DEPLOY
+## 4. QUY TRÌNH KIỂM CHỨNG & DEPLOY
 - Kiểm tra `.gitignore` luôn chặn `.env`, `.env.*`, `training_results.json` trước mọi lệnh `git add`.
 - Mọi bản cập nhật phải vượt qua:
   1. `npm run typecheck`
   2. `npx expo export -p web` (đảm bảo 0 lỗi biên dịch web)
-  3. `node train_simulator.js` (đảm bảo 17/17 kịch bản PASS tuyệt đối 170/170 điểm)
+  3. `node train_simulator.js` (đảm bảo 24/24 kịch bản PASS tuyệt đối 240/240 điểm)
 - Chỉ chạy `npx vercel --prod --yes` sau khi đã kiểm tra đầy đủ và được người dùng phê duyệt.

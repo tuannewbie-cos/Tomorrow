@@ -203,7 +203,9 @@ export const TypingIndicator: React.FC<TypingIndicatorProps> = ({
                 { color: theme.mode === 'dark' ? '#93C5FD' : '#2563EB' },
               ]}
             >
-              {activeStatusText.replace(/^[🌐💭]\s*/, '')}
+              {activeStatusText.includes('web') || activeStatusText.includes('quét')
+                ? activeStatusText.replace(/^[🌐💭]\s*/, '')
+                : activeStatusText}
             </Text>
           </Animated.View>
         ) : null}
