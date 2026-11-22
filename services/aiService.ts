@@ -1703,6 +1703,59 @@ async function callModelFallbackChain(
 }
 
 /**
+ * Tiền chuẩn hóa Code Fence cho Markdown:
+ * - Chuẩn hóa CRLF -> LF
+ * - Tách thẻ mở fence dính liền cuối câu (VD: "như sau: ```python" -> "như sau:\n```python")
+ * - Đảm bảo sau ```lang luôn có \n tách mã nguồn xuống dòng dưới
+ * - Đảm bảo thẻ đóng ``` đứng dòng riêng và nếu dính chữ giải thích phía sau thì tự tách ra ngoài khối code
+ */
+export function normalizeMarkdownFences(raw: string): string {
+  if (!raw || typeof raw !== 'string') return '';
+  let text = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // 1. Tách thẻ mở fence dính liền cuối câu: "như sau: ```python" -> "như sau:\n```python"
+  text = text.replace(/([^\n])[ \t]*```([a-zA-Z0-9_+#.-]*)/g, '$1\n```$2');
+
+  const lines = text.split('\n');
+  const normalizedLines: string[] = [];
+  let inCode = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (!inCode) {
+      if (trimmed.startsWith('```')) {
+        inCode = true;
+        const rest = trimmed.slice(3).trim();
+        const langMatch = rest.match(/^([a-zA-Z0-9_+#.-]*)(?:[ \t]+([^\n]+))?$/);
+        const lang = (langMatch && langMatch[1]) ? langMatch[1] : '';
+        const inlineCode = (langMatch && langMatch[2]) ? langMatch[2] : '';
+        normalizedLines.push(`\`\`\`${lang}`);
+        if (inlineCode.length > 0) {
+          normalizedLines.push(inlineCode);
+        }
+      } else {
+        normalizedLines.push(line);
+      }
+    } else {
+      if (trimmed.startsWith('```')) {
+        inCode = false;
+        const trailing = trimmed.slice(3).trim();
+        normalizedLines.push('```');
+        if (trailing.length > 0) {
+          normalizedLines.push(trailing);
+        }
+      } else {
+        normalizedLines.push(line);
+      }
+    }
+  }
+
+  return normalizedLines.join('\n');
+}
+
+/**
  * Bộ ghép nối an toàn cho mảng replies (sanitizeAndMergeBrokenBlocks):
  * Tự động kiểm tra nếu có phần tử nào mở dấu ``` mà chưa đóng dấu ``` ở cùng phần tử đó
  * -> tự động nối gộp với phần tử kế tiếp để khối code luôn nguyên vẹn 100%.
@@ -1716,7 +1769,7 @@ export function sanitizeAndMergeBrokenBlocks(replies: string[]): string[] {
 
   for (let i = 0; i < replies.length; i++) {
     const rawItem = replies[i];
-    const item = typeof rawItem === 'string' ? rawItem : String(rawItem ?? '');
+    const item = normalizeMarkdownFences(typeof rawItem === 'string' ? rawItem : String(rawItem ?? ''));
     if (!item.trim() && !inCodeBlock) continue;
 
     if (inCodeBlock) {
@@ -1858,7 +1911,8 @@ export function flattenReplyToMarkdown(item: unknown): string {
 
   if (typeof item === 'string') {
     const trimmed = item.trim();
-    return trimmed === '[object Object]' ? '' : trimmed;
+    if (trimmed === '[object Object]') return '';
+    return normalizeMarkdownFences(trimmed);
   }
 
   if (typeof item === 'number' || typeof item === 'boolean') {

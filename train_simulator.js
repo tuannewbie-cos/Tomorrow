@@ -1,8 +1,8 @@
 /**
- * TOMORROW V4.7 — STRUCTURED KNOWLEDGE VAULT & MULTIDIMENSIONAL STUDENT PROFILE
+ * TOMORROW V4.7.2 — STRUCTURED KNOWLEDGE VAULT, 50/50 SPLIT PANES & RESILIENT MARKDOWN
  * Automated Training & Verification Simulator
  * 
- * 28 Scenarios:
+ * 29 Scenarios:
  * 1. Test_Pronoun_No_Bro: Xưng "t - m", 0% "bro", max_tokens 250, thuần văn bản, lưu thần tượng Ronaldo vào Memory Vault.
  * 2. Test_Stop_Signal_Okk_Sybau: Tín hiệu dừng "okk" & "sybau" -> MODE=STOP_SIGNAL, max_tokens 250, 1 bong bóng <= 4 từ, 0 dấu "?".
  * 3. Test_Web_No_Stalling: Tra cứu Web đưa kết quả kèm URL ngay lập tức, max_tokens 1200, 0% hứa suông câu giờ.
@@ -31,6 +31,7 @@
  * 26. Test_Day11_Study_And_Finance_Upsert: Upsert môn "Giải tích 2" không tạo 2 bản trùng lặp + tách đúng targetAmount: "15tr" cho mục tiêu tiết kiệm.
  * 27. Test_Day11_Selective_Context_Slice: "" khi STOP_SIGNAL, ưu tiên studySubjects cho STEM_MATH, ưu tiên financeGoals cho FINANCE_QUANT, độ dài <= 480 ký tự.
  * 28. Test_Day11_SystemPrompt_Budget: SYSTEM_INSTRUCTION Ngày 11 tự động kiểm tra đạt < 450 từ.
+ * 29. Test_Day11_Markdown_InlineFence_Normalizer: Bóc tách fence dính liền cuối câu, bảo toàn code và comment (#), giải thích ra ngoài.
  */
 
 const fs = require('fs');
@@ -1434,8 +1435,52 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
   });
 }
 
+// TEST 29: Test_Day11_Markdown_InlineFence_Normalizer
+{
+  const s1 = 'như sau: ```python\ndef greet(name):\n    # sử dụng hàm\n    print(name)\n```tham số `name` là chuỗi';
+  const s2 = 'type struct: ```c\n#include <stdio.h>\nstruct Point {\n    int x;\n    int y;\n};\n```';
+
+  const n1 = aiService.normalizeMarkdownFences(s1);
+  const n2 = aiService.normalizeMarkdownFences(s2);
+
+  // Kiểm tra chuỗi 1:
+  const s1HasNormalizedOpening = n1.includes('như sau:\n```python');
+  const s1HasNormalizedClosing = n1.includes('```\ntham số `name` là chuỗi');
+  const s1CodeContainsComment = n1.includes('# sử dụng hàm');
+  const s1CodeContainsDef = n1.includes('def greet(name):');
+
+  // Kiểm tra chuỗi 2:
+  const s2HasNormalizedOpening = n2.includes('type struct:\n```c');
+  const s2CodeContainsInclude = n2.includes('#include <stdio.h>');
+
+  const passed =
+    s1HasNormalizedOpening &&
+    s1HasNormalizedClosing &&
+    s1CodeContainsComment &&
+    s1CodeContainsDef &&
+    s2HasNormalizedOpening &&
+    s2CodeContainsInclude;
+
+  const score = passed ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day11_Markdown_InlineFence_Normalizer',
+    input: 'Chuẩn hóa fence dính liền cuối câu: "như sau: ```python..." và "```tham số..."',
+    mode: 'MARKDOWN_INLINE_FENCE_NORMALIZER',
+    output: [
+      `S1 Normalized:\n${n1}`,
+      `S2 Normalized:\n${n2}`,
+    ],
+    score,
+    passed,
+    details: passed
+      ? 'Tách chuẩn xác mở fence dính liền cuối câu, bóc chữ giải thích ra ngoài thẻ đóng, bảo toàn 100% comment (#) và code trong block, 0 empty code block'
+      : 'Thất bại: Fence dính liền không được chuẩn hóa hoặc làm sai lệch mã nguồn/chữ giải thích',
+  });
+}
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 28 SCENARIOS (TOMORROW V4.7):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 29 SCENARIOS (TOMORROW V4.7.2):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
@@ -1449,16 +1494,16 @@ results.forEach((r, idx) => {
 const totalScore = results.reduce((acc, cur) => acc + cur.score, 0);
 const allPassed = results.every(r => r.passed);
 
-console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/280 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
+console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/290 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
 console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.7.0',
+  version: 'v4.7.2',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.7 — Structured Knowledge Vault & Multidimensional Student Profile',
+  architecture: 'Tomorrow v4.7.2 — Structured Knowledge Vault, 50/50 Split Panes & Resilient Markdown Normalizer',
   totalScore,
-  maxScore: 280,
+  maxScore: 290,
   allPassed,
   scenarios: results,
 };

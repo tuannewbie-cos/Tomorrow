@@ -11,6 +11,7 @@ interface ColdGreetingProps {
   hasHistory: boolean;
   onSelectSuggestion: (text: string) => void;
   theme?: ThemeColors;
+  compact?: boolean;
 }
 
 export const ColdGreeting: React.FC<ColdGreetingProps> = ({
@@ -19,6 +20,7 @@ export const ColdGreeting: React.FC<ColdGreetingProps> = ({
   hasHistory,
   onSelectSuggestion,
   theme = DARK_THEME,
+  compact = false,
 }) => {
   // Sinh các Suggestion Chips theo ngữ cảnh
   const getSuggestionChips = () => {
@@ -55,12 +57,15 @@ export const ColdGreeting: React.FC<ColdGreetingProps> = ({
 
   return (
     <ScrollView
-      contentContainerStyle={styles.container}
+      contentContainerStyle={[
+        styles.container,
+        compact && { paddingHorizontal: 12, paddingTop: 20, paddingBottom: 16 },
+      ]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
       {/* Brand Header */}
-      <View style={styles.brandContainer}>
+      <View style={[styles.brandContainer, compact && { marginBottom: 14 }]}>
         <View style={styles.geminiBadge}>
           <Sparkles size={16} color="#8B5CF6" />
           <Text style={styles.geminiBadgeText}>Tomorrow</Text>
@@ -74,18 +79,40 @@ export const ColdGreeting: React.FC<ColdGreetingProps> = ({
             end={{ x: 1, y: 0 }}
             style={styles.gradientPill}
           />
-          <Text style={[styles.greetingTitle, { color: theme.textPrimary }]}>
+          <Text
+            style={[
+              styles.greetingTitle,
+              { color: theme.textPrimary },
+              compact && { fontSize: 22, lineHeight: 28 },
+            ]}
+          >
             {hasHistory ? `Chào ${userMemory.nickname || userMemory.userName || 'bạn'},` : 'Chào bạn,'}
           </Text>
         </View>
 
-        <Text style={[styles.greetingSubtext, { color: theme.textSecondary }]}>{greetingText}</Text>
+        <Text
+          style={[
+            styles.greetingSubtext,
+            { color: theme.textSecondary },
+            compact && { fontSize: 13.5, lineHeight: 20, marginTop: 4, paddingHorizontal: 4 },
+          ]}
+        >
+          {greetingText}
+        </Text>
       </View>
 
       {/* Suggestion Chips */}
       <View style={styles.chipsSection}>
-        <Text style={[styles.chipsSectionTitle, { color: theme.textMuted }]}>Gợi ý tâm sự nhanh:</Text>
-        <View style={styles.chipsGrid}>
+        <Text
+          style={[
+            styles.chipsSectionTitle,
+            { color: theme.textMuted },
+            compact && { fontSize: 11, marginBottom: 8 },
+          ]}
+        >
+          GỢI Ý TÂM SỰ NHANH:
+        </Text>
+        <View style={[styles.chipsGrid, compact && { gap: 8 }]}>
           {chips.map((chip, idx) => {
             const Icon = chip.icon;
             return (
@@ -97,15 +124,36 @@ export const ColdGreeting: React.FC<ColdGreetingProps> = ({
                     backgroundColor: theme.btnBg,
                     borderColor: theme.borderSubtle,
                   },
+                  compact && {
+                    paddingVertical: 9,
+                    paddingHorizontal: 10,
+                    borderRadius: 12,
+                    gap: 8,
+                  },
                   pressed && { backgroundColor: theme.btnHover },
                   Platform.OS === 'web' && { cursor: 'pointer' as any },
                 ]}
                 onPress={() => onSelectSuggestion(chip.label)}
               >
-                <View style={[styles.chipIconBox, { backgroundColor: `${chip.color}20` }]}>
-                  <Icon size={16} color={chip.color} />
+                <View
+                  style={[
+                    styles.chipIconBox,
+                    { backgroundColor: `${chip.color}20` },
+                    compact && { width: 24, height: 24, borderRadius: 6 },
+                  ]}
+                >
+                  <Icon size={compact ? 14 : 16} color={chip.color} />
                 </View>
-                <Text style={[styles.chipText, { color: theme.textPrimary }]}>{chip.label}</Text>
+                <Text
+                  style={[
+                    styles.chipText,
+                    { color: theme.textPrimary },
+                    compact && { fontSize: 13, lineHeight: 18 },
+                  ]}
+                  numberOfLines={2}
+                >
+                  {chip.label}
+                </Text>
               </Pressable>
             );
           })}
@@ -122,13 +170,16 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     alignItems: 'center',
     width: '100%',
+    minWidth: 0,
     maxWidth: 860,
     alignSelf: 'center',
+    ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
   },
   brandContainer: {
     alignItems: 'center',
     marginBottom: 24,
     width: '100%',
+    minWidth: 0,
   },
   geminiBadge: {
     flexDirection: 'row',
@@ -176,16 +227,21 @@ const styles = StyleSheet.create({
   },
   chipsSection: {
     width: '100%',
+    minWidth: 0,
+    maxWidth: '100%',
   },
   chipsSectionTitle: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '700',
     marginBottom: 12,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
+    paddingHorizontal: 2,
   },
   chipsGrid: {
     gap: 10,
+    width: '100%',
+    minWidth: 0,
   },
   chip: {
     flexDirection: 'row',
@@ -195,6 +251,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     gap: 10,
+    width: '100%',
+    minWidth: 0,
+    maxWidth: '100%',
+    ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
   },
   chipIconBox: {
     width: 28,
@@ -202,10 +262,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   chipText: {
     fontSize: 14.5,
     fontWeight: '500',
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
 });

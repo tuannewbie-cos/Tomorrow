@@ -886,74 +886,109 @@ export function formatCodeForDisplay(rawCode: string, language?: string): string
 }
 
 /**
+ * Tiền chuẩn hóa Code Fence cho Markdown:
+ * - Chuẩn hóa CRLF -> LF
+ * - Tách thẻ mở fence dính liền cuối câu (VD: "như sau: ```python" -> "như sau:\n```python")
+ * - Đảm bảo sau ```lang luôn có \n tách mã nguồn xuống dòng dưới
+ * - Đảm bảo thẻ đóng ``` đứng dòng riêng và nếu dính chữ giải thích phía sau thì tách ra ngoài khối code
+ */
+export function normalizeMarkdownFences(raw: string): string {
+  if (!raw || typeof raw !== 'string') return '';
+  let text = raw.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // 1. Tách thẻ mở fence dính liền cuối câu: "như sau: ```python" -> "như sau:\n```python"
+  text = text.replace(/([^\n])[ \t]*```([a-zA-Z0-9_+#.-]*)/g, '$1\n```$2');
+
+  const lines = text.split('\n');
+  const normalizedLines: string[] = [];
+  let inCode = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (!inCode) {
+      if (trimmed.startsWith('```')) {
+        inCode = true;
+        const rest = trimmed.slice(3).trim();
+        const langMatch = rest.match(/^([a-zA-Z0-9_+#.-]*)(?:[ \t]+([^\n]+))?$/);
+        const lang = (langMatch && langMatch[1]) ? langMatch[1] : '';
+        const inlineCode = (langMatch && langMatch[2]) ? langMatch[2] : '';
+        normalizedLines.push(`\`\`\`${lang}`);
+        if (inlineCode.length > 0) {
+          normalizedLines.push(inlineCode);
+        }
+      } else {
+        normalizedLines.push(line);
+      }
+    } else {
+      if (trimmed.startsWith('```')) {
+        inCode = false;
+        const trailing = trimmed.slice(3).trim();
+        normalizedLines.push('```');
+        if (trailing.length > 0) {
+          normalizedLines.push(trailing);
+        }
+      } else {
+        normalizedLines.push(line);
+      }
+    }
+  }
+
+  return normalizedLines.join('\n');
+}
+
+/**
  * Bộ phân tích cú pháp khối Markdown tự chủ (Zero External Bundler Dependencies)
+ * Sử dụng State Machine tuần tự theo dòng bảo vệ trọn vẹn khối mã
  */
 export function parseMarkdownBlocks(rawText: string): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = [];
-  // Chuẩn hóa ký tự escape an toàn:
-  // Tách biệt các khối code fence (```...```) để bảo vệ tuyệt đối chuỗi string literal (như \n trong printf)
-  const parts = (rawText || '').split(/(```[\s\S]*?(?:```|$))/g);
-  const normalizedParts = parts.map((part, index) => {
-    // Chuẩn hóa CRLF (\r\n) thành LF (\n)
-    const crlfNormalized = part.replace(/\r\n/g, '\n');
-    // Chỉ unescape \r\n, \n, \t bên ngoài khối code fence (index chẵn: 0, 2, 4...)
-    if (index % 2 === 0) {
-      return crlfNormalized
-        .replace(/\\r\\n/g, '\n')
-        .replace(/\\n/g, '\n')
-        .replace(/\\t/g, '  ');
-    }
-    // Bên trong code fence (index lẻ: 1, 3, 5...): giữ nguyên vẹn escape sequence để formatCodeForDisplay xử lý
-    return crlfNormalized;
-  });
-  const normalizedText = normalizedParts.join('');
-  const lines = normalizedText.split(/\r?\n/);
+  const normalizedText = normalizeMarkdownFences(rawText || '');
+  const lines = normalizedText.split('\n');
   let i = 0;
 
   while (i < lines.length) {
     const line = lines[i];
     const trimmed = line.trim();
 
-    // 1. Khối Code: ```lang ... ``` (hỗ trợ cả multi-line lẫn single-line ```lang code```)
+    // 1. Khối Code: ```lang ... ```
     if (trimmed.startsWith('```')) {
-      const rest = trimmed.slice(3);
-      const singleLineClose = rest.indexOf('```');
-      let language = '';
-      let rawCode = '';
-
-      if (singleLineClose !== -1) {
-        // Single-line block: ```lang code```
-        const content = rest.slice(0, singleLineClose).trim();
-        const langMatch = content.match(/^([a-zA-Z0-9_-]*)\s*/);
-        language = langMatch && langMatch[1] ? langMatch[1] : '';
-        rawCode = content.slice(language.length).trim();
+      const rest = trimmed.slice(3).trim();
+      const langMatch = rest.match(/^([a-zA-Z0-9_+#.-]*)/);
+      const language = (langMatch && langMatch[1]) ? langMatch[1] : '';
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith('```')) {
+        codeLines.push(lines[i]);
         i++;
-      } else {
-        const langMatch = trimmed.match(/^```([a-zA-Z0-9_-]*)/);
-        language = langMatch && langMatch[1] ? langMatch[1] : '';
-        const codeLines: string[] = [];
-        i++;
-        while (i < lines.length && !lines[i].trim().startsWith('```')) {
-          codeLines.push(lines[i]);
-          i++;
-        }
-        if (i < lines.length && lines[i].trim().startsWith('```')) {
+      }
+      if (i < lines.length && lines[i].trim().startsWith('```')) {
+        const trailing = lines[i].trim().slice(3).trim();
+        if (trailing.length > 0) {
+          lines[i] = trailing; // Lượt lặp sau sẽ phân tích chữ giải thích
+        } else {
           i++; // Bỏ qua dòng đóng ```
         }
-        rawCode = codeLines.join('\n');
       }
+      const rawCode = codeLines.join('\n');
 
-      // Tự động giải mã escape và format đa dòng thông minh (R3)
-      const formatted = formatCodeForDisplay(rawCode, language);
-      const code = formatted.endsWith('\n') ? formatted : formatted + '\n';
-      const actualLines = code.split('\n');
+      // Cấm render khung CODE rỗng nếu không có dòng mã nào
+      if (rawCode.trim().length > 0) {
+        const formatted = formatCodeForDisplay(rawCode, language);
+        const code = formatted.endsWith('\n') ? formatted : formatted + '\n';
+        const actualLines = code.split('\n');
+        const validLineCount = actualLines.length > 1 && actualLines[actualLines.length - 1] === ''
+          ? actualLines.length - 1
+          : actualLines.length;
 
-      blocks.push({
-        type: 'code',
-        language: language.toUpperCase() || 'CODE',
-        code,
-        lineCount: Math.max(actualLines.length, 1),
-      });
+        blocks.push({
+          type: 'code',
+          language: language.toUpperCase() || 'CODE',
+          code,
+          lineCount: Math.max(validLineCount, 1),
+        });
+      }
       continue;
     }
 
@@ -1230,9 +1265,10 @@ interface CodeBlockViewProps {
   code: string;
   lineCount: number;
   theme: ThemeColors;
+  compact?: boolean;
 }
 
-const CodeBlockView: React.FC<CodeBlockViewProps> = ({ language, code, lineCount }) => {
+const CodeBlockView: React.FC<CodeBlockViewProps> = ({ language, code, lineCount, compact }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -1244,6 +1280,9 @@ const CodeBlockView: React.FC<CodeBlockViewProps> = ({ language, code, lineCount
   };
 
   const lines = code.split('\n');
+  if (lines.length > 1 && lines[lines.length - 1] === '') {
+    lines.pop();
+  }
 
   return (
     <View style={styles.codeBlockWrapper}>
@@ -1253,7 +1292,11 @@ const CodeBlockView: React.FC<CodeBlockViewProps> = ({ language, code, lineCount
           <View style={[styles.macDot, { backgroundColor: '#FF5F56' }]} />
           <View style={[styles.macDot, { backgroundColor: '#FFBD2E' }]} />
           <View style={[styles.macDot, { backgroundColor: '#27C93F' }]} />
-          <Text style={styles.codeLangText}>
+          <Text
+            style={[styles.codeLangText, compact && { fontSize: 10 }]}
+            numberOfLines={1}
+            ellipsizeMode="tail"
+          >
             {language} • {lineCount} {lineCount > 1 ? 'DÒNG' : 'DÒNG'}
           </Text>
         </View>
@@ -1285,7 +1328,10 @@ const CodeBlockView: React.FC<CodeBlockViewProps> = ({ language, code, lineCount
           {/* Cột số dòng */}
           <View style={styles.lineNumbersCol}>
             {lines.map((_, idx) => (
-              <Text key={`line-num-${idx}`} style={styles.lineNumberText}>
+              <Text
+                key={`line-num-${idx}`}
+                style={[styles.lineNumberText, compact && { fontSize: 11, lineHeight: 19 }]}
+              >
                 {idx + 1}
               </Text>
             ))}
@@ -1294,7 +1340,10 @@ const CodeBlockView: React.FC<CodeBlockViewProps> = ({ language, code, lineCount
           {/* Các dòng code tô màu */}
           <View style={styles.codeLinesCol}>
             {lines.map((line, idx) => (
-              <Text key={`code-line-${idx}`} style={styles.codeLineText}>
+              <Text
+                key={`code-line-${idx}`}
+                style={[styles.codeLineText, compact && { fontSize: 12.5, lineHeight: 19 }]}
+              >
                 {line.length === 0 ? ' ' : highlightCodeLine(line)}
               </Text>
             ))}
@@ -1435,6 +1484,7 @@ interface RichMarkdownViewProps {
   theme: ThemeColors;
   defaultTextColor?: string;
   onOpenUrl?: (url: string) => void;
+  compact?: boolean;
 }
 
 export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
@@ -1442,6 +1492,7 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
   theme,
   defaultTextColor,
   onOpenUrl,
+  compact = false,
 }) => {
   const textColor = defaultTextColor || (theme.mode === 'dark' ? theme.textAI : theme.textUser);
   const isDark = theme.mode === 'dark';
@@ -1485,6 +1536,7 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
             key={`c-${idx}`}
             style={[
               styles.inlineCode,
+              compact && { fontSize: 12.5 },
               {
                 backgroundColor: inlineCodeBg,
                 color: inlineCodeColor,
@@ -1501,6 +1553,7 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
             key={`m-${idx}`}
             style={[
               styles.inlineMath,
+              compact && { fontSize: 13.5 },
               { color: isDark ? '#C7D2FE' : '#4338CA' },
             ]}
           >
@@ -1516,6 +1569,7 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
               color: linkColor,
               textDecorationLine: 'underline',
               fontWeight: '600',
+              fontSize: compact ? 13.5 : 15,
             }}
             onPress={() => handleOpenUrl(token.url || token.text)}
           >
@@ -1523,7 +1577,7 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
           </Text>
         );
       }
-      return <Text key={`t-${idx}`}>{token.text}</Text>;
+      return <Text key={`t-${idx}`} style={compact ? { fontSize: 14, lineHeight: 21 } : undefined}>{token.text}</Text>;
     });
   };
 
@@ -1540,6 +1594,7 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
               code={block.code}
               lineCount={block.lineCount}
               theme={theme}
+              compact={compact}
             />
           );
         }
@@ -1569,9 +1624,9 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
         if (block.type === 'heading') {
           const headingStyles = [
             styles.headingBase,
-            block.level === 1 && styles.h1,
-            block.level === 2 && styles.h2,
-            block.level === 3 && styles.h3,
+            block.level === 1 && (compact ? { fontSize: 17, lineHeight: 24, marginVertical: 4 } : styles.h1),
+            block.level === 2 && (compact ? { fontSize: 15.5, lineHeight: 22, marginVertical: 3 } : styles.h2),
+            block.level === 3 && (compact ? { fontSize: 14.5, lineHeight: 21, marginVertical: 2 } : styles.h3),
             { color: textColor },
           ];
           return (
@@ -1587,13 +1642,14 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
               key={`block-quote-${bIdx}`}
               style={[
                 styles.blockquoteWrapper,
+                compact && { paddingHorizontal: 9, paddingVertical: 5, marginVertical: 4 },
                 {
                   borderLeftColor: '#3B82F6',
                   backgroundColor: isDark ? 'rgba(59, 130, 246, 0.08)' : 'rgba(59, 130, 246, 0.05)',
                 },
               ]}
             >
-              <Text style={[styles.blockquoteText, { color: textColor }]}>
+              <Text style={[styles.blockquoteText, compact && { fontSize: 13.5, lineHeight: 20 }, { color: textColor }]}>
                 {renderInline(block.text)}
               </Text>
             </View>
@@ -1602,11 +1658,11 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
 
         if (block.type === 'bullet_list') {
           return (
-            <View key={`block-blist-${bIdx}`} style={styles.listWrapper}>
+            <View key={`block-blist-${bIdx}`} style={[styles.listWrapper, compact && { marginVertical: 2 }]}>
               {block.items.map((item, itemIdx) => (
                 <View key={`bli-${itemIdx}`} style={styles.listItemRow}>
                   <Text style={[styles.bulletDot, { color: linkColor }]}>•</Text>
-                  <Text style={[styles.listItemText, { color: textColor }]}>
+                  <Text style={[styles.listItemText, compact && { fontSize: 13.5, lineHeight: 20 }, { color: textColor }]}>
                     {renderInline(item)}
                   </Text>
                 </View>
@@ -1617,13 +1673,13 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
 
         if (block.type === 'numbered_list') {
           return (
-            <View key={`block-nlist-${bIdx}`} style={styles.listWrapper}>
+            <View key={`block-nlist-${bIdx}`} style={[styles.listWrapper, compact && { marginVertical: 2 }]}>
               {block.items.map((item, itemIdx) => (
                 <View key={`nli-${itemIdx}`} style={styles.listItemRow}>
-                  <Text style={[styles.numberPrefix, { color: linkColor }]}>
+                  <Text style={[styles.numberPrefix, compact && { fontSize: 13, lineHeight: 20 }, { color: linkColor }]}>
                     {item.num}.
                   </Text>
-                  <Text style={[styles.listItemText, { color: textColor }]}>
+                  <Text style={[styles.listItemText, compact && { fontSize: 13.5, lineHeight: 20 }, { color: textColor }]}>
                     {renderInline(item.text)}
                   </Text>
                 </View>
@@ -1634,7 +1690,14 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
 
         // Paragraph mặc định
         return (
-          <Text key={`block-para-${bIdx}`} style={[styles.paragraph, { color: textColor }]}>
+          <Text
+            key={`block-para-${bIdx}`}
+            style={[
+              styles.paragraph,
+              compact && { fontSize: 14, lineHeight: 21, marginVertical: 2 },
+              { color: textColor },
+            ]}
+          >
             {renderInline(block.text)}
           </Text>
         );
@@ -1749,9 +1812,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 1,
     borderColor: '#30363D',
-    marginVertical: 8,
+    marginVertical: 6,
     overflow: 'hidden',
     width: '100%',
+    maxWidth: '100%',
+    minWidth: 0,
+    ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
   },
   codeHeader: {
     height: 34,
@@ -1759,26 +1825,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     borderBottomWidth: 1,
     borderBottomColor: '#30363D',
+    minWidth: 0,
+    width: '100%',
+    ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
   },
   macOsControls: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexShrink: 1,
+    minWidth: 0,
   },
   macDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
+    flexShrink: 0,
   },
   codeLangText: {
     color: '#8B949E',
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.5,
-    marginLeft: 8,
+    marginLeft: 6,
+    flexShrink: 1,
+    minWidth: 0,
   },
   copyCodeBtn: {
     paddingHorizontal: 8,

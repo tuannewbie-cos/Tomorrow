@@ -653,6 +653,10 @@ export default function App() {
     setPanes((prev) => {
       if (prev.length <= 1) {
         // Đang 1 pane: Mở chia đôi 2 pane 50/50 kiểu VS Code
+        // Tự động thu gọn Sidebar nếu màn hình < 1280 để nhường toàn bộ không gian cho 2 cột chat
+        if (width < 1280) {
+          setIsSidebarOpen(false);
+        }
         const firstPane = prev[0] || { id: 'pane-1', sessionId: null };
         const otherSession = sessionsRef.current.find((s) => s.id !== firstPane.sessionId);
         const newPane: ChatPane = {
@@ -673,7 +677,7 @@ export default function App() {
         return next;
       }
     });
-  }, []);
+  }, [width]);
 
   const handleAddPane = useCallback(() => {
     setPanes((prev) => {
@@ -1005,7 +1009,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7.1</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7.2</Text>
               </View>
             </View>
           </View>
@@ -1196,6 +1200,10 @@ export default function App() {
                       styles.singlePaneWrapper,
                       panes.length > 1 && {
                         flex: 1,
+                        flexBasis: 0,
+                        minWidth: 0,
+                        maxWidth: '100%',
+                        overflow: 'hidden',
                         borderLeftWidth: paneIndex > 0 ? 1 : 0,
                         borderLeftColor: theme.borderSubtle,
                       },
@@ -1391,6 +1399,7 @@ export default function App() {
                           hasHistory={false}
                           onSelectSuggestion={(text) => handleSendMessageInPane(pane.id, text)}
                           theme={theme}
+                          compact={panes.length > 1}
                         />
                       ) : (
                         <FlatList
@@ -1402,12 +1411,18 @@ export default function App() {
                           data={paneMessages}
                           keyExtractor={(item) => item.id}
                           renderItem={({ item }) => (
-                            <ChatBubble message={item} isDesktop={isDesktop} theme={theme} />
+                            <ChatBubble
+                              message={item}
+                              isDesktop={isDesktop}
+                              theme={theme}
+                              compact={panes.length > 1}
+                              isSplitMode={panes.length > 1}
+                            />
                           )}
                           style={styles.flatListStyle}
                           contentContainerStyle={[
                             styles.chatListContent,
-                            { paddingHorizontal: panes.length > 1 ? 16 : (isDesktop ? 28 : 16) },
+                            { paddingHorizontal: panes.length > 1 ? 12 : (isDesktop ? 28 : 16) },
                           ]}
                           showsVerticalScrollIndicator={false}
                           onScroll={(e) => {
@@ -1461,6 +1476,7 @@ export default function App() {
                         isLoading={false}
                         isTomorrowTyping={isTyping}
                         theme={theme}
+                        isSplitMode={panes.length > 1}
                       />
                     </View>
                   </View>
@@ -1640,10 +1656,15 @@ const styles = StyleSheet.create({
   },
   singlePaneWrapper: {
     flex: 1,
+    flexBasis: 0,
+    minWidth: 0,
+    maxWidth: '100%',
+    overflow: 'hidden',
     height: '100%',
     position: 'relative',
     display: 'flex',
     flexDirection: 'column',
+    ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
   },
   paneHeaderBar: {
     height: 40,
@@ -1730,11 +1751,15 @@ const styles = StyleSheet.create({
   chatAreaWrapper: {
     flex: 1,
     width: '100%',
+    minWidth: 0,
+    maxWidth: '100%',
+    overflow: 'hidden',
     height: '100%',
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'space-between',
     position: 'relative',
+    ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
   },
   flatListStyle: {
     flex: 1,

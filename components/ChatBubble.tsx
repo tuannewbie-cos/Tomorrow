@@ -3,14 +3,16 @@ import { View, Text, StyleSheet, Image, Pressable, useWindowDimensions, Platform
 import { ChatMessage } from '../types/chat';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
 import { Globe, ExternalLink } from 'lucide-react-native';
-import { RichMarkdownView, copyToClipboard, formatCodeForDisplay } from './RichMarkdownView';
-export { formatCodeForDisplay };
+import { RichMarkdownView, copyToClipboard, formatCodeForDisplay, normalizeMarkdownFences } from './RichMarkdownView';
+export { formatCodeForDisplay, normalizeMarkdownFences };
 
 interface ChatBubbleProps {
   message: ChatMessage;
   onPressImage?: (uri: string) => void;
   isDesktop?: boolean;
   theme?: ThemeColors;
+  compact?: boolean;
+  isSplitMode?: boolean;
 }
 
 const ChatBubbleBase: React.FC<ChatBubbleProps> = ({
@@ -18,6 +20,8 @@ const ChatBubbleBase: React.FC<ChatBubbleProps> = ({
   onPressImage,
   isDesktop: propIsDesktop,
   theme = DARK_THEME,
+  compact = false,
+  isSplitMode = false,
 }) => {
   const { width } = useWindowDimensions();
   const isDesktop = propIsDesktop ?? width >= 768;
@@ -35,18 +39,28 @@ const ChatBubbleBase: React.FC<ChatBubbleProps> = ({
   const borderColor = isAI ? theme.borderAI : 'transparent';
   const timestampColor = isAI ? theme.textMuted : 'rgba(255, 255, 255, 0.8)';
 
-  // 1. Kiểm tra nhanh nội dung có chứa khối Rich Markdown không (Code block, Table, Math, Heading)
+  // 1. Kiểm tra nhanh & Tiền chuẩn hóa nội dung bằng normalizeMarkdownFences
   const safeText = typeof message.text === 'string' ? message.text : (message.text ? JSON.stringify(message.text, null, 2) : '');
-  const messageText = safeText === '[object Object]' ? '' : safeText;
+  const rawMessageText = safeText === '[object Object]' ? '' : safeText;
+  const messageText = normalizeMarkdownFences(rawMessageText);
   const normalizedText = messageText.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
   const hasRichBlock = /```|\|.*\||^#{1,3}\s|\$\$|\$/.test(normalizedText);
 
   // 2. Tính toán Dual-Width Bubble:
-  // - Nếu hasRichBlock === false: maxWidth gọn gàng (75% desktop, 85% mobile), padding Messenger chuẩn
-  // - Nếu hasRichBlock === true: maxWidth rộng rãi (tối đa 760px desktop, 92% mobile) chuẩn J.A.R.V.I.S HUD
-  const bubbleMaxWidth = hasRichBlock
-    ? (isDesktop ? 760 : '92%')
-    : (isDesktop ? '75%' : '85%');
+  // - Khi isSplitMode === true: mở rộng AI lên 95% (98% khi có khối code/bảng) và User 85%
+  // - Khi bình thường: AI tối đa 760px (92% mobile) khi có rich block, hoặc 75%/85%
+  let bubbleMaxWidth: any;
+  if (isSplitMode) {
+    if (isAI) {
+      bubbleMaxWidth = hasRichBlock ? '98%' : '95%';
+    } else {
+      bubbleMaxWidth = '85%';
+    }
+  } else {
+    bubbleMaxWidth = hasRichBlock
+      ? (isDesktop ? 760 : '92%')
+      : (isDesktop ? '75%' : '85%');
+  }
 
   const getDomainName = (url: string, sourceName?: string): string => {
     if (sourceName && !['Google News', 'Web Search', 'Google Grounding'].includes(sourceName)) {
@@ -91,8 +105,8 @@ const ChatBubbleBase: React.FC<ChatBubbleProps> = ({
             borderColor: borderColor,
             borderWidth: isAI ? 1 : 0,
             maxWidth: bubbleMaxWidth,
-            paddingHorizontal: hasRichBlock ? 18 : 16,
-            paddingVertical: hasRichBlock ? 12 : 10,
+            paddingHorizontal: compact ? 12 : (hasRichBlock ? 18 : 16),
+            paddingVertical: compact ? 9 : (hasRichBlock ? 12 : 10),
             shadowOpacity: theme.mode === 'light' ? 0.05 : 0.12,
           },
           isAI ? styles.bubbleAI : styles.bubbleUser,
@@ -119,6 +133,7 @@ const ChatBubbleBase: React.FC<ChatBubbleProps> = ({
             theme={theme}
             defaultTextColor={textColor}
             onOpenUrl={handleOpenUrl}
+            compact={compact}
           />
         ) : null}
 
@@ -221,6 +236,8 @@ export const ChatBubble = React.memo(ChatBubbleBase, (prevProps, nextProps) => {
     prevProps.message.imageUri === nextProps.message.imageUri &&
     prevProps.message.imageBase64 === nextProps.message.imageBase64 &&
     prevProps.isDesktop === nextProps.isDesktop &&
+    prevProps.compact === nextProps.compact &&
+    prevProps.isSplitMode === nextProps.isSplitMode &&
     prevProps.theme?.mode === nextProps.theme?.mode
   );
 });

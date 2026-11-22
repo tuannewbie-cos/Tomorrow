@@ -1,4 +1,4 @@
-import React, { useState, useRef, useImperativeHandle, forwardRef } from 'react';
+import React, { useState, useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
 import {
   View,
   TextInput,
@@ -32,6 +32,7 @@ export interface FloatingInputBarProps {
   disabled?: boolean;
   isTomorrowTyping?: boolean;
   theme?: ThemeColors;
+  isSplitMode?: boolean;
 }
 
 export interface FloatingInputBarRef {
@@ -50,6 +51,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
   disabled,
   isTomorrowTyping = false,
   theme = DARK_THEME,
+  isSplitMode = false,
 }, ref) => {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
@@ -61,11 +63,18 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
   const totalKeystrokesRef = useRef<number>(0);
   const recentSendTimestampsRef = useRef<number[]>([]);
 
+  const defaultMinHeight = isSplitMode ? 32 : 44;
   const [inputText, setInputText] = useState('');
-  const [inputHeight, setInputHeight] = useState(44);
+  const [inputHeight, setInputHeight] = useState(defaultMinHeight);
   const [selectedImage, setSelectedImage] = useState<{ uri: string; base64?: string; sizeKB?: number } | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [forceWebSearch, setForceWebSearch] = useState(false);
+
+  useEffect(() => {
+    if (!inputText) {
+      setInputHeight(isSplitMode ? 32 : 44);
+    }
+  }, [inputText, isSplitMode]);
 
   useImperativeHandle(ref, () => ({
     focus: () => {
@@ -75,7 +84,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
       setInputText('');
       setSelectedImage(null);
       setShowEmojiPicker(false);
-      setInputHeight(44);
+      setInputHeight(isSplitMode ? 32 : 44);
       typingStartTimeRef.current = null;
       backspaceCountRef.current = 0;
       totalKeystrokesRef.current = 0;
@@ -84,7 +93,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
       setInputText('');
       setSelectedImage(null);
       setShowEmojiPicker(false);
-      setInputHeight(44);
+      setInputHeight(isSplitMode ? 32 : 44);
       typingStartTimeRef.current = null;
       backspaceCountRef.current = 0;
       totalKeystrokesRef.current = 0;
@@ -194,10 +203,13 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
     totalKeystrokesRef.current = 0;
   };
 
+  const minAllowedH = isSplitMode ? 32 : 44;
+  const maxAllowedH = isSplitMode ? 120 : 160;
+
   const handleTextChange = (text: string) => {
     setInputText(text);
     if (!text.trim()) {
-      setInputHeight(44);
+      setInputHeight(minAllowedH);
       typingStartTimeRef.current = null;
       backspaceCountRef.current = 0;
       totalKeystrokesRef.current = 0;
@@ -209,7 +221,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
     totalKeystrokesRef.current++;
     if (Platform.OS === 'web') {
       const lines = text.split('\n').length;
-      const estimated = Math.min(Math.max(44, lines * 22 + 16), 160);
+      const estimated = Math.min(Math.max(minAllowedH, lines * (isSplitMode ? 20 : 22) + (isSplitMode ? 8 : 16)), maxAllowedH);
       setInputHeight(estimated);
     }
   };
@@ -217,7 +229,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
   const handleContentSizeChange = (e: any) => {
     const h = e.nativeEvent?.contentSize?.height;
     if (h && typeof h === 'number') {
-      const clamped = Math.min(Math.max(44, Math.round(h)), 160);
+      const clamped = Math.min(Math.max(minAllowedH, Math.round(h)), maxAllowedH);
       setInputHeight(clamped);
     }
   };
@@ -264,7 +276,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
   };
 
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, isSplitMode && styles.wrapperSplit]}>
       {/* Thanh Quick Emoji Popover */}
       {showEmojiPicker && (
         <View
@@ -317,11 +329,12 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
       <View
         style={[
           styles.pillContainer,
+          isSplitMode && styles.pillContainerSplit,
           {
             backgroundColor: theme.inputBg,
             borderColor: theme.inputBorder,
-            alignItems: inputHeight > 48 ? 'flex-end' : 'center',
-            paddingBottom: inputHeight > 48 ? 8 : 6,
+            alignItems: inputHeight > (isSplitMode ? 36 : 48) ? 'flex-end' : 'center',
+            paddingBottom: inputHeight > (isSplitMode ? 36 : 48) ? (isSplitMode ? 6 : 8) : (isSplitMode ? 4 : 6),
           },
         ]}
       >
@@ -329,32 +342,35 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
         <Pressable
           style={({ pressed }) => [
             styles.iconButton,
+            isSplitMode && styles.iconButtonSplit,
             pressed && { backgroundColor: theme.btnHover },
             Platform.OS === 'web' && { cursor: 'pointer' as any },
           ]}
           onPress={handlePickImage}
           disabled={isLoading || isTomorrowTyping}
         >
-          <ImageIcon size={21} color={selectedImage ? theme.bubbleUser : theme.textSecondary} />
+          <ImageIcon size={isSplitMode ? 17 : 21} color={selectedImage ? theme.bubbleUser : theme.textSecondary} />
         </Pressable>
 
         {/* Nút chọn nhanh Emoji */}
         <Pressable
           style={({ pressed }) => [
             styles.iconButton,
+            isSplitMode && styles.iconButtonSplit,
             pressed && { backgroundColor: theme.btnHover },
             Platform.OS === 'web' && { cursor: 'pointer' as any },
           ]}
           onPress={() => setShowEmojiPicker((prev) => !prev)}
           disabled={isLoading || isTomorrowTyping}
         >
-          <Smile size={21} color={showEmojiPicker ? theme.bubbleUser : theme.textSecondary} />
+          <Smile size={isSplitMode ? 17 : 21} color={showEmojiPicker ? theme.bubbleUser : theme.textSecondary} />
         </Pressable>
 
         {/* Nút bật/tắt Ép buộc Tìm kiếm Web (🌐 Web) */}
         <Pressable
           style={({ pressed }) => [
             styles.iconButton,
+            isSplitMode && styles.iconButtonSplit,
             forceWebSearch && { backgroundColor: '#2563EB' },
             !forceWebSearch && pressed && { backgroundColor: theme.btnHover },
             Platform.OS === 'web' && { cursor: 'pointer' as any },
@@ -363,24 +379,25 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
           disabled={isLoading || isTomorrowTyping}
           hitSlop={6}
         >
-          <Globe size={19} color={forceWebSearch ? '#FFFFFF' : theme.textSecondary} />
+          <Globe size={isSplitMode ? 16 : 19} color={forceWebSearch ? '#FFFFFF' : theme.textSecondary} />
         </Pressable>
 
-        {/* TextInput co giãn đa dòng mượt mà theo nội dung (minHeight: 44, maxHeight: 160) */}
+        {/* TextInput co giãn đa dòng mượt mà theo nội dung */}
         <TextInput
           ref={textInputRef}
           style={[
             styles.input,
+            isSplitMode && styles.inputSplit,
             {
               color: theme.inputText,
-              height: Math.min(Math.max(44, inputHeight), 160),
+              height: Math.min(Math.max(minAllowedH, inputHeight), maxAllowedH),
             },
             Platform.OS === 'web' &&
               ({
                 outlineStyle: 'none',
                 boxSizing: 'border-box',
                 resize: 'none',
-                overflowY: inputHeight >= 155 ? 'auto' : 'hidden',
+                overflowY: inputHeight >= (isSplitMode ? 115 : 155) ? 'auto' : 'hidden',
               } as any),
           ]}
           placeholder="Nhắn cho Tomorrow..."
@@ -399,6 +416,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
         <Pressable
           style={({ pressed }) => [
             styles.sendButton,
+            isSplitMode && styles.sendButtonSplit,
             { backgroundColor: theme.btnBg },
             (inputText.trim().length > 0 || selectedImage) &&
               !isLoading &&
@@ -415,7 +433,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <Send
-              size={18}
+              size={isSplitMode ? 15 : 18}
               color={
                 inputText.trim().length > 0 || selectedImage ? '#FFFFFF' : theme.textMuted
               }
@@ -435,6 +453,10 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     paddingTop: 4,
     backgroundColor: 'transparent',
+  },
+  wrapperSplit: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
   },
   emojiRow: {
     flexDirection: 'row',
@@ -504,6 +526,14 @@ const styles = StyleSheet.create({
     maxWidth: 820,
     alignSelf: 'center',
   },
+  pillContainerSplit: {
+    minHeight: 46,
+    paddingLeft: 6,
+    paddingRight: 6,
+    paddingVertical: 4,
+    maxWidth: 780,
+    gap: 4,
+  },
   iconButton: {
     width: 36,
     height: 36,
@@ -511,6 +541,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+  },
+  iconButtonSplit: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
   },
   input: {
     flex: 1,
@@ -527,6 +562,15 @@ const styles = StyleSheet.create({
         ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
         : undefined,
   },
+  inputSplit: {
+    fontSize: 14,
+    lineHeight: 20,
+    minHeight: 32,
+    maxHeight: 120,
+    paddingHorizontal: 6,
+    paddingTop: Platform.OS === 'web' ? 6 : 4,
+    paddingBottom: Platform.OS === 'web' ? 6 : 4,
+  },
   sendButton: {
     width: 36,
     height: 36,
@@ -535,6 +579,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 6,
     flexShrink: 0,
+  },
+  sendButtonSplit: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    marginLeft: 4,
   },
   sendButtonPressed: {
     opacity: 0.8,

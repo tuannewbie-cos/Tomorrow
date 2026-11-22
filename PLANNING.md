@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.5.5` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.2` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -202,7 +202,29 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
     + Modal macOS tiêu chuẩn 4 tab (Học tập, Tài chính, Cốt lõi & Dự án, Thói quen & Gần đây) với form thêm nhanh & xóa từng mục, đồng bộ trực tiếp xuống `AsyncStorage`.
   - **Bộ kiểm thử tự động `train_simulator.js`:**
     + Bổ sung 4 scenarios Ngày 11: `Test_Day11_Vault_Migration`, `Test_Day11_Study_And_Finance_Upsert`, `Test_Day11_Selective_Context_Slice`, `Test_Day11_SystemPrompt_Budget`.
-    + Đạt điểm tuyệt đối 28/28 scenarios (280/280 điểm 100% hoàn hảo). Header cập nhật **`Online • v4.7.1`** (Hotfix: Single Source of Truth cho session switching, triệt tiêu freeze UI và stale messages khi chuyển phiên).
+    + Đạt điểm tuyệt đối 28/28 scenarios (280/280 điểm 100% hoàn hảo).
+
+- [x] **Ngày 11+ (`fix/sessions-split-markdown` — Phiên bản `Online • v4.7.2`): Khắc phục Đơ Đổi Phiên, Chuẩn hóa Split Panes 50/50, Chế độ Đọc Thu gọn & Normalizer Markdown Inline Fence**
+  - **Single Source of Truth & Zero-Freeze Session Switching (`App.tsx`, `SidebarDrawer.tsx`, `chatStorage.ts`):**
+    + Loại bỏ hoàn toàn vòng lặp đồng bộ `useEffect` giữa `sessions` <-> `messages` <-> `panes`.
+    + Tin nhắn mỗi pane dẫn xuất trực tiếp qua `useMemo` từ `sessions.find(s => s.id === pane.sessionId)?.messages ?? []`.
+    + Luôn duy trì `sessionsRef.current = sessions` cập nhật tức thì tránh stale closure.
+    + Viết lại `handleSelectSession` phản hồi tức thì (`< 16ms`), quản lý `typingSessionIds` độc lập theo từng phiên, xóa sạch ảnh nháp chưa gửi, không bao giờ bị đơ/treo giao diện khi thoát khỏi phiên có ảnh lớn (`"Giải bài tập qua hình ảnh"`).
+    + Đồng bộ kép Sidebar Desktop (`App.tsx`) và Mobile Drawer (`components/SidebarDrawer.tsx`), bảo toàn `e.stopPropagation()` trên nút thùng rác xóa phiên.
+  - **50/50 Split Panes & Chống Xén Mép Trái (`App.tsx`, `ColdGreeting.tsx`, `FloatingInputBar.tsx`):**
+    + Thiết lập quy chuẩn CSS Flexbox nghiêm ngặt: `flex: 1, flexBasis: 0, minWidth: 0, maxWidth: '100%', overflow: 'hidden'` trên `singlePaneWrapper` và `chatAreaWrapper`.
+    + Khi bật chia đôi qua `Cmd+ArrowUp` hoặc nút Header trên màn hình `< 1280px`, tự động thu gọn Sidebar (`setIsSidebarOpen(false)`) để nhường toàn bộ không gian cho 2 cột chat.
+    + Thẻ gợi ý `ColdGreeting`: đặt `minWidth: 0, flexShrink: 1`, điều chỉnh padding/border-radius trong chế độ `compact`, triệt tiêu hoàn toàn lỗi cắt mất chữ `"G"` trong `"GỢI Ý TÂM SỰ NHANH:"` và bo góc thẻ.
+    + Thanh nhập liệu `FloatingInputBar`: nhận prop `isSplitMode={panes.length > 1}`, co gọn `minHeight: 46` (thay vì 52), padding wrapper `12px` (thay vì 20px), icon buttons `30x30`, send button `32x32`, text input font `14px` / line-height `20px`, loại bỏ hiện tượng phình chiều cao và đẩy lệch text giữa 2 khung.
+  - **Chế độ Đọc Thu Gọn Cho Split Screen (`compact`):**
+    + `ChatBubble`: độ rộng tối đa bong bóng linh hoạt (`hasRichBlock ? '98%' : '95%'`), padding `12px 9px`, pass `compact` cho `RichMarkdownView`.
+    + `RichMarkdownView`: cỡ chữ văn bản `14px` (lineHeight `21px`), cỡ chữ code `12.5px` (lineHeight `19px`), căn chỉnh thanh tiêu đề code Space-Between, luôn cố định nút "Sao chép" hiển thị trọn vẹn ở góc phải.
+  - **Bộ Phân Tích Markdown State Machine & Inline Fence Normalizer (`components/RichMarkdownView.tsx`, `services/aiService.ts`):**
+    + Hàm `normalizeMarkdownFences`: bóc tách chuẩn xác thẻ mở fence dính liền cuối câu (`"như sau: ```python"` -> `"như sau:\n```python"`), tách chữ giải thích phía sau thẻ đóng ra ngoài (`"```tham số `name`..."` -> `"```\ntham số `name`..."`).
+    + Thay thế hàm tách chuỗi mong manh bằng Bộ phân tích tuần tự State Machine theo từng dòng (`parseMarkdownBlocks`), bảo vệ trọn vẹn ghi chú comment `#` (không bao giờ bị biến thành Heading), loại bỏ tình trạng nhốt chữ vào code block hoặc sinh code block rỗng.
+  - **Bộ kiểm thử tự động `train_simulator.js`:**
+    + Bổ sung kịch bản TEST 29: `Test_Day11_Markdown_InlineFence_Normalizer`.
+    + Đạt điểm tuyệt đối 29/29 scenarios (290/290 điểm 100% hoàn hảo). Header cập nhật: **`Online • v4.7.2`**.
 
 - [ ] **Ngày 12 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
