@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.6` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.7` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -305,6 +305,33 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
     + Đạt điểm tuyệt đối 36/36 scenarios (360/360 điểm 100% hoàn hảo).
   - Header cập nhật: **`Online • v4.7.6`**.
 
+#### ✅ Đã hoàn thành (Bản chuẩn hóa UI/UX v4.7.7):
+- [x] **Khởi tạo tệp quy chuẩn thiết kế `DESIGN.md` làm Nguồn Sự Thật Duy Nhất (SSOT):**
+  - Khóa chặt vào `.antigravity/rules.md`, `.cursorrules`, và `SKILL.md`.
+  - Triết lý: Minimalist macOS Native + Gemini Minimalism, ưu tiên Keyboard-First.
+- [x] **Header tối giản căn giữa tuyệt đối theo chiều ngang (`App.tsx`):**
+  - Trái: Duy nhất nút `☰` toggle Sidebar (`Cmd + B`).
+  - Giữa: Cụm `Tomorrow` + badge `Online • v4.7.7` căn giữa tuyệt đối (`position: absolute, left: 0, right: 0`). Xóa bỏ badge tên sổ ghi chú trên Header.
+  - Phải: Duy nhất thanh `Tìm kiếm ⌘K` và nút New Chat (`SquarePen`). Xóa hoàn toàn nút Chia đôi cửa sổ và nút Mặt trăng/Mặt trời trên Header.
+- [x] **Màn hình mở đầu EmptyState (`components/ColdGreeting.tsx`):**
+  - Thay badge tím bằng icon chính thức của ứng dụng `T.M.R` bo góc chuẩn macOS (`56x56`, `borderRadius: 14`, nền đen `#0B0B0D`, 5 cột sóng trắng bên trên, chữ `T.M.R` bên dưới).
+  - Một dòng lời chào duy nhất căn giữa: `"Chào ${displayName}, chúng ta nên bắt đầu làm việc gì?"`. Xóa bỏ hoàn toàn lời chào 2 tầng và dòng phụ.
+- [x] **Thanh nhập liệu phong cách Gemini & Sửa triệt để lỗi upload tệp (`components/FloatingInputBar.tsx`):**
+  - Bỏ icon ảnh cũ, icon Emote, icon Quả cầu bên trái ô nhập liệu.
+  - Đặt duy nhất 1 nút tròn `+` kiểu Gemini (khi bấm chuyển thành `×` và mở menu popover nổi phía trên chỉ chứa mục `📎 Tệp`).
+  - Gắn thẻ `<input type="file" />` ẩn kích hoạt trực tiếp trong event handler; hỗ trợ ảnh (nén Vision Lab), tệp văn bản / code (`.txt`, `.md`, `.csv`, `.json`, `.py`, `.ts`, `.js`, `.cpp`...), và PDF (kèm chip đính kèm có nút xóa `×`).
+- [x] **Dọn sạch bảng `Cmd + K` & Hoạt ảnh chuẩn macOS (`components/CommandPalette.tsx`, `components/SidebarDrawer.tsx`, `App.tsx`):**
+  - Xóa bỏ hoàn toàn thanh footer bảng `Cmd + K` (`↑↓`, `↵`, `esc`, thống kê API), thêm đệm đáy danh sách.
+  - Cập nhật nhãn phím tắt mục đổi theme thành `⌘R`.
+  - Trượt Sidebar mượt `240ms cubic-bezier(0.22, 1, 0.36, 1)`.
+  - Tiêm keyframes hoạt ảnh macOS (`macosPanePop`, `macosPalettePop`, `macosFadeIn`, `macosPopoverSlide`) cho ChatPanes, CommandPalette và Popover.
+- [x] **Vá triệt để lỗi Idle Timeout khi để app lâu mới nhắn (`services/aiService.ts`):**
+  - Lắng nghe `visibilitychange`, `window.focus`, `window.online` và theo dõi `lastActivityAt`. Nếu nghỉ > 90s hoặc thức dậy từ sleep, kích hoạt `needsFreshConnection`.
+  - Cơ chế `fetchWithWakeRetry(url, options, timeoutMs)`: Chống stale TCP socket bằng `cache: 'no-store'`, cộng `+5000ms` grace timeout cho lượt đầu, tự động thử lại âm thầm đúng 1 lần sau 350ms khi gặp lỗi mạng/socket chết lần 1 trước khi fallback.
+  - Reset cooldown 10 phút cho OpenAI 429 rate limit, tuyệt đối không khóa vĩnh viễn OpenAI khi chỉ bị `AbortError` / Timeout.
+  - Bộ kiểm thử tự động `train_simulator.js` bổ sung TEST 39: `Test_v477_Idle_Wake_Retry_And_PromptBudget` đạt 39/39 (390/390 điểm 100% hoàn hảo).
+  - Header cập nhật: **`Online • v4.7.7`**.
+
 - [ ] **Ngày 12 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
   - Tìm kiếm toàn văn (Full-text search) trên danh sách phiên trò chuyện trong Sidebar.
@@ -363,9 +390,9 @@ Mỗi bước cập nhật tính năng mới phải tuân thủ nghiêm ngặt 3
    ```bash
    node train_simulator.js
    ```
-   *Yêu cầu bắt buộc: 38/38 kịch bản phải PASS (380/380 điểm) trước khi tạo commit.*
+   *Yêu cầu bắt buộc: 39/39 kịch bản phải PASS (390/390 điểm) trước khi tạo commit.*
 3. **Tăng Version Header & Deploy Production:**
-   - Cập nhật số phiên bản trên `App.tsx` (VD: `Online • v4.7.6`).
+   - Cập nhật số phiên bản trên `App.tsx` (VD: `Online • v4.7.7`).
    - Kiểm tra `.gitignore` đảm bảo không sót `.env` hoặc file nhạy cảm.
    - Deploy Vercel Production:
      ```bash

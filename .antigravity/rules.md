@@ -1,4 +1,4 @@
-# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.7.6)
+# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.7.7)
 
 ## 1. MÔI TRƯỜNG, NỀN TẢNG CỐT LÕI & CÁC KHÓA LƯU TRỮ
 - **Hệ điều hành phát triển & vận hành:** macOS (Ứng dụng đích chạy tại `/Applications/Tomorrow.app` kết nối Vercel Production). Mọi script/shell dùng chuẩn Unix/macOS, không dùng cú pháp Windows.
@@ -17,14 +17,16 @@
   - `types/providers.ts`: Cổng định nghĩa trừu tượng sẵn sàng mở rộng đa nhà cung cấp (OpenAI, Gemini, Claude, DeepSeek, Local Ollama).
   - `services/microPsychProfiler.ts`: Bộ giải mã DNA phong cách gõ & 7 trạng thái tâm lý ngầm của người dùng.
 
-## 2. LUẬT BẢO TOÀN GIAO DIỆN DESKTOP & MOBILE (`App.tsx`, `SidebarDrawer.tsx`, `ChatBubble.tsx`, `RichMarkdownView.tsx`, `TypingIndicator.tsx`)
+## 2. LUẬT BẢO TOÀN GIAO DIỆN DESKTOP & MOBILE (`DESIGN.md`, `App.tsx`, `SidebarDrawer.tsx`, `ChatBubble.tsx`, `RichMarkdownView.tsx`, `TypingIndicator.tsx`)
+- **LUẬT THIẾT KẾ CỨNG (`DESIGN.md`):** Trước mọi thay đổi liên quan đến giao diện, bố cục, nút bấm, phím tắt hay hoạt ảnh, BẮT BUỘC đọc và tuân thủ nghiêm ngặt `DESIGN.md`. Cấm tự ý thêm lại các nút/thẻ đã loại bỏ (nhãn sổ trên Header, nút Split Screen, nút Mặt trăng Sáng/Tối, icon Emote/Ngôn ngữ, Footer `Cmd+K`, thẻ gợi ý màn hình trống).
 - **Luật Đồng Bộ Kép Sidebar:** Trên màn hình rộng (`width >= 768px`), bố cục Split-View có thể render Sidebar trong cả `App.tsx` lẫn `components/SidebarDrawer.tsx`. Khi sửa bất kỳ thành phần nào trên Sidebar (như nút `Cuộc trò chuyện mới` chỉ có duy nhất 1 dấu `+`, nút xóa thùng rác, hoặc hàm lọc tiêu đề `isPlaceholderOrNoiseTitle`), BẮT BUỘC phải kiểm tra và cập nhật đồng bộ ở CẢ HAI FILE.
 - **Kích thước & Phông chữ:** Sidebar Desktop cố định rộng `280px` (thu gọn về `0px` khi đóng), vùng chat căn giữa `maxWidth: 820px`, phông chữ `Plus Jakarta Sans` / `Inter` làm mịn chuẩn Retina macOS.
 - **Hệ thống phím tắt & Tiện ích Desktop:**
-  + `Cmd + K`: Mở `CommandPalette` có dòng trạng thái Quota footer và tùy chọn `"Reset cờ OpenAI (Thử kết nối lại)"`.
-  + `Cmd + B`: Đóng / mở Sidebar mượt mà.
+  + `Cmd + K`: Mở `CommandPalette` tối giản không footer, có tùy chọn `"Reset cờ OpenAI (Thử kết nối lại)"`.
+  + `Cmd + B`: Đóng / mở Sidebar mượt mà (animation trượt 240ms).
   + `Cmd + N`: Mở phiên trò chuyện mới tức thì, giữ phiên cũ chạy ngầm không gián đoạn (`typingSessionIds`).
-  + `Cmd + ArrowUp`: Luôn mở thêm cửa sổ chat mới (Split Panes kiểu VS Code, tối đa 4 panes), không bao giờ gộp lại.
+  + `Cmd + R`: Chuyển đổi giao diện Sáng / Tối (`TOMORROW_THEME_MODE`), giữ `Cmd + Shift + R` cho hard reload trình duyệt.
+  + `Cmd + ArrowUp`: Luôn mở thêm cửa sổ chat mới (Split Panes kiểu VS Code, tối đa 4 panes theo sổ), không bao giờ gộp lại.
   + `Cmd + ArrowDown`: Bật chế độ chọn tab cần đóng tương tác bằng phím mũi tên `←` / `→` và bấm `Enter` để đóng (`Esc` để hủy).
   + `Enter`: Gửi tin nhắn ngay; `Shift + Enter`: Xuống dòng.
   + `Cmd + V` & Kéo-thả (Drag & Drop): Dán ảnh trực tiếp từ clipboard hoặc kéo thả file ảnh vào ô chat kèm viền sáng thông minh.

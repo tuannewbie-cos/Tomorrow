@@ -13,12 +13,22 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Image as ImageIcon, Send, X, Smile, Globe } from 'lucide-react-native';
+import { Plus, X, Paperclip, Send, FileText } from 'lucide-react-native';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
 import { KeystrokeTelemetry } from '../services/microPsychProfiler';
 import { compressImageForVision, cleanBase64 } from '../utils/imageOptimizer';
 
 export { KeystrokeTelemetry };
+
+export interface AttachedFileInfo {
+  name: string;
+  sizeKB: number;
+  content?: string;
+  base64?: string;
+  mimeType?: string;
+  ext?: string;
+  type: 'text' | 'image' | 'pdf' | 'other';
+}
 
 export interface FloatingInputBarProps {
   onSendMessage: (
@@ -43,8 +53,6 @@ export interface FloatingInputBarRef {
   setSelectedImage?: (image: { uri: string; base64?: string; sizeKB?: number } | null) => void;
 }
 
-const QUICK_EMOJIS = ['😟', '😭', '💔', '🫠', '😂', '🥰', '✨', '☕'];
-
 export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBarProps>(({
   onSendMessage,
   isLoading,
@@ -54,9 +62,9 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
   isSplitMode = false,
 }, ref) => {
   const { width } = useWindowDimensions();
-  const isDesktop = width >= 768;
 
   const textInputRef = useRef<TextInputInstance>(null);
+  const fileInputRef = useRef<any>(null);
   const lastSendTimestampRef = useRef<number>(0);
   const typingStartTimeRef = useRef<number | null>(null);
   const backspaceCountRef = useRef<number>(0);
@@ -66,8 +74,8 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
   const [inputText, setInputText] = useState('');
   const [inputHeight, setInputHeight] = useState(24);
   const [selectedImage, setSelectedImage] = useState<{ uri: string; base64?: string; sizeKB?: number } | null>(null);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [forceWebSearch, setForceWebSearch] = useState(false);
+  const [attachedFile, setAttachedFile] = useState<AttachedFileInfo | null>(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
 
   // Điều chỉnh chiều cao DOM thực tế trên Web (chuẩn 1 dòng 24px, tự giãn đến tối đa 110px)
   const adjustWebTextareaHeight = useCallback(() => {
@@ -92,6 +100,21 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
     }
   }, [inputText, isSplitMode, adjustWebTextareaHeight]);
 
+  // Đóng attach menu khi bấm ra ngoài trên Web
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !showAttachMenu) return;
+    const handleDocumentClick = (e: MouseEvent) => {
+      setShowAttachMenu(false);
+    };
+    const timer = setTimeout(() => {
+      window.addEventListener('click', handleDocumentClick);
+    }, 10);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('click', handleDocumentClick);
+    };
+  }, [showAttachMenu]);
+
   useImperativeHandle(ref, () => ({
     focus: () => {
       textInputRef.current?.focus();
@@ -99,7 +122,8 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
     clear: () => {
       setInputText('');
       setSelectedImage(null);
-      setShowEmojiPicker(false);
+      setAttachedFile(null);
+      setShowAttachMenu(false);
       setInputHeight(24);
       typingStartTimeRef.current = null;
       backspaceCountRef.current = 0;
@@ -116,7 +140,8 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
     reset: () => {
       setInputText('');
       setSelectedImage(null);
-      setShowEmojiPicker(false);
+      setAttachedFile(null);
+      setShowAttachMenu(false);
       setInputHeight(24);
       typingStartTimeRef.current = null;
       backspaceCountRef.current = 0;
@@ -141,23 +166,21 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
     },
   }));
 
-  // Chọn ảnh từ thư viện thiết bị (an toàn trên cả Mobile lẫn Web Desktop)
-  const handlePickImage = async () => {
+  // Chọn ảnh trên Mobile Native (fallback an toàn)
+  const handlePickImageNative = async () => {
     try {
-      if (Platform.OS !== 'web') {
-        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert(
-            'Cần cấp quyền',
-            'Vui lòng cấp quyền truy cập thư viện ảnh để gửi hình ảnh cho Tomorrow.'
-          );
-          return;
-        }
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Cần cấp quyền',
+          'Vui lòng cấp quyền truy cập thư viện ảnh để gửi hình ảnh cho Tomorrow.'
+        );
+        return;
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        allowsEditing: Platform.OS !== 'web',
+        allowsEditing: false,
         quality: 0.82,
         base64: true,
       });
@@ -181,8 +204,110 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
         }
       }
     } catch (err) {
-      console.error('[Picker] Lỗi chọn ảnh:', err);
-      Alert.alert('Lỗi', 'Không thể mở thư viện ảnh lúc này.');
+      console.error('[Picker Native] Lỗi chọn ảnh:', err);
+    }
+  };
+
+  // Kích hoạt chọn tệp (Web click input trực tiếp trong handler)
+  const handleOpenFilePicker = (e?: any) => {
+    if (e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation();
+    }
+    setShowAttachMenu(false);
+
+    if (Platform.OS === 'web') {
+      if (fileInputRef.current) {
+        fileInputRef.current.click();
+      }
+    } else {
+      handlePickImageNative();
+    }
+  };
+
+  // Xử lý tệp được chọn trên Web qua thẻ <input type="file" />
+  const handleFileInputChange = async (e: any) => {
+    const file = e.target?.files?.[0];
+    if (!file) return;
+
+    const fileName: string = file.name || 'file';
+    const fileSizeKB = Math.round(file.size / 1024);
+    const fileExt = fileName.includes('.') ? fileName.split('.').pop()?.toLowerCase() : '';
+
+    try {
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          const rawResult = (ev.target?.result as string) || '';
+          try {
+            const opt = await compressImageForVision(rawResult);
+            setSelectedImage({
+              uri: opt.dataUrl || `data:${opt.mimeType};base64,${opt.base64}`,
+              base64: opt.base64,
+              sizeKB: opt.sizeKB,
+            });
+          } catch {
+            const rawBase64 = cleanBase64(rawResult);
+            setSelectedImage({
+              uri: rawResult,
+              base64: rawBase64,
+              sizeKB: fileSizeKB,
+            });
+          }
+        };
+        reader.readAsDataURL(file);
+      } else {
+        const isTextCode =
+          file.type.startsWith('text/') ||
+          ['txt', 'md', 'csv', 'json', 'js', 'ts', 'tsx', 'py', 'cpp', 'c', 'java', 'html', 'css'].includes(fileExt || '');
+
+        if (isTextCode) {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const textContent = (ev.target?.result as string) || '';
+            setAttachedFile({
+              name: fileName,
+              sizeKB: fileSizeKB,
+              content: textContent,
+              ext: fileExt,
+              type: 'text',
+            });
+          };
+          reader.readAsText(file);
+        } else if (file.type === 'application/pdf' || fileExt === 'pdf') {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const rawResult = (ev.target?.result as string) || '';
+            const base64Data = cleanBase64(rawResult);
+            setAttachedFile({
+              name: fileName,
+              sizeKB: fileSizeKB,
+              base64: base64Data,
+              mimeType: 'application/pdf',
+              type: 'pdf',
+            });
+          };
+          reader.readAsDataURL(file);
+        } else {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const textContent = (ev.target?.result as string) || '';
+            setAttachedFile({
+              name: fileName,
+              sizeKB: fileSizeKB,
+              content: textContent,
+              ext: fileExt,
+              type: 'text',
+            });
+          };
+          reader.readAsText(file);
+        }
+      }
+    } catch (err) {
+      console.error('[FloatingInputBar] Lỗi tải tệp:', err);
+    } finally {
+      if (e.target) {
+        e.target.value = '';
+      }
     }
   };
 
@@ -190,7 +315,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
     const now = Date.now();
     if (now - lastSendTimestampRef.current < 200) return;
     const trimmed = inputText.trim();
-    if (!trimmed && !selectedImage) return;
+    if (!trimmed && !selectedImage && !attachedFile) return;
     if (isLoading || isTomorrowTyping) return;
 
     lastSendTimestampRef.current = now;
@@ -217,20 +342,42 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
       burstCount,
     };
 
-    // Bắt buộc lưu imagePayload trước khi reset state tránh mất payload do race condition
+    // Bắt buộc lưu payload trước khi reset state tránh mất do race condition
     const imagePayload = selectedImage;
-    const effectiveBase64 = imagePayload?.base64 || (imagePayload?.uri?.startsWith('data:image') ? cleanBase64(imagePayload.uri) : undefined);
-    const effectiveUri = imagePayload?.uri?.startsWith('data:image')
+    const filePayload = attachedFile;
+
+    let effectiveBase64 = imagePayload?.base64 || (imagePayload?.uri?.startsWith('data:image') ? cleanBase64(imagePayload.uri) : undefined);
+    let effectiveUri = imagePayload?.uri?.startsWith('data:image')
       ? imagePayload.uri
       : (effectiveBase64 ? `data:image/jpeg;base64,${effectiveBase64}` : imagePayload?.uri);
-    const effectiveText = trimmed || (imagePayload ? 'Hãy phân tích nội dung trong ảnh này giúp mình' : '');
 
-    onSendMessage(effectiveText, effectiveBase64, effectiveUri, forceWebSearch, telemetry);
+    // Nếu gửi file PDF và chưa có ảnh, truyền base64 của PDF vào để hỗ trợ Gemini InlineData
+    if (!effectiveBase64 && filePayload && filePayload.type === 'pdf' && filePayload.base64) {
+      effectiveBase64 = filePayload.base64;
+      effectiveUri = `data:application/pdf;base64,${filePayload.base64}`;
+    }
+
+    let effectiveText = trimmed;
+    if (filePayload) {
+      if (filePayload.type === 'text' && filePayload.content) {
+        const fileBlock = `[Tệp đính kèm: ${filePayload.name}]\n\`\`\`${filePayload.ext || ''}\n${filePayload.content}\n\`\`\`\n\n`;
+        effectiveText = fileBlock + (trimmed || 'Hãy phân tích nội dung tệp đính kèm này giúp mình.');
+      } else if (filePayload.type === 'pdf') {
+        const fileBlock = `[Tệp PDF đính kèm: ${filePayload.name} (~${filePayload.sizeKB} KB)]\n\n`;
+        effectiveText = fileBlock + (trimmed || 'Hãy phân tích nội dung tệp PDF này giúp mình.');
+      }
+    } else if (imagePayload && (!trimmed || trimmed === 'Hãy phân tích nội dung trong ảnh này giúp mình')) {
+      effectiveText = 'Hãy phân tích nội dung trong ảnh này giúp mình';
+    }
+
+    onSendMessage(effectiveText, effectiveBase64, effectiveUri, false, telemetry);
+
     setInputText('');
-    setInputHeight(24); // Thu chiều cao ô nhập về 24px ngay lập tức khi gửi
+    setInputHeight(24);
     setSelectedImage(null);
-    setShowEmojiPicker(false);
-    setForceWebSearch(false);
+    setAttachedFile(null);
+    setShowAttachMenu(false);
+
     if (Platform.OS === 'web') {
       const el = (textInputRef.current as any)?._node || (textInputRef.current as any);
       if (el && el.style) {
@@ -240,7 +387,6 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
       }
     }
 
-    // Reset bộ đo sau khi gửi
     typingStartTimeRef.current = null;
     backspaceCountRef.current = 0;
     totalKeystrokesRef.current = 0;
@@ -259,42 +405,26 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
       }
       totalKeystrokesRef.current++;
     }
-    if (Platform.OS === 'web') {
-      adjustWebTextareaHeight();
-    }
   };
 
-  const handleContentSizeChange = (e: any) => {
-    if (Platform.OS === 'web') return; // Cấm onContentSizeChange trên Web để chặn textarea tự nở cao
-    const h = e.nativeEvent?.contentSize?.height;
-    if (h && typeof h === 'number') {
-      setInputHeight(Math.min(110, Math.max(24, Math.round(h))));
-    }
-  };
-
-  // Phím tắt macOS: Enter để gửi (ngăn xuống dòng), Shift + Enter để xuống dòng
   const handleKeyPress = (e: any) => {
-    if (Platform.OS === 'web') {
-      const nativeEvent = e.nativeEvent || e;
-      const key = nativeEvent?.key || e.key;
-      const shiftKey = nativeEvent?.shiftKey ?? e.shiftKey;
+    const nativeEvent = e.nativeEvent || e;
+    const key = nativeEvent.key;
+    const isShift = nativeEvent.shiftKey;
 
-      if (key === 'Backspace') {
-        backspaceCountRef.current++;
-        totalKeystrokesRef.current++;
-      } else if (key && key.length === 1 && !nativeEvent?.metaKey && !nativeEvent?.ctrlKey) {
-        totalKeystrokesRef.current++;
-        if (typingStartTimeRef.current === null) {
-          typingStartTimeRef.current = Date.now();
-        }
-      }
+    if (key === 'Backspace') {
+      backspaceCountRef.current++;
+    }
 
-      // BẢO VỆ TUYỆT ĐỐI CHO CMD+C, CMD+V, CMD+A, CMD+X, CMD+Z:
-      // Nếu e.metaKey hoặc e.ctrlKey đang được nhấn, TUYỆT ĐỐI KHÔNG can thiệp để WKWebView/Browser copy/paste bình thường
-      if (nativeEvent?.metaKey || nativeEvent?.ctrlKey) {
-        return;
+    if (key === 'Escape') {
+      if (showAttachMenu) {
+        setShowAttachMenu(false);
       }
-      if (key === 'Enter' && !shiftKey) {
+      return;
+    }
+
+    if (key === 'Enter') {
+      if (!isShift) {
         if (typeof e.preventDefault === 'function') {
           e.preventDefault();
         }
@@ -302,44 +432,30 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
           nativeEvent.preventDefault();
         }
         const trimmed = inputText.trim();
-        if ((trimmed || selectedImage) && !isLoading && !isTomorrowTyping) {
+        if ((trimmed || selectedImage || attachedFile) && !isLoading && !isTomorrowTyping) {
           handleSend();
         }
       }
     }
   };
 
-  const handleAddEmoji = (emoji: string) => {
-    setInputText((prev) => prev + emoji);
-  };
+  const hasContentToSend =
+    inputText.trim().length > 0 || Boolean(selectedImage) || Boolean(attachedFile);
 
   return (
     <View style={styles.wrapper}>
-      {/* Thanh Quick Emoji Popover */}
-      {showEmojiPicker && (
-        <View
-          style={[
-            styles.emojiRow,
-            { backgroundColor: theme.inputBg, borderColor: theme.inputBorder },
-          ]}
-        >
-          {QUICK_EMOJIS.map((emoji, idx) => (
-            <Pressable
-              key={idx}
-              style={({ pressed }) => [
-                styles.emojiBtn,
-                pressed && { backgroundColor: theme.btnHover },
-                Platform.OS === 'web' && { cursor: 'pointer' as any },
-              ]}
-              onPress={() => handleAddEmoji(emoji)}
-            >
-              <Text style={styles.emojiText}>{emoji}</Text>
-            </Pressable>
-          ))}
-        </View>
+      {/* Hidden Web File Input */}
+      {Platform.OS === 'web' && (
+        <input
+          ref={fileInputRef}
+          type="file"
+          style={{ display: 'none' }}
+          accept="image/*,.pdf,.txt,.md,.csv,.json,.js,.ts,.tsx,.py,.cpp,.c,.java,.html,.css"
+          onChange={handleFileInputChange}
+        />
       )}
 
-      {/* Preview ảnh đã chọn trước khi gửi */}
+      {/* Preview ảnh đính kèm (Vision Lab) */}
       {selectedImage && (
         <View
           style={[
@@ -363,7 +479,38 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
         </View>
       )}
 
-      {/* Floating Pill Input Bar chuẩn 1 style duy nhất cho mọi pane, căn thẳng hàng tâm dọc */}
+      {/* Preview tệp văn bản / code / pdf đính kèm */}
+      {attachedFile && (
+        <View
+          style={[
+            styles.filePreviewContainer,
+            { backgroundColor: theme.inputBg, borderColor: theme.bubbleUser },
+          ]}
+        >
+          <View
+            style={[
+              styles.filePreviewIconBox,
+              { backgroundColor: theme.mode === 'dark' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(37, 99, 235, 0.1)' },
+            ]}
+          >
+            <FileText size={16} color={theme.bubbleUser} />
+          </View>
+          <Text style={[styles.filePreviewLabel, { color: theme.textPrimary }]} numberOfLines={1}>
+            {attachedFile.name} ({attachedFile.sizeKB} KB)
+          </Text>
+          <Pressable
+            style={[
+              styles.removeFileBtn,
+              Platform.OS === 'web' && { cursor: 'pointer' as any },
+            ]}
+            onPress={() => setAttachedFile(null)}
+          >
+            <X size={14} color="#FFF" />
+          </Pressable>
+        </View>
+      )}
+
+      {/* Floating Pill Input Bar chuẩn 1 dòng tối giản phong cách Gemini */}
       <View
         style={[
           styles.pillContainer,
@@ -373,49 +520,74 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
           },
         ]}
       >
-        {/* Nhóm 3 icon trái: Đính kèm ảnh, Emoji, Web search */}
-        <View style={styles.leftActionsGroup}>
-          {/* Nút đính kèm ảnh */}
-          <Pressable
-            style={({ pressed }) => [
-              styles.iconButton,
-              pressed && { backgroundColor: theme.btnHover },
-              Platform.OS === 'web' && { cursor: 'pointer' as any },
-            ]}
-            onPress={handlePickImage}
-            disabled={isLoading || isTomorrowTyping}
-            hitSlop={6}
-          >
-            <ImageIcon size={isSplitMode ? 17 : 19} color={selectedImage ? theme.bubbleUser : theme.textSecondary} />
-          </Pressable>
+        {/* Nút tròn dấu + kiểu Gemini & Popover Tệp */}
+        <View style={styles.plusContainer}>
+          {showAttachMenu && (
+            <View
+              style={[
+                styles.attachPopover,
+                {
+                  backgroundColor: theme.mode === 'dark' ? '#1E2330' : '#FFFFFF',
+                  borderColor: theme.borderSubtle,
+                  shadowColor: '#000',
+                  shadowOpacity: theme.mode === 'dark' ? 0.4 : 0.12,
+                },
+                Platform.OS === 'web' && ({
+                  animation: 'macosPopoverSlide 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                } as any),
+              ]}
+              onStartShouldSetResponder={() => true}
+            >
+              <Pressable
+                style={({ pressed }) => [
+                  styles.attachMenuItem,
+                  pressed && { backgroundColor: theme.btnHover },
+                  Platform.OS === 'web' && ({
+                    cursor: 'pointer',
+                    transition: 'background-color 0.12s ease',
+                  } as any),
+                ]}
+                onPress={handleOpenFilePicker}
+              >
+                <Paperclip size={16} color={theme.textPrimary} />
+                <Text style={[styles.attachMenuText, { color: theme.textPrimary }]}>
+                  Tệp
+                </Text>
+              </Pressable>
+            </View>
+          )}
 
-          {/* Nút chọn nhanh Emoji */}
           <Pressable
             style={({ pressed }) => [
-              styles.iconButton,
+              styles.plusButton,
+              showAttachMenu
+                ? {
+                    backgroundColor:
+                      theme.mode === 'dark'
+                        ? 'rgba(255, 255, 255, 0.12)'
+                        : 'rgba(0, 0, 0, 0.08)',
+                  }
+                : { backgroundColor: 'transparent' },
               pressed && { backgroundColor: theme.btnHover },
-              Platform.OS === 'web' && { cursor: 'pointer' as any },
+              Platform.OS === 'web' && ({
+                cursor: 'pointer',
+                transition: 'transform 0.15s ease, background-color 0.15s ease',
+              } as any),
             ]}
-            onPress={() => setShowEmojiPicker((prev) => !prev)}
+            onPress={(e) => {
+              if (e && typeof (e as any).stopPropagation === 'function') {
+                (e as any).stopPropagation();
+              }
+              setShowAttachMenu((prev) => !prev);
+            }}
             disabled={isLoading || isTomorrowTyping}
             hitSlop={6}
           >
-            <Smile size={isSplitMode ? 17 : 19} color={showEmojiPicker ? theme.bubbleUser : theme.textSecondary} />
-          </Pressable>
-
-          {/* Nút bật/tắt Ép buộc Tìm kiếm Web (🌐 Web) */}
-          <Pressable
-            style={({ pressed }) => [
-              styles.iconButton,
-              forceWebSearch && { backgroundColor: '#2563EB' },
-              !forceWebSearch && pressed && { backgroundColor: theme.btnHover },
-              Platform.OS === 'web' && { cursor: 'pointer' as any },
-            ]}
-            onPress={() => setForceWebSearch((prev) => !prev)}
-            disabled={isLoading || isTomorrowTyping}
-            hitSlop={6}
-          >
-            <Globe size={isSplitMode ? 16 : 18} color={forceWebSearch ? '#FFFFFF' : theme.textSecondary} />
+            {showAttachMenu ? (
+              <X size={18} color={theme.textPrimary} />
+            ) : (
+              <Plus size={19} color={theme.textSecondary} />
+            )}
           </Pressable>
         </View>
 
@@ -441,7 +613,6 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
           placeholderTextColor={theme.placeholderText}
           value={inputText}
           onChangeText={handleTextChange}
-          {...(Platform.OS !== 'web' ? { onContentSizeChange: handleContentSizeChange } : {})}
           onKeyPress={handleKeyPress}
           {...(Platform.OS === 'web' ? { onKeyDown: handleKeyPress } : {})}
           multiline
@@ -454,7 +625,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
           style={({ pressed }) => [
             styles.sendButton,
             { backgroundColor: theme.btnBg },
-            (inputText.trim().length > 0 || selectedImage) &&
+            hasContentToSend &&
               !isLoading &&
               !isTomorrowTyping && {
                 backgroundColor: theme.bubbleUser,
@@ -463,7 +634,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
             Platform.OS === 'web' && { cursor: 'pointer' as any },
           ]}
           onPress={handleSend}
-          disabled={isLoading || isTomorrowTyping || (!inputText.trim() && !selectedImage)}
+          disabled={isLoading || isTomorrowTyping || !hasContentToSend}
           hitSlop={6}
         >
           {isLoading || isTomorrowTyping ? (
@@ -471,9 +642,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
           ) : (
             <Send
               size={16}
-              color={
-                inputText.trim().length > 0 || selectedImage ? '#FFFFFF' : theme.textMuted
-              }
+              color={hasContentToSend ? '#FFFFFF' : theme.textMuted}
             />
           )}
         </Pressable>
@@ -492,25 +661,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
   },
-  emojiRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    width: '100%',
-    maxWidth: 780,
-    alignSelf: 'center',
-  },
-  emojiBtn: {
-    padding: 6,
-    borderRadius: 12,
-  },
-  emojiText: {
-    fontSize: 22,
-  },
   imagePreviewContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -520,7 +670,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 8,
     width: '100%',
-    maxWidth: 780,
+    maxWidth: 820,
     alignSelf: 'center',
   },
   imagePreview: {
@@ -542,14 +692,47 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 6,
   },
+  filePreviewContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    marginBottom: 8,
+    borderWidth: 1,
+    gap: 10,
+    width: '100%',
+    maxWidth: 820,
+    alignSelf: 'center',
+  },
+  filePreviewIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filePreviewLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+  },
+  removeFileBtn: {
+    backgroundColor: '#EF4444',
+    borderRadius: 12,
+    width: 24,
+    height: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   pillContainer: {
     width: '100%',
-    maxWidth: 780,
+    maxWidth: 820,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 48,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 24,
     borderWidth: 1,
@@ -559,21 +742,51 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.12,
     shadowRadius: 10,
     elevation: 4,
+    position: 'relative',
     ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
   },
-  leftActionsGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+  plusContainer: {
+    position: 'relative',
     flexShrink: 0,
+    zIndex: 50,
   },
-  iconButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  plusButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+  },
+  attachPopover: {
+    position: 'absolute',
+    bottom: 46,
+    left: 0,
+    minWidth: 130,
+    borderRadius: 16,
+    padding: 5,
+    borderWidth: 1,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 18,
+    elevation: 14,
+    zIndex: 100,
+  },
+  attachMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+  },
+  attachMenuText: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif"
+        : undefined,
   },
   input: {
     flex: 1,

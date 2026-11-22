@@ -63,11 +63,8 @@ import {
   Sparkles,
   Dot,
   SquarePen,
-  Sun,
-  Moon,
   ChevronDown,
   Search,
-  Columns2,
   Plus,
   X,
   MessageSquare,
@@ -197,6 +194,9 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
           borderWidth: 2,
           backgroundColor: theme.mode === 'dark' ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.04)',
         },
+        Platform.OS === 'web' && ({
+          animation: 'macosPanePop 260ms cubic-bezier(0.16, 1, 0.3, 1)',
+        } as any),
       ]}
       onStartShouldSetResponder={() => {
         if (isCloseMode) {
@@ -1450,6 +1450,14 @@ export default function App() {
         return;
       }
 
+      // Cmd/Ctrl + R: Chuyển đổi Theme Sáng/Tối (không giữ Shift; Cmd+Shift+R giữ cho hard reload trình duyệt)
+      if (isCmdOrCtrl && !e.altKey && !e.shiftKey && (key === 'r' || code === 'KeyR')) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleToggleTheme();
+        return;
+      }
+
       // Escape: Đóng dropdown pane nếu đang mở hoặc đóng Command Palette
       if (e.key === 'Escape' || code === 'Escape') {
         if (openDropdownPaneId) {
@@ -1556,6 +1564,54 @@ export default function App() {
     };
   }, []);
 
+  // 8. TIÊM KEYFRAMES HOẠT ẢNH CHUẨN MACOS TRÊN WEB (macosPanePop, macosPalettePop, macosFadeIn, macosPopoverSlide)
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const styleId = 'tomorrow-macos-animations';
+      if (!document.getElementById(styleId)) {
+        const styleEl = document.createElement('style');
+        styleEl.id = styleId;
+        styleEl.innerHTML = `
+          @keyframes macosPanePop {
+            0% {
+              opacity: 0;
+              transform: scale(0.95) translateY(12px);
+            }
+            100% {
+              opacity: 1;
+              transform: scale(1) translateY(0);
+            }
+          }
+          @keyframes macosPalettePop {
+            0% {
+              opacity: 0;
+              transform: scale(0.95) translateY(8px);
+            }
+            100% {
+              opacity: 1;
+              transform: scale(1) translateY(0);
+            }
+          }
+          @keyframes macosFadeIn {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+          }
+          @keyframes macosPopoverSlide {
+            0% {
+              opacity: 0;
+              transform: scale(0.92) translateY(6px);
+            }
+            100% {
+              opacity: 1;
+              transform: scale(1) translateY(0);
+            }
+          }
+        `;
+        document.head.appendChild(styleEl);
+      }
+    }
+  }, []);
+
   // Màn hình khởi động nhanh chống nháy trắng
   if (!isReady) {
     return (
@@ -1611,25 +1667,18 @@ export default function App() {
             <Menu size={20} color={theme.btnIcon} />
           </Pressable>
 
-          {/* Tiêu đề "Tomorrow" ở giữa */}
-          <View style={styles.headerCenter}>
-              <View style={[styles.titleRow, { gap: 6, alignItems: 'center' }]}>
-                <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
-                <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
-                  <Dot size={18} color={theme.liveBadgeText} />
-                  <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7.6</Text>
-                </View>
-                {activeNotebook && (
-                  <View style={[styles.liveBadge, { backgroundColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)', marginLeft: 2 }]}>
-                    <Text style={[styles.liveText, { color: theme.textSecondary, fontWeight: '500' }]}>
-                      📁 {activeNotebook.name}
-                    </Text>
-                  </View>
-                )}
+          {/* Tiêu đề "Tomorrow" căn giữa tuyệt đối theo chiều ngang */}
+          <View style={styles.headerCenter} pointerEvents="none">
+            <View style={[styles.titleRow, { gap: 6, alignItems: 'center' }]}>
+              <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
+              <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
+                <Dot size={18} color={theme.liveBadgeText} />
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7.7</Text>
               </View>
+            </View>
           </View>
 
-          {/* Cụm nút góc phải: Nút Command Palette ⌘K (trên Desktop) + Nút Split Panes (⌘↑) + Nút Theme Sáng/Tối + Nút Tạo Cuộc Trò Chuyện Mới */}
+          {/* Cụm nút góc phải: Nút Command Palette ⌘K (trên Desktop) + Nút Tạo Cuộc Trò Chuyện Mới */}
           <View style={styles.headerRightActions}>
             {/* Nút Command Palette ⌘K tinh tế trên Desktop (width >= 768px) */}
             {isDesktop && (
@@ -1678,55 +1727,6 @@ export default function App() {
                 </View>
               </Pressable>
             )}
-
-            {/* HẠNG MỤC 2: Nút Chia đôi cửa sổ chat (⌘↑) trên Desktop (width >= 768px) */}
-            {isDesktop && (
-              <Pressable
-                style={({ pressed }) => [
-                  styles.headerBtn,
-                  {
-                    backgroundColor:
-                      panes.length > 1
-                        ? (theme.mode === 'dark'
-                            ? 'rgba(139, 92, 246, 0.25)'
-                            : 'rgba(99, 102, 241, 0.18)')
-                        : theme.btnBg,
-                    borderColor:
-                      panes.length > 1
-                        ? (theme.mode === 'dark' ? '#8B5CF6' : '#6366F1')
-                        : 'transparent',
-                    borderWidth: panes.length > 1 ? 1 : 0,
-                  },
-                  pressed && { backgroundColor: theme.btnHover },
-                  Platform.OS === 'web' && { cursor: 'pointer' as any },
-                ]}
-                onPress={handleToggleSplitPanes}
-                hitSlop={8}
-              >
-                <Columns2
-                  size={19}
-                  color={panes.length > 1 ? (theme.mode === 'dark' ? '#A78BFA' : '#4F46E5') : theme.btnIcon}
-                />
-              </Pressable>
-            )}
-
-            {/* Nút chuyển đổi Theme (☀️ / 🌙) */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.headerBtn,
-                { backgroundColor: theme.btnBg },
-                pressed && { backgroundColor: theme.btnHover },
-                Platform.OS === 'web' && { cursor: 'pointer' as any },
-              ]}
-              onPress={handleToggleTheme}
-              hitSlop={8}
-            >
-              {themeMode === 'dark' ? (
-                <Sun size={19} color="#F59E0B" />
-              ) : (
-                <Moon size={19} color="#6366F1" />
-              )}
-            </Pressable>
 
             {/* Nút Cuộc trò chuyện mới */}
             <Pressable
@@ -1991,11 +1991,18 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 2,
   },
   headerCenter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     alignItems: 'center',
-    flex: 1,
-    paddingHorizontal: 12,
+    justifyContent: 'center',
+    pointerEvents: 'none',
+    zIndex: 1,
   },
   titleRow: {
     flexDirection: 'row',
@@ -2026,6 +2033,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    zIndex: 2,
   },
   commandPaletteBtn: {
     flexDirection: 'row',
@@ -2171,6 +2179,11 @@ const styles = StyleSheet.create({
     elevation: 8,
     shadowOffset: { width: 0, height: 3 },
     shadowRadius: 8,
+    ...(Platform.OS === 'web'
+      ? ({
+          animation: 'macosPalettePop 200ms cubic-bezier(0.16, 1, 0.3, 1)',
+        } as any)
+      : {}),
   },
   paneCloseFloatingText: {
     fontSize: 12.5,

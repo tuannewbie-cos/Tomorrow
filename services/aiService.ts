@@ -78,6 +78,134 @@ import { recordApiUsage, setOpenAICircuitBreakerState } from './quotaShield';
 const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY || '';
 // Biến trạng thái ngắt mạch (Silent Circuit Breaker): Nếu key OpenAI hết hạn/hết credit trong phiên thì chuyển hẳn sang Gemini
 let isOpenAIUnavailable = false;
+let lastOpenAI429At: number | null = null;
+const OPENAI_429_COOLDOWN_MS = 10 * 60 * 1000; // 10 phút tự động reset 429 rate limit
+
+// Trạng thái theo dõi chu kỳ nghỉ/thức (Wake / Idle tracking)
+let lastActivityAt: number = Date.now();
+let needsFreshConnection: boolean = false;
+
+export function notifyAppActive(): void {
+  const now = Date.now();
+  const idleMs = now - lastActivityAt;
+  lastActivityAt = now;
+  if (idleMs > 90_000) {
+    needsFreshConnection = true;
+  }
+  // Tự động kiểm tra reset rate-limit 429 nếu đã qua 10 phút
+  if (isOpenAIUnavailable && lastOpenAI429At && now - lastOpenAI429At > OPENAI_429_COOLDOWN_MS) {
+    isOpenAIUnavailable = false;
+    lastOpenAI429At = null;
+    setOpenAICircuitBreakerState(false).catch(() => {});
+    console.info('[AI Router]: Đã hết thời gian cooldown 429 của OpenAI, tự động kích hoạt lại kết nối.');
+  }
+}
+
+export function setNeedsFreshConnection(val: boolean = true): void {
+  needsFreshConnection = val;
+}
+
+export function getNeedsFreshConnection(): boolean {
+  return needsFreshConnection;
+}
+
+// Khởi tạo listener trên Web/WebView để phát hiện wake-up
+if (typeof window !== 'undefined') {
+  try {
+    window.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        notifyAppActive();
+        needsFreshConnection = true;
+      }
+    });
+    window.addEventListener('focus', () => {
+      notifyAppActive();
+    });
+    window.addEventListener('online', () => {
+      notifyAppActive();
+      needsFreshConnection = true;
+    });
+  } catch (_) {}
+}
+
+/**
+ * Helper fetch bảo vệ chống stale TCP keep-alive socket sau khi nghỉ/ngủ (macOS WebView / Web)
+ * - Tự động nới +5000ms timeout khi vừa tỉnh dậy (needsFreshConnection)
+ * - Tự động thử lại âm thầm đúng 1 lần sau 350ms với AbortController mới tinh nếu gặp lỗi mạng/socket chết
+ */
+export async function fetchWithWakeRetry(
+  url: string,
+  options: RequestInit,
+  timeoutMs: number
+): Promise<Response> {
+  notifyAppActive();
+
+  const isFresh = needsFreshConnection;
+  const effectiveTimeout = isFresh ? timeoutMs + 5000 : timeoutMs;
+
+  const isNetworkOrTimeoutError = (err: any): boolean => {
+    if (!err) return false;
+    const name = err.name || '';
+    const msg = String(err.message || err).toLowerCase();
+    return (
+      name === 'AbortError' ||
+      err.code === 20 ||
+      msg.includes('abort') ||
+      msg.includes('failed to fetch') ||
+      msg.includes('networkerror') ||
+      msg.includes('load failed') ||
+      msg.includes('network request failed') ||
+      msg.includes('timeout') ||
+      err instanceof TypeError
+    );
+  };
+
+  const doFetch = async (currentTimeout: number): Promise<Response> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), currentTimeout);
+
+    try {
+      const mergedHeaders = {
+        ...(options.headers || {}),
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache',
+      };
+
+      const res = await fetch(url, {
+        ...options,
+        headers: mergedHeaders,
+        cache: 'no-store',
+        keepalive: false,
+        signal: controller.signal,
+      });
+      return res;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  try {
+    const res = await doFetch(effectiveTimeout);
+    if (res.ok) {
+      needsFreshConnection = false;
+      lastActivityAt = Date.now();
+    }
+    return res;
+  } catch (err: any) {
+    if (isNetworkOrTimeoutError(err)) {
+      console.warn(`[fetchWithWakeRetry] Lần gọi 1 gặp lỗi mạng/timeout (${err.message || err}), đang tự động thử lại êm sau 350ms...`);
+      await new Promise((r) => setTimeout(r, 350));
+      const retryTimeout = effectiveTimeout;
+      const retryRes = await doFetch(retryTimeout);
+      if (retryRes.ok) {
+        needsFreshConnection = false;
+        lastActivityAt = Date.now();
+      }
+      return retryRes;
+    }
+    throw err;
+  }
+}
 
 export function getOpenAICircuitBreakerStatus(): boolean {
   return isOpenAIUnavailable;
@@ -85,6 +213,7 @@ export function getOpenAICircuitBreakerStatus(): boolean {
 
 export function resetOpenAICircuitBreaker(): void {
   isOpenAIUnavailable = false;
+  lastOpenAI429At = null;
   setOpenAICircuitBreakerState(false).catch(() => {});
 }
 
@@ -1499,8 +1628,6 @@ async function callOpenAI(
   temperature: number = 0.75
 ): Promise<string> {
   const effectiveTimeout = timeoutMs;
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
 
   try {
     const validVision = await resolveValidVisionImage(imageBase64);
@@ -1575,23 +1702,31 @@ async function callOpenAI(
       messages: openAiMessages,
     };
 
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+    const res = await fetchWithWakeRetry(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${OPENAI_API_KEY}`,
+        },
+        body: JSON.stringify(payload),
       },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
+      effectiveTimeout
+    );
 
     if (!res.ok) {
       const status = res.status;
-      const isAuthOrQuota = [401, 402, 403, 429].includes(status);
-      if (isAuthOrQuota) {
+      if (status === 429) {
         isOpenAIUnavailable = true;
+        lastOpenAI429At = Date.now();
         setOpenAICircuitBreakerState(true).catch(() => {});
-        console.warn(`[AI Router Failover]: OpenAI HTTP ${status} (Hết hạn mức/Xác thực), kích hoạt Circuit Breaker sang Gemini chain.`);
+        console.warn(`[AI Router Failover]: OpenAI HTTP 429 (Rate limit), kích hoạt Circuit Breaker với cooldown 10 phút.`);
+      } else if ([401, 402, 403].includes(status)) {
+        isOpenAIUnavailable = true;
+        lastOpenAI429At = null;
+        setOpenAICircuitBreakerState(true).catch(() => {});
+        console.warn(`[AI Router Failover]: OpenAI HTTP ${status} (Xác thực/Hết hạn mức cứng), kích hoạt Circuit Breaker sang Gemini chain.`);
       } else {
         console.warn(`[AI Router Failover]: OpenAI HTTP ${status}, trượt sang Gemini chain cho lượt này.`);
       }
@@ -1608,7 +1743,7 @@ async function callOpenAI(
     recordApiUsage('openai', 'gpt-4o-mini', userMessageWithHint.length, rawText.length, false).catch(() => {});
     return rawText;
   } catch (err: any) {
-    if (err?.name === 'AbortError' || controller.signal.aborted) {
+    if (err?.name === 'AbortError' || String(err?.message || err).toLowerCase().includes('abort')) {
       // HẠNG MỤC 1: KHÔNG khóa vĩnh viễn OpenAI khi chỉ bị Timeout ảnh nặng hoặc mạng trễ
       recordApiUsage('openai', 'gpt-4o-mini', userMessageWithHint.length, 0, true).catch(() => {});
       console.warn(`[AI Router Failover]: OpenAI timeout sau ${effectiveTimeout}ms, trượt sang Gemini chain (không khóa vĩnh viễn OpenAI).`);
@@ -1616,8 +1751,6 @@ async function callOpenAI(
       console.warn('[AI Router Failover]:', `OpenAI lỗi (${err?.message || err}), tự động trượt sang Gemini chain...`);
     }
     throw err;
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 
@@ -1641,9 +1774,6 @@ async function executeApiCall(
   recentChats: ChatMessage[] = [],
   temperature: number = 0.7
 ): Promise<ExecuteApiCallResult> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
     const validVision = await resolveValidVisionImage(imageBase64);
     const hasVision = Boolean(validVision);
@@ -1695,23 +1825,21 @@ async function executeApiCall(
 
     payload.generationConfig = generationConfig;
 
-    let res = await fetch(url, {
+    let res = await fetchWithWakeRetry(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
+    }, timeoutMs);
 
     // Nếu endpoint không hỗ trợ tools google_search (400 Bad Request), tự động thử lại không dùng tools
     if (!res.ok && enableGrounding && res.status === 400) {
       delete payload.tools;
       payload.generationConfig.responseMimeType = 'application/json';
-      res = await fetch(url, {
+      res = await fetchWithWakeRetry(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-        signal: controller.signal,
-      });
+      }, timeoutMs);
     }
 
     if (res.ok) {
@@ -1762,8 +1890,8 @@ async function executeApiCall(
     const errText = await res.text().catch(() => '');
     const parsedMsg = extractApiErrorMessage(errText);
     throw new Error(`HTTP ${errStatus}: ${parsedMsg}`);
-  } finally {
-    clearTimeout(timeoutId);
+  } catch (err: any) {
+    throw err;
   }
 }
 

@@ -219,7 +219,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           themeMode === 'dark'
             ? 'Bật tông màu trắng nhẹ nhàng'
             : 'Bật tông màu đen sâu bảo vệ mắt',
-        badge: themeMode === 'dark' ? 'Light' : 'Dark',
+        badge: '⌘R',
         iconType: 'toggle_theme',
         group: 'actions',
         action: () => {
@@ -556,6 +556,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               shadowColor: '#000',
               shadowOpacity: theme.mode === 'dark' ? 0.6 : 0.2,
             },
+            Platform.OS === 'web' && ({
+              animation: 'macosPalettePop 200ms cubic-bezier(0.16, 1, 0.3, 1) forwards',
+            } as any),
           ]}
         >
           {/* 1. Ô tìm kiếm tự động focus */}
@@ -604,7 +607,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
 
           {/* 2. Danh sách kết quả & Thao tác nhanh */}
           <ScrollView
-            style={styles.listScroll}
+            style={[styles.listScroll, { paddingBottom: 10 }]}
+            contentContainerStyle={{ paddingBottom: 10 }}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
@@ -778,109 +782,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
               })
             )}
           </ScrollView>
-
-          {/* 3. Footer hướng dẫn phím tắt */}
-          <View
-            style={[
-              styles.footer,
-              {
-                borderTopColor: theme.borderSubtle,
-                backgroundColor:
-                  theme.mode === 'dark'
-                    ? 'rgba(255, 255, 255, 0.02)'
-                    : 'rgba(0, 0, 0, 0.02)',
-              },
-            ]}
-          >
-            <View style={styles.footerHints}>
-              <View style={styles.footerHintItem}>
-                <View
-                  style={[
-                    styles.footerKey,
-                    {
-                      backgroundColor:
-                        theme.mode === 'dark'
-                          ? 'rgba(255, 255, 255, 0.08)'
-                          : 'rgba(0, 0, 0, 0.06)',
-                      borderColor: theme.borderSubtle,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[styles.footerKeyText, { color: theme.textMuted }]}
-                  >
-                    ↑↓
-                  </Text>
-                </View>
-                <Text
-                  style={[styles.footerHintText, { color: theme.textMuted }]}
-                >
-                  di chuyển
-                </Text>
-              </View>
-
-              <View style={styles.footerHintItem}>
-                <View
-                  style={[
-                    styles.footerKey,
-                    {
-                      backgroundColor:
-                        theme.mode === 'dark'
-                          ? 'rgba(255, 255, 255, 0.08)'
-                          : 'rgba(0, 0, 0, 0.06)',
-                      borderColor: theme.borderSubtle,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[styles.footerKeyText, { color: theme.textMuted }]}
-                  >
-                    ↵
-                  </Text>
-                </View>
-                <Text
-                  style={[styles.footerHintText, { color: theme.textMuted }]}
-                >
-                  chọn
-                </Text>
-              </View>
-
-              <View style={styles.footerHintItem}>
-                <View
-                  style={[
-                    styles.footerKey,
-                    {
-                      backgroundColor:
-                        theme.mode === 'dark'
-                          ? 'rgba(255, 255, 255, 0.08)'
-                          : 'rgba(0, 0, 0, 0.06)',
-                      borderColor: theme.borderSubtle,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[styles.footerKeyText, { color: theme.textMuted }]}
-                  >
-                    esc
-                  </Text>
-                </View>
-                <Text
-                  style={[styles.footerHintText, { color: theme.textMuted }]}
-                >
-                  đóng
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.footerRight}>
-              <Text style={[styles.footerQuota, { color: theme.textMuted }]}>
-                {quotaSummary.statusText}
-              </Text>
-              <Text style={[styles.footerBrand, { color: theme.textMuted }]}>
-                Tomorrow v4.5.1
-              </Text>
-            </View>
-          </View>
         </View>
       </View>
     </Modal>
@@ -1011,55 +912,5 @@ const styles = StyleSheet.create({
     fontSize: 12.5,
     marginTop: 4,
     textAlign: 'center',
-  },
-  footer: {
-    height: 38,
-    width: '100%',
-    borderTopWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-  },
-  footerHints: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  footerHintItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  footerKey: {
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    borderRadius: 4,
-    borderWidth: 1,
-    minWidth: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  footerKeyText: {
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  footerHintText: {
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  footerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  footerQuota: {
-    fontSize: 10,
-    fontWeight: '500',
-    opacity: 0.85,
-  },
-  footerBrand: {
-    fontSize: 11,
-    fontWeight: '600',
   },
 });

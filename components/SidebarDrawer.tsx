@@ -200,13 +200,16 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           styles.splitViewContainer,
           {
             width: visible ? 280 : 0,
+            opacity: visible ? 1 : 0,
             overflow: 'hidden',
             borderRightWidth: visible ? 1 : 0,
             borderRightColor: theme.borderSubtle,
             backgroundColor: theme.bgSidebar,
           },
           Platform.OS === 'web' && ({
-            transition: 'width 0.22s cubic-bezier(0.2, 0, 0, 1)',
+            transition:
+              'width 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms cubic-bezier(0.22, 1, 0.36, 1), transform 240ms cubic-bezier(0.22, 1, 0.36, 1)',
+            transform: visible ? 'translateX(0)' : 'translateX(-12px)',
           } as any),
         ]}
       >

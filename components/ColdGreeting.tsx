@@ -1,12 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { UserMemoryProfile } from '../types/chat';
-import { Sparkles } from 'lucide-react-native';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
 
 interface ColdGreetingProps {
-  greetingText: string;
+  greetingText?: string;
   userMemory: UserMemoryProfile;
   hasHistory: boolean;
   onSelectSuggestion?: (text: string) => void;
@@ -15,12 +13,16 @@ interface ColdGreetingProps {
 }
 
 export const ColdGreeting: React.FC<ColdGreetingProps> = ({
-  greetingText,
   userMemory,
-  hasHistory,
   theme = DARK_THEME,
   compact = false,
 }) => {
+  const displayName =
+    userMemory?.nickname ||
+    userMemory?.userName ||
+    (userMemory?.vault as any)?.userName ||
+    'bạn';
+
   return (
     <ScrollView
       contentContainerStyle={[
@@ -30,40 +32,31 @@ export const ColdGreeting: React.FC<ColdGreetingProps> = ({
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      {/* Brand Header & Minimal Empty State (macOS native style) */}
       <View style={styles.brandContainer}>
-        <View style={styles.geminiBadge}>
-          <Sparkles size={16} color="#8B5CF6" />
-          <Text style={styles.geminiBadgeText}>Tomorrow</Text>
+        {/* Icon ứng dụng chính thức T.M.R khối vuông bo góc chuẩn macOS */}
+        <View style={styles.appIconContainer}>
+          <View style={styles.appIconBox}>
+            {/* 5 cột sóng âm trắng chuẩn biểu tượng Tomorrow */}
+            <View style={styles.waveformContainer}>
+              <View style={[styles.waveBar, { height: 10 }]} />
+              <View style={[styles.waveBar, { height: 16 }]} />
+              <View style={[styles.waveBar, { height: 22 }]} />
+              <View style={[styles.waveBar, { height: 15 }]} />
+              <View style={[styles.waveBar, { height: 9 }]} />
+            </View>
+            <Text style={styles.appIconText}>T.M.R</Text>
+          </View>
         </View>
 
-        {/* Gradient Greeting Container */}
-        <View style={styles.gradientBox}>
-          <LinearGradient
-            colors={['#8B5CF6', '#6366F1', '#EC4899']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.gradientPill}
-          />
-          <Text
-            style={[
-              styles.greetingTitle,
-              { color: theme.textPrimary },
-              compact && { fontSize: 22, lineHeight: 28 },
-            ]}
-          >
-            {hasHistory ? `Chào ${userMemory.nickname || userMemory.userName || 'bạn'},` : 'Chào bạn,'}
-          </Text>
-        </View>
-
+        {/* 1 dòng lời chào duy nhất căn giữa tinh tế chuẩn DESIGN.md */}
         <Text
           style={[
-            styles.greetingSubtext,
-            { color: theme.textSecondary },
-            compact && { fontSize: 13.5, lineHeight: 20, marginTop: 4, paddingHorizontal: 4 },
+            styles.greetingTitle,
+            { color: theme.textPrimary },
+            compact && { fontSize: 20, lineHeight: 28 },
           ]}
         >
-          {greetingText}
+          Chào {displayName}, chúng ta nên bắt đầu làm việc gì?
         </Text>
       </View>
     </ScrollView>
@@ -88,48 +81,61 @@ const styles = StyleSheet.create({
     width: '100%',
     minWidth: 0,
   },
-  geminiBadge: {
-    flexDirection: 'row',
+  appIconContainer: {
+    marginBottom: 20,
     alignItems: 'center',
-    backgroundColor: 'rgba(139, 92, 246, 0.12)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 6,
-    marginBottom: 16,
+    justifyContent: 'center',
+  },
+  appIconBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
+    backgroundColor: '#0B0B0D',
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.25)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 8,
+    paddingTop: 5,
+    paddingBottom: 4,
   },
-  geminiBadgeText: {
-    color: '#A78BFA',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+  waveformContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    gap: 3,
+    height: 24,
+    marginBottom: 3,
   },
-  gradientBox: {
-    position: 'relative',
-    marginBottom: 8,
-  },
-  gradientPill: {
-    position: 'absolute',
-    bottom: 2,
-    left: 0,
-    right: 0,
-    height: 4,
+  waveBar: {
+    width: 2.5,
+    backgroundColor: '#FFFFFF',
     borderRadius: 2,
-    opacity: 0.8,
+  },
+  appIconText: {
+    color: '#FFFFFF',
+    fontSize: 9.5,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
+        : undefined,
   },
   greetingTitle: {
-    fontSize: 28,
-    fontWeight: '800',
+    fontSize: 24,
+    fontWeight: '700',
     textAlign: 'center',
-    letterSpacing: -0.5,
-  },
-  greetingSubtext: {
-    fontSize: 16,
-    lineHeight: 24,
-    textAlign: 'center',
-    marginTop: 8,
-    paddingHorizontal: 12,
+    letterSpacing: -0.4,
+    lineHeight: 32,
+    maxWidth: 620,
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
+        : undefined,
   },
 });
