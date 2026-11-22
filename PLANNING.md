@@ -17,7 +17,7 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
 
 | Giai đoạn | Nội dung trọng tâm | Thời gian | Trạng thái |
 | :--- | :--- | :--- | :--- |
-| **Phase 1** | **Core Foundation, 3-Layer Reflex, Quota Shield & Vision Lab** | Ngày 1 – 15 | 🟡 Đang hoàn thiện (Ngày 1-9 Xong, v4.5.1 Xong) |
+| **Phase 1** | **Core Foundation, 3-Layer Reflex, Quota Shield & Vision Lab** | Ngày 1 – 15 | 🟡 Đang hoàn thiện (Ngày 1-11 Xong, v4.7 Xong) |
 | **Phase 2** | **Tri thức Chuyên sâu, Khoa học & Thị trường** | Ngày 16 – 30 | ⚪ Chưa bắt đầu |
 | **Phase 3** | **Voice HUD, Realtime Waveform & Voiceprint** | Ngày 31 – 45 | ⚪ Chưa bắt đầu |
 | **Phase 4** | **Camera MediaPipe Nội bộ (100% Private RAM)** | Ngày 46 – 60 | ⚪ Chưa bắt đầu |
@@ -188,7 +188,23 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
     + Bổ sung 4 scenarios Ngày 10: `Test_Day10_Instant_Persona_Switch`, `Test_Day10_Finance_DualSide`, `Test_Day10_Stress_Disable_Wit`, `Test_Day10_SystemPrompt_Budget`.
     + Đạt điểm tuyệt đối 24/24 scenarios (240/240 điểm). Header cập nhật **`Online • v4.6`**.
 
-- [ ] **Ngày 11 – 15: Hoàn thiện Phase 1**
+- [x] **Ngày 11 (`memory/structured-knowledge-vault` — Phiên bản `v4.7`): Hồ sơ Tri thức Đa chiều (Structured Knowledge Vault) & Cmd+K Vault Manager**
+  - **Mô-đun `services/memoryVaultService.ts` quản lý tập trung trên khóa `USER_MEMORY_PROFILE_V1`:**
+    + Schema v2 đa chiều cho sinh viên: `studySubjects` (môn học, trình độ strong/weak/learning, focusTopic), `financeGoals` (mục tiêu tài chính, targetAmount, horizon short/mid/long), `moodHistory` (mốc tâm lý theo ngày), `favorites`, `activeProjects`, `habits`, `recentContext`.
+    + Hàm `migrateAndNormalizeVault`: Nâng cấp mượt mà từ v3.8/v4.6, bảo tồn 100% dữ liệu cũ, bảo toàn bộ lọc Ngày 8.
+    + Hàm `mergeMemoryIntoVault` (< 1ms): Phân loại Heuristic cục bộ, upsert môn học & mục tiêu tài chính không tạo bản sao trùng lặp, tách đúng `targetAmount` và `horizon`.
+  - **Bơm trí nhớ chọn lọc theo ngữ cảnh `buildMemoryContextSlice`:**
+    + 0 token trí nhớ cho `STOP_SIGNAL` và `PING`.
+    + Bơm `studySubjects` + `activeProjects` cho nhánh STEM/Vision; bơm `financeGoals` + `activeProjects` cho FINANCE_QUANT; bơm đời thường + tâm lý cho COMPANION_MIRROR.
+    + Giới hạn cứng thẻ `[MEMORY_VAULT: ...]` luôn `<= 480 ký tự`.
+  - **Quản lý Hồ sơ Trí nhớ trong Command Palette (`Cmd + K`) & `MemoryVaultModal.tsx`:**
+    + Lệnh `🧠 Hồ sơ Trí nhớ (Memory Vault)` tìm được theo `"memory"`, `"trí nhớ"`, `"vault"`, `"môn học"`, `"tài chính"`.
+    + Modal macOS tiêu chuẩn 4 tab (Học tập, Tài chính, Cốt lõi & Dự án, Thói quen & Gần đây) với form thêm nhanh & xóa từng mục, đồng bộ trực tiếp xuống `AsyncStorage`.
+  - **Bộ kiểm thử tự động `train_simulator.js`:**
+    + Bổ sung 4 scenarios Ngày 11: `Test_Day11_Vault_Migration`, `Test_Day11_Study_And_Finance_Upsert`, `Test_Day11_Selective_Context_Slice`, `Test_Day11_SystemPrompt_Budget`.
+    + Đạt điểm tuyệt đối 28/28 scenarios (280/280 điểm 100% hoàn hảo). Header cập nhật **`Online • v4.7`**.
+
+- [ ] **Ngày 12 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
   - Tìm kiếm toàn văn (Full-text search) trên danh sách phiên trò chuyện trong Sidebar.
   - Đóng gói chuẩn ứng dụng Desktop macOS thông qua WebKit / Electron / PWA Wrapper nâng cao.

@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ChatMessage, UserMemoryProfile, ChatSession, UserMemoryVault } from '../types/chat';
+import { ChatMessage, UserMemoryProfile, ChatSession, UserMemoryVault, StructuredMemoryVault } from '../types/chat';
+import { migrateAndNormalizeVault, DEFAULT_STRUCTURED_VAULT } from '../services/memoryVaultService';
 
 export const STORAGE_KEYS = {
   CHAT_SESSIONS: 'CHAT_SESSIONS_V2',
@@ -36,36 +37,11 @@ export const DEFAULT_USER_MEMORY: UserMemoryProfile = {
 /**
  * Trích xuất UserMemoryVault từ profile hoặc tạo mới từ các trường phẳng
  */
-export function getVaultFromProfile(profile?: UserMemoryProfile): UserMemoryVault {
+export function getVaultFromProfile(profile?: UserMemoryProfile): StructuredMemoryVault {
   if (profile?.vault) {
-    return {
-      pronouns: profile.vault.pronouns || 'bạn bè tự nhiên',
-      favorites: Array.isArray(profile.vault.favorites) && profile.vault.favorites.length > 0
-        ? profile.vault.favorites.slice(0, 5)
-        : [...DEFAULT_USER_MEMORY_VAULT.favorites],
-      activeProjects: Array.isArray(profile.vault.activeProjects) && profile.vault.activeProjects.length > 0
-        ? profile.vault.activeProjects.slice(0, 5)
-        : [...DEFAULT_USER_MEMORY_VAULT.activeProjects],
-      habits: Array.isArray(profile.vault.habits) && profile.vault.habits.length > 0
-        ? profile.vault.habits.slice(0, 5)
-        : [...DEFAULT_USER_MEMORY_VAULT.habits],
-      recentContext: profile.vault.recentContext || profile.summary || DEFAULT_USER_MEMORY_VAULT.recentContext,
-    };
+    return migrateAndNormalizeVault(profile.vault);
   }
-
-  return {
-    pronouns: profile?.nickname === 'm' || profile?.userName === 'm' ? 't - m' : 'bạn bè tự nhiên',
-    favorites: Array.isArray(profile?.interests) && profile.interests.length > 0
-      ? profile.interests.slice(0, 5)
-      : [...DEFAULT_USER_MEMORY_VAULT.favorites],
-    activeProjects: profile?.currentProject
-      ? [profile.currentProject]
-      : [...DEFAULT_USER_MEMORY_VAULT.activeProjects],
-    habits: Array.isArray(profile?.habits) && profile.habits.length > 0
-      ? profile.habits.slice(0, 5)
-      : [...DEFAULT_USER_MEMORY_VAULT.habits],
-    recentContext: profile?.summary || DEFAULT_USER_MEMORY_VAULT.recentContext,
-  };
+  return migrateAndNormalizeVault(profile);
 }
 
 /**
@@ -114,9 +90,10 @@ export function mergeMemoryNoteIntoVault(
   const todayDateTag = `(${dayStr}/${monthStr})`;
 
   // Tự động làm mới trạng thái nhất thời của ngày cũ khi sang ngày mới
-  const oldDateMatch = (updated.recentContext || '').match(/\((\d{2}\/\d{2})\)/);
+  const recentStr = Array.isArray(updated.recentContext) ? updated.recentContext.join('; ') : (updated.recentContext || '');
+  const oldDateMatch = recentStr.match(/\((\d{2}\/\d{2})\)/);
   if (oldDateMatch && oldDateMatch[0] !== todayDateTag) {
-    updated.recentContext = 'Trò chuyện cùng Tomorrow';
+    updated.recentContext = Array.isArray(updated.recentContext) ? ['Trò chuyện cùng Tomorrow'] : 'Trò chuyện cùng Tomorrow';
   }
 
   // 1. Cập nhật Pronouns
@@ -190,14 +167,19 @@ export function mergeMemoryNoteIntoVault(
       const l = h.toLowerCase();
       return !l.includes('thức khuya') && !l.includes('thức đêm');
     });
-    if (
-      updated.recentContext &&
-      (updated.recentContext.toLowerCase().includes('thức khuya') ||
-        updated.recentContext.toLowerCase().includes('thức đêm'))
-    ) {
-      updated.recentContext = updated.recentContext
-        .replace(/thức khuya|thức đêm/gi, 'làm việc')
-        .trim() || 'Trò chuyện cùng Tomorrow';
+    if (updated.recentContext) {
+      if (typeof updated.recentContext === 'string') {
+        const l = updated.recentContext.toLowerCase();
+        if (l.includes('thức khuya') || l.includes('thức đêm')) {
+          updated.recentContext = updated.recentContext
+            .replace(/thức khuya|thức đêm/gi, 'làm việc')
+            .trim() || 'Trò chuyện cùng Tomorrow';
+        }
+      } else if (Array.isArray(updated.recentContext)) {
+        updated.recentContext = updated.recentContext
+          .map((c) => c.replace(/thức khuya|thức đêm/gi, 'làm việc').trim())
+          .filter(Boolean);
+      }
     }
   }
 
@@ -210,16 +192,24 @@ export function mergeMemoryNoteIntoVault(
 }
 
 /**
- * Cập nhật UserMemoryProfile từ UserMemoryVault đã merge
+ * Cập nhật UserMemoryProfile từ UserMemoryVault đã merge (hỗ trợ cả StructuredMemoryVault)
  */
-export function updateProfileWithVault(profile: UserMemoryProfile, vault: UserMemoryVault): UserMemoryProfile {
+export function updateProfileWithVault(
+  profile: UserMemoryProfile,
+  vault: StructuredMemoryVault | UserMemoryVault
+): UserMemoryProfile {
+  const normVault = migrateAndNormalizeVault(vault);
   return {
     ...profile,
-    vault,
-    interests: vault.favorites,
-    currentProject: vault.activeProjects[0] || profile.currentProject,
-    habits: vault.habits,
-    summary: vault.recentContext || profile.summary,
+    vault: normVault,
+    interests: normVault.favorites,
+    currentProject: normVault.activeProjects[0] || profile.currentProject,
+    habits: normVault.habits,
+    summary: Array.isArray(normVault.recentContext) ? normVault.recentContext[0] || profile.summary : (normVault.recentContext || profile.summary),
+    studySubjects: normVault.studySubjects,
+    financeGoals: normVault.financeGoals,
+    moodHistory: normVault.moodHistory,
+    schemaVersion: 2,
     lastActiveDate: new Date().toISOString(),
   };
 }
@@ -403,8 +393,16 @@ export function cleanNightNotesFromMemory(memory: UserMemoryProfile): UserMemory
         }).slice(0, 5);
 
     let newRecentContext = cleaned.vault.recentContext || '';
-    if (!isLateNight && (newRecentContext.toLowerCase().includes('thức khuya') || newRecentContext.toLowerCase().includes('thức đêm') || newRecentContext.toLowerCase().includes('đêm muộn'))) {
-      newRecentContext = purgeNightWords(newRecentContext) || 'Trò chuyện cùng Tomorrow';
+    if (typeof newRecentContext === 'string') {
+      if (!isLateNight && (newRecentContext.toLowerCase().includes('thức khuya') || newRecentContext.toLowerCase().includes('thức đêm') || newRecentContext.toLowerCase().includes('đêm muộn'))) {
+        newRecentContext = purgeNightWords(newRecentContext) || 'Trò chuyện cùng Tomorrow';
+      }
+    } else if (Array.isArray(newRecentContext)) {
+      if (!isLateNight) {
+        newRecentContext = newRecentContext
+          .map((c) => purgeNightWords(c))
+          .filter(Boolean) as string[];
+      }
     }
 
     cleaned.vault = {
@@ -539,9 +537,12 @@ export async function loadUserMemoryProfile(): Promise<UserMemoryProfile> {
     if (parsed.userName === 'bro') {
       parsed.userName = 'Bạn iu';
     }
-    if (!parsed.vault) {
-      parsed.vault = getVaultFromProfile(parsed);
-    }
+    const normVault = migrateAndNormalizeVault(parsed.vault || parsed);
+    parsed.vault = normVault;
+    parsed.studySubjects = normVault.studySubjects;
+    parsed.financeGoals = normVault.financeGoals;
+    parsed.moodHistory = normVault.moodHistory;
+    parsed.schemaVersion = 2;
     const cleaned = cleanNightNotesFromMemory(parsed);
     return cleaned;
   } catch (error) {

@@ -45,6 +45,8 @@ import { FloatingInputBar, FloatingInputBarRef } from './components/FloatingInpu
 import { SidebarDrawer } from './components/SidebarDrawer';
 import { TypingIndicator } from './components/TypingIndicator';
 import { CommandPalette } from './components/CommandPalette';
+import { MemoryVaultModal } from './components/MemoryVaultModal';
+import { StructuredMemoryVault } from './types/chat';
 import {
   Menu,
   Sparkles,
@@ -89,6 +91,7 @@ export default function App() {
   const [isReady, setIsReady] = useState<boolean>(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(width >= 768);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
+  const [isMemoryVaultOpen, setIsMemoryVaultOpen] = useState<boolean>(false);
 
   // HẠNG MỤC 2: Quản lý Split Chat Panes kiểu VS Code (mặc định 1 pane, Cmd+↑ mở 2 pane, tối đa 3 pane)
   const [panes, setPanes] = useState<ChatPane[]>([{ id: 'pane-1', sessionId: null }]);
@@ -969,7 +972,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.6</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7</Text>
               </View>
             </View>
           </View>
@@ -1444,9 +1447,35 @@ export default function App() {
           onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
           onToggleTheme={handleToggleTheme}
           onToggleSplitPanes={handleToggleSplitPanes}
+          onOpenMemoryVault={() => setIsMemoryVaultOpen(true)}
           isSplitPanes={panes.length > 1}
           theme={theme}
           themeMode={themeMode}
+        />
+
+        {/* Modal Quản lý Hồ sơ Tri thức Đa chiều (Memory Vault) */}
+        <MemoryVaultModal
+          visible={isMemoryVaultOpen}
+          onClose={() => setIsMemoryVaultOpen(false)}
+          theme={theme}
+          themeMode={themeMode}
+          vault={userMemory.vault as StructuredMemoryVault}
+          onUpdateVault={(updatedVault) => {
+            const newProfile: UserMemoryProfile = {
+              ...userMemory,
+              vault: updatedVault,
+              interests: updatedVault.favorites,
+              currentProject: updatedVault.activeProjects[0] || userMemory.currentProject,
+              habits: updatedVault.habits,
+              summary: Array.isArray(updatedVault.recentContext) ? updatedVault.recentContext[0] || '' : updatedVault.recentContext,
+              studySubjects: updatedVault.studySubjects,
+              financeGoals: updatedVault.financeGoals,
+              moodHistory: updatedVault.moodHistory,
+              lastActiveDate: new Date().toISOString(),
+            };
+            setUserMemory(newProfile);
+            userMemoryRef.current = newProfile;
+          }}
         />
       </SafeAreaView>
     </SafeAreaProvider>

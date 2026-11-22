@@ -1,14 +1,16 @@
-# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.6)
+# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.7)
 
 ## 1. MÔI TRƯỜNG, NỀN TẢNG CỐT LÕI & CÁC KHÓA LƯU TRỮ
 - **Hệ điều hành phát triển & vận hành:** macOS (Ứng dụng đích chạy tại `/Applications/Tomorrow.app` kết nối Vercel Production). Mọi script/shell dùng chuẩn Unix/macOS, không dùng cú pháp Windows.
 - **Tech Stack:** React Native (Expo, TypeScript strict mode), lưu trữ cục bộ `AsyncStorage`, Backend Serverless Proxy tại `/api/search.js` trên Vercel.
 - **Đầy đủ 4 khóa `AsyncStorage` cố định (CẤM ĐỔI TÊN làm mất dữ liệu người dùng):**
   1. `CHAT_SESSIONS_V2`: Danh sách lịch sử các phiên trò chuyện (kèm cơ chế tự động migrate từ `CHAT_HISTORY_V1`).
-  2. `USER_MEMORY_PROFILE_V1`: Hồ sơ trí nhớ đa chiều (`UserMemoryVault` - đại từ, sở thích, dự án, thói quen, bối cảnh gần đây).
+  2. `USER_MEMORY_PROFILE_V1`: Hồ sơ trí nhớ đa chiều (`StructuredMemoryVault` schema v2 - studySubjects, financeGoals, moodHistory, favorites, activeProjects, habits, recentContext).
   3. `TOMORROW_THEME_MODE`: Trạng thái giao diện Sáng / Tối (`dark` | `light`).
   4. `TOMORROW_QUOTA_STATS_V1`: Thống kê hạn mức và lưu lượng gọi API theo ngày của OpenAI và Gemini (`services/quotaShield.ts`).
 - **Các module nền tảng của Master Plan 90 Ngày:**
+  - `services/memoryVaultService.ts`: Lõi quản lý tập trung Hồ sơ Tri thức Đa chiều (`StructuredMemoryVault` schema v2), nâng cấp ngược an toàn (`migrateAndNormalizeVault`), phân loại gộp trùng cục bộ (< 1ms `mergeMemoryIntoVault`), và bơm chọn lọc ngữ cảnh (`buildMemoryContextSlice` <= 480 ký tự).
+  - `components/MemoryVaultModal.tsx`: Giao diện quản lý Vault 4 tab gọn gàng chuẩn macOS, tích hợp vào `Cmd + K` (`CommandPalette`).
   - `services/personaRouter.ts`: Bộ điều phối nhân cách kép cục bộ (< 1ms): `COMPANION_MIRROR` (tri kỷ đời thường) vs `JARVIS_LAB` (J.A.R.V.I.S. phòng lab), bộ điều tiết độ hóm hỉnh `dryWitLevel` ('OFF' | 'SUBTLE' | 'SHARP'), và kho chiến thuật `DOMAIN_PLAYBOOKS`.
   - `services/quotaShield.ts`: Lá chắn Quota sinh viên, theo dõi 2 API key độc lập, reset theo ngày `YYYY-MM-DD`, cảnh báo quota và hỗ trợ reset cờ OpenAI.
   - `utils/imageOptimizer.ts`: Bộ nén Canvas Web/macOS cho Vision Lab (tối đa 1024px, JPEG 0.82, giảm 60–80% dung lượng base64).
@@ -64,11 +66,12 @@
   - **Làm sạch lịch sử gửi API (`normalizeHistoryForAPI`):** Lọc bỏ 100% tin nhắn lỗi mạng (`isNetworkErrorMessage`), gộp các tin nhắn cùng role liên tiếp, đảm bảo lịch sử luôn luân phiên chuẩn xác `user <-> model`.
   - **Bảo vệ ngữ cảnh thời gian thực (`buildChronoContext`):** 6 khung nhịp sinh học, cấm nhận xét thức khuya lệch pha khi không phải khung `LATE_NIGHT`.
   - **Bộ ghép nối an toàn (`sanitizeAndMergeBrokenBlocks`):** Tự động phát hiện và nối gộp khối code bị mở ```` ``` ```` mà chưa đóng sang phần tử kế tiếp trong mảng `replies`.
-- **Lớp 2 (Hồ sơ Trí nhớ `UserMemoryVault`):**
-  - Giới hạn tối đa 5 mục mỗi mảng (`pronouns`, `favorites`, `activeProjects`, `habits`, `recentContext`) để giữ prompt dưới 120 tokens.
+- **Lớp 2 (Hồ sơ Tri thức Đa chiều `StructuredMemoryVault` — Schema v2):**
+  - Mở rộng đa chiều: `studySubjects` (tối đa 6), `financeGoals` (tối đa 5), `moodHistory` (tối đa 5), `favorites` (5), `activeProjects` (5), `habits` (5), `recentContext` (5).
+  - Bơm chọn lọc ngữ cảnh thông qua `buildMemoryContextSlice`: 0 token cho STOP/PING, ưu tiên môn học cho STEM/Vision, ưu tiên tài chính cho Finance Quant. Luôn `<= 480 ký tự`.
   - **Luật Đại Từ Xưng Hô:** CẤM tự ý gọi người dùng là `"bro"` trừ khi người dùng chủ động gọi trước. Nếu user xưng `"t - m"`, khóa cứng cặp đại từ `"t - m"` xuyên suốt.
 - **Lớp 3 (`SYSTEM_INSTRUCTION` Tinh Gọn):**
-  - Giữ nghiêm ngặt dưới 450 từ (hiện tại: 412 từ) với bản sắc Dual-Persona rõ rệt kèm 7 ví dụ Golden Few-Shot Bank đã kiểm chứng qua `train_simulator.js`. CẤM nhồi nhét thêm quy tắc văn bản trùng lặp gây hiện tượng "Lost in the Middle".
+  - Giữ nghiêm ngặt dưới 450 từ (hiện tại: 439 từ) với bản sắc Dual-Persona rõ rệt kèm 7 ví dụ Golden Few-Shot Bank đã kiểm chứng qua `train_simulator.js`. CẤM nhồi nhét thêm quy tắc văn bản trùng lặp gây hiện tượng "Lost in the Middle".
 - **Chuỗi Xoay Vòng Model (Hybrid Router):**
   - Ưu tiên `callOpenAI` (`gpt-4o-mini`). Silent Circuit Breaker chỉ ngắt khi lỗi HTTP 401, 402, 403, 429; AbortError timeout chỉ trượt lượt đó sang Gemini mà KHÔNG khóa vĩnh viễn OpenAI.
   - Fallback sang chuỗi Gemini miễn phí thông minh (`gemini-2.5-flash` / `gemini-2.0-flash` -> `gemini-1.5-flash` / `gemini-1.5-pro` -> `gemma-4-31b-it`).
@@ -79,5 +82,5 @@
 - Mọi bản cập nhật phải vượt qua:
   1. `npm run typecheck`
   2. `npx expo export -p web` (đảm bảo 0 lỗi biên dịch web)
-  3. `node train_simulator.js` (đảm bảo 24/24 kịch bản PASS tuyệt đối 240/240 điểm)
+  3. `node train_simulator.js` (đảm bảo 28/28 kịch bản PASS tuyệt đối 280/280 điểm)
 - Chỉ chạy `npx vercel --prod --yes` sau khi đã kiểm tra đầy đủ và được người dùng phê duyệt.

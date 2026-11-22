@@ -22,6 +22,7 @@ import {
   CornerDownLeft,
   Columns2,
   RefreshCw,
+  Brain,
 } from 'lucide-react-native';
 import { ChatSession } from '../types/chat';
 import { ThemeColors, ThemeMode } from '../constants/theme';
@@ -39,6 +40,7 @@ export interface CommandPaletteProps {
   onToggleSidebar: () => void;
   onToggleTheme: () => void;
   onToggleSplitPanes?: () => void;
+  onOpenMemoryVault?: () => void;
   isSplitPanes?: boolean;
   theme: ThemeColors;
   themeMode: ThemeMode;
@@ -53,7 +55,7 @@ export interface PaletteItem {
   subtitle?: string;
   snippet?: string;
   badge?: string;
-  iconType: 'new_chat' | 'toggle_sidebar' | 'toggle_theme' | 'session' | 'split_panes' | 'reset_circuit_breaker';
+  iconType: 'new_chat' | 'toggle_sidebar' | 'toggle_theme' | 'session' | 'split_panes' | 'reset_circuit_breaker' | 'memory_vault';
   sessionId?: string;
   action?: () => void;
   group: 'actions' | 'recent' | 'search';
@@ -122,6 +124,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onToggleSidebar,
   onToggleTheme,
   onToggleSplitPanes,
+  onOpenMemoryVault,
   isSplitPanes = false,
   theme,
   themeMode,
@@ -212,6 +215,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         },
       },
       {
+        id: 'act-memory-vault',
+        type: 'action',
+        title: '🧠 Hồ sơ Trí nhớ (Memory Vault)',
+        subtitle: 'Xem & quản lý môn học, mục tiêu tài chính, sở thích và dự án',
+        badge: 'Vault',
+        iconType: 'memory_vault',
+        group: 'actions',
+        action: () => {
+          onClose();
+          onOpenMemoryVault?.();
+        },
+      },
+      {
         id: 'act-reset-openai',
         type: 'action',
         title: 'Reset cờ OpenAI (Thử kết nối lại)',
@@ -227,7 +243,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         },
       },
     ],
-    [themeMode, isSplitPanes, handleTriggerNewChat, onToggleSidebar, onToggleTheme, onToggleSplitPanes, onClose]
+    [themeMode, isSplitPanes, handleTriggerNewChat, onToggleSidebar, onToggleTheme, onToggleSplitPanes, onOpenMemoryVault, onClose]
   );
 
   // Nhóm Các Phiên Gần Đây (hiển thị khi chưa tìm kiếm)
@@ -301,6 +317,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       'song song'.includes(q)
     ) {
       matchedActions.push(quickActions[3]);
+    }
+    if (
+      'hồ sơ trí nhớ memory vault môn học tài chính kiến thức tri thức học tập'.includes(q) ||
+      'memory'.includes(q) ||
+      'trí nhớ'.includes(q) ||
+      'vault'.includes(q) ||
+      'môn học'.includes(q) ||
+      'tài chính'.includes(q) ||
+      'học tập'.includes(q)
+    ) {
+      const memoryAction = quickActions.find((a) => a.id === 'act-memory-vault');
+      if (memoryAction && !matchedActions.includes(memoryAction)) {
+        matchedActions.push(memoryAction);
+      }
     }
 
     const matchedSessions: PaletteItem[] = [];
@@ -421,6 +451,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         return <Columns2 size={16} color={isSelected ? activeColor : '#10B981'} />;
       case 'reset_circuit_breaker':
         return <RefreshCw size={15} color={isSelected ? activeColor : '#EC4899'} />;
+      case 'memory_vault':
+        return <Brain size={16} color={isSelected ? activeColor : '#A855F7'} />;
       case 'session':
       default:
         return (

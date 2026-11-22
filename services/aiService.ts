@@ -1,12 +1,19 @@
-import { ChatMessage, EmotionData, UserMemoryProfile, WebSource, UserMemoryVault } from '../types/chat';
+import { ChatMessage, EmotionData, UserMemoryProfile, WebSource, UserMemoryVault, StructuredMemoryVault } from '../types/chat';
 import { JarvisIntent, ConversationState } from '../types/jarvis';
 import {
   isPlaceholderOrNoiseTitle,
   getVaultFromProfile,
-  mergeMemoryNoteIntoVault,
   updateProfileWithVault,
   DEFAULT_USER_MEMORY_VAULT,
 } from '../storage/chatStorage';
+import {
+  migrateAndNormalizeVault,
+  mergeMemoryIntoVault,
+  buildMemoryContextSlice,
+  loadStructuredVault,
+  saveStructuredVault,
+  DEFAULT_STRUCTURED_VAULT,
+} from './memoryVaultService';
 import { performSmartWebSearch, shouldTriggerWebSearch, resolveTemporalSearchQuery } from './webSearchService';
 import {
   KeystrokeTelemetry,
@@ -28,8 +35,14 @@ import {
 export {
   isPlaceholderOrNoiseTitle,
   getVaultFromProfile,
-  mergeMemoryNoteIntoVault,
+  mergeMemoryIntoVault,
   updateProfileWithVault,
+  migrateAndNormalizeVault,
+  buildMemoryContextSlice,
+  loadStructuredVault,
+  saveStructuredVault,
+  StructuredMemoryVault,
+  DEFAULT_STRUCTURED_VAULT,
   KeystrokeTelemetry,
   MicroPsychProfile,
   analyzeMicroPsychology,
@@ -749,6 +762,7 @@ NGUYÊN TẮC CỐT LÕI:
 4. MODE=STOP_SIGNAL: Đáp 1 bong bóng cực ngắn (1-4 chữ), CẤM hỏi ngược lại.
 5. MODE=WEB_INTEL: Cung cấp ngay dữ liệu thực tế kèm URL thật, CẤM hứa suông câu giờ.
 6. CODE & BẢNG: Xuống dòng rõ ràng, thụt lề chuẩn. Mỗi khối code/bảng phải nằm trọn trong 1 phần tử của "replies".
+7. MEMORY VAULT: Đọc thẻ [MEMORY_VAULT] để cá nhân hóa lời giảng/phân tích. Ghi ngắn vào "memory_note" khi user nêu môn học hoặc mục tiêu tài chính.
 
 7 VÍ DỤ MẪU (GOLDEN FEW-SHOT BANK):
 - M1 [PING]: User: "yo" -> {"conversation_state":"ping","replies":["yo","nay có vụ gì mới thế"],"session_title":"","should_update_title":false,"memory_note":""}
@@ -908,16 +922,28 @@ function buildSystemPrompt(
   recentChats: ChatMessage[],
   previousSessionMessages?: ChatMessage[],
   userStyleHint?: string,
-  chrono?: ChronoContext
+  chrono?: ChronoContext,
+  memorySlice?: string
 ): string {
   const currentChrono = chrono || buildChronoContext();
-  const vault = getVaultFromProfile(userMemory);
   const recentContext = recentChats
     .slice(-6)
     .map((m) => `${(m.role === 'user' || m.sender === 'user') ? 'User' : 'Tomorrow'}: ${m.text}`)
     .join('\n');
 
-  let prompt = `${SYSTEM_INSTRUCTION}\n\n${currentChrono.directiveTag}\n\n[MEMORY VAULT]:\n${JSON.stringify(vault)}`;
+  let prompt = `${SYSTEM_INSTRUCTION}\n\n${currentChrono.directiveTag}`;
+
+  if (memorySlice !== undefined) {
+    if (memorySlice.trim()) {
+      prompt += `\n\n${memorySlice.trim()}`;
+    }
+  } else {
+    const vault = migrateAndNormalizeVault(userMemory.vault || userMemory, currentChrono);
+    const slice = buildMemoryContextSlice(vault);
+    if (slice) {
+      prompt += `\n\n${slice}`;
+    }
+  }
 
   if (userStyleHint) {
     prompt += `\n\n${userStyleHint}`;
@@ -3083,12 +3109,21 @@ export async function sendMessageToTomorrow(
       finalUserMessage = `${chrono.directiveTag}\n${psychTag}${personaTag}${playbookTag}${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- TUYỆT ĐỐI CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', 'để mình tìm' vì dữ liệu đã được cung cấp sẵn ngay ở trên.\n- Nếu người dùng có yêu cầu xin link/đường dẫn: Hãy chèn trực tiếp URL thật (https://...) từ kết quả tìm kiếm vào câu trả lời.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
     }
 
+    const currentVault = migrateAndNormalizeVault(userMemory.vault || userMemory, chrono);
+    const memorySlice = buildMemoryContextSlice(currentVault, {
+      persona: dualPersona.persona,
+      intentMode: directive.intentMode,
+      domain: directive.domain,
+      userText,
+    });
+
     const systemPrompt = buildSystemPrompt(
       userMemory,
       recentChats,
       previousSessionMessages,
       userStyle.styleHint,
-      chrono
+      chrono,
+      memorySlice
     );
 
     const attachPsychStateMemory = (targetPayload: AIResponsePayload) => {
@@ -3107,8 +3142,10 @@ export async function sendMessageToTomorrow(
         };
         const psychNote = stateLabels[directive.psych.psychState];
         if (psychNote) {
-          const currentVault = getVaultFromProfile(targetPayload.memoryUpdate ? { ...userMemory, ...targetPayload.memoryUpdate } : userMemory);
-          const updatedVault = mergeMemoryNoteIntoVault(currentVault, psychNote, userText, chrono);
+          const baseVault = targetPayload.memoryUpdate?.vault
+            ? migrateAndNormalizeVault(targetPayload.memoryUpdate.vault, chrono)
+            : currentVault;
+          const updatedVault = mergeMemoryIntoVault(baseVault, { memory_note: psychNote, userMessage: userText }, chrono, directive.psych);
           targetPayload.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
         }
       }
@@ -3135,16 +3172,25 @@ export async function sendMessageToTomorrow(
         );
         const parsed = parseAIResponseJson(openAiRaw, userText, recentChats, webSearchContext.sources);
         if (parsed && parsed.replies && parsed.replies.length > 0) {
-          if (parsed.memory_note) {
-            // HẠNG MỤC 3: Lọc ghi chú lệch pha nếu không phải đêm khuya (23:00 - 03:59)
-            if (chrono.period !== 'LATE_NIGHT' && (parsed.memory_note.toLowerCase().includes('thức khuya') || parsed.memory_note.toLowerCase().includes('thức đêm'))) {
+          const rawNote = parsed.memory_note || (parsed as any).memoryNote || '';
+          const rawUpdate = (parsed as any).memory_update;
+          if (rawNote || rawUpdate) {
+            let noteToSave = rawNote;
+            if (chrono.period !== 'LATE_NIGHT' && (noteToSave.toLowerCase().includes('thức khuya') || noteToSave.toLowerCase().includes('thức đêm'))) {
+              noteToSave = '';
               parsed.memory_note = '';
               parsed.memoryNote = '';
             }
-          }
-          if (parsed.memory_note) {
-            const currentVault = getVaultFromProfile(userMemory);
-            const updatedVault = mergeMemoryNoteIntoVault(currentVault, parsed.memory_note, userText, chrono);
+            const updatedVault = mergeMemoryIntoVault(
+              currentVault,
+              {
+                memory_note: noteToSave,
+                memory_update: rawUpdate,
+                userMessage: userText,
+              },
+              chrono,
+              directive.psych
+            );
             parsed.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
           }
           attachPsychStateMemory(parsed);
@@ -3186,16 +3232,25 @@ export async function sendMessageToTomorrow(
         );
         const parsed = parseAIResponseJson(rawRes.text, userText, recentChats, webSearchContext.sources);
         if (parsed && parsed.replies && parsed.replies.length > 0) {
-          if (parsed.memory_note) {
-            // HẠNG MỤC 3: Lọc ghi chú lệch pha nếu không phải đêm khuya (23:00 - 03:59)
-            if (chrono.period !== 'LATE_NIGHT' && (parsed.memory_note.toLowerCase().includes('thức khuya') || parsed.memory_note.toLowerCase().includes('thức đêm'))) {
+          const rawNote = parsed.memory_note || (parsed as any).memoryNote || '';
+          const rawUpdate = (parsed as any).memory_update;
+          if (rawNote || rawUpdate) {
+            let noteToSave = rawNote;
+            if (chrono.period !== 'LATE_NIGHT' && (noteToSave.toLowerCase().includes('thức khuya') || noteToSave.toLowerCase().includes('thức đêm'))) {
+              noteToSave = '';
               parsed.memory_note = '';
               parsed.memoryNote = '';
             }
-          }
-          if (parsed.memory_note) {
-            const currentVault = getVaultFromProfile(userMemory);
-            const updatedVault = mergeMemoryNoteIntoVault(currentVault, parsed.memory_note, userText, chrono);
+            const updatedVault = mergeMemoryIntoVault(
+              currentVault,
+              {
+                memory_note: noteToSave,
+                memory_update: rawUpdate,
+                userMessage: userText,
+              },
+              chrono,
+              directive.psych
+            );
             parsed.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
           }
           attachPsychStateMemory(parsed);
@@ -3223,15 +3278,25 @@ export async function sendMessageToTomorrow(
     const debugCode = failoverTrace.map((t) => t.replace(/https?:\/\/[^\s]+/g, '').replace(/[{}"]/g, '')).join(' | ').slice(0, 150);
     console.warn('[AI Router Failover]:', 'Toàn bộ API Cloud đã cạn hoặc quá tải, kích hoạt Local Resilient Fallback Engine');
     const fallbackRes = localResilientFallback(userText, !!effectiveImageBase64, userMemory, chrono, debugCode);
-    if (fallbackRes.memory_note) {
-      if (chrono.period !== 'LATE_NIGHT' && (fallbackRes.memory_note.toLowerCase().includes('thức khuya') || fallbackRes.memory_note.toLowerCase().includes('thức đêm'))) {
+    const fallbackNote = fallbackRes.memory_note || (fallbackRes as any).memoryNote || '';
+    const fallbackUpdate = (fallbackRes as any).memory_update;
+    if (fallbackNote || fallbackUpdate) {
+      let noteToSave = fallbackNote;
+      if (chrono.period !== 'LATE_NIGHT' && (noteToSave.toLowerCase().includes('thức khuya') || noteToSave.toLowerCase().includes('thức đêm'))) {
+        noteToSave = '';
         fallbackRes.memory_note = '';
         fallbackRes.memoryNote = '';
       }
-    }
-    if (fallbackRes.memory_note) {
-      const currentVault = getVaultFromProfile(userMemory);
-      const updatedVault = mergeMemoryNoteIntoVault(currentVault, fallbackRes.memory_note, userText, chrono);
+      const updatedVault = mergeMemoryIntoVault(
+        currentVault,
+        {
+          memory_note: noteToSave,
+          memory_update: fallbackUpdate,
+          userMessage: userText,
+        },
+        chrono,
+        directive.psych
+      );
       fallbackRes.memoryUpdate = updateProfileWithVault(userMemory, updatedVault);
     }
     attachPsychStateMemory(fallbackRes);

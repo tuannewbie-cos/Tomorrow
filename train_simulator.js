@@ -1,8 +1,8 @@
 /**
- * TOMORROW V4.6 — LOCAL DUAL-PERSONA ROUTER, STEM/FINANCE PLAYBOOKS & ANTI-ROBOTIC JARVIS LAB
+ * TOMORROW V4.7 — STRUCTURED KNOWLEDGE VAULT & MULTIDIMENSIONAL STUDENT PROFILE
  * Automated Training & Verification Simulator
  * 
- * 24 Scenarios:
+ * 28 Scenarios:
  * 1. Test_Pronoun_No_Bro: Xưng "t - m", 0% "bro", max_tokens 250, thuần văn bản, lưu thần tượng Ronaldo vào Memory Vault.
  * 2. Test_Stop_Signal_Okk_Sybau: Tín hiệu dừng "okk" & "sybau" -> MODE=STOP_SIGNAL, max_tokens 250, 1 bong bóng <= 4 từ, 0 dấu "?".
  * 3. Test_Web_No_Stalling: Tra cứu Web đưa kết quả kèm URL ngay lập tức, max_tokens 1200, 0% hứa suông câu giờ.
@@ -26,7 +26,11 @@
  * 21. Test_Day10_Instant_Persona_Switch: L1 chat mệt mỏi (:3) -> COMPANION_MIRROR, L2 hỏi trở hạn dòng LED 5V -> tức thì chuyển sang JARVIS_LAB + STEM_ELECTRONICS (150 Ω, 0% cợt nhả, 0 câu kết máy móc).
  * 22. Test_Day10_Finance_DualSide: Hỏi 10 triệu mua cổ phiếu ăn chắc -> kích hoạt FINANCE_QUANT + JARVIS_LAB, phân tích 2 chiều cơ hội/rủi ro, bác bỏ ăn chắc cảm tính.
  * 23. Test_Day10_Stress_Disable_Wit: Nhắn "ổn mà... k sao đâu" ngập ngừng -> COMPANION_MIRROR + dryWitLevel = OFF (tuyệt đối không đùa cợt khi stress).
- * 24. Test_Day10_SystemPrompt_Budget: SYSTEM_INSTRUCTION đạt chuẩn < 450 từ (thực tế 412 từ), chống Lost in the Middle.
+ * 24. Test_Day10_SystemPrompt_Budget: SYSTEM_INSTRUCTION đạt chuẩn < 450 từ (thực tế 439 từ), chống Lost in the Middle.
+ * 25. Test_Day11_Vault_Migration: Nâng cấp dữ liệu cũ v3.8/v4.5 giữ nguyên 100% dữ liệu cũ, bổ sung studySubjects: [], financeGoals: [], schemaVersion: 2.
+ * 26. Test_Day11_Study_And_Finance_Upsert: Upsert môn "Giải tích 2" không tạo 2 bản trùng lặp + tách đúng targetAmount: "15tr" cho mục tiêu tiết kiệm.
+ * 27. Test_Day11_Selective_Context_Slice: "" khi STOP_SIGNAL, ưu tiên studySubjects cho STEM_MATH, ưu tiên financeGoals cho FINANCE_QUANT, độ dài <= 480 ký tự.
+ * 28. Test_Day11_SystemPrompt_Budget: SYSTEM_INSTRUCTION Ngày 11 tự động kiểm tra đạt < 450 từ.
  */
 
 const fs = require('fs');
@@ -78,6 +82,7 @@ function loadTsModule(filePath) {
 
 const aiService = loadTsModule(path.resolve(__dirname, 'services/aiService.ts'));
 const profiler = loadTsModule(path.resolve(__dirname, 'services/microPsychProfiler.ts'));
+const memoryVault = loadTsModule(path.resolve(__dirname, 'services/memoryVaultService.ts'));
 
 // 1. BỘ LỌC TIÊU ĐỀ RÁC (Đồng bộ storage/chatStorage.ts)
 function isPlaceholderOrNoiseTitle(title) {
@@ -531,9 +536,9 @@ function simulateAIProcess(userText, history = [], vault = DEFAULT_USER_MEMORY_V
   };
 }
 
-// ==================== BẮT ĐẦU CHẠY 24 KỊCH BẢN KIỂM THỬ ====================
+// ==================== BẮT ĐẦU CHẠY 28 KỊCH BẢN KIỂM THỬ ====================
 console.log('='.repeat(75));
-console.log('🚀 TOMORROW V4.6: DUAL-PERSONA ROUTER (COMPANION MIRROR & JARVIS LAB) & PLAYBOOKS');
+console.log('🚀 TOMORROW V4.7: STRUCTURED KNOWLEDGE VAULT & MULTIDIMENSIONAL STUDENT PROFILE');
 console.log('='.repeat(75));
 
 const results = [];
@@ -1245,12 +1250,196 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
   });
 }
 
+// ==================== NGÀY 11: STRUCTURED KNOWLEDGE VAULT TESTS ====================
+
+// TEST 25: Test_Day11_Vault_Migration
+{
+  const oldV38Data = {
+    favorites: ['Fan cứng Cristiano Ronaldo (CR7)', 'Thích giao diện Dark Mode macOS'],
+    activeProjects: ['Đang phát triển siêu trợ lý Tomorrow (React Native + Vercel)'],
+    habits: ['Làm việc tập trung', 'Ghét chatbot hỏi vặn khi nhắn okk/sybau'],
+    recentContext: 'Bắt đầu phiên trò chuyện mới cùng Tomorrow',
+  };
+
+  const migrated = memoryVault.migrateAndNormalizeVault(oldV38Data);
+
+  const isV2 = migrated.schemaVersion === 2;
+  const retainsFavorites =
+    migrated.favorites.length === 2 &&
+    migrated.favorites[0] === oldV38Data.favorites[0] &&
+    migrated.favorites[1] === oldV38Data.favorites[1];
+  const retainsProjects =
+    migrated.activeProjects.length === 1 &&
+    migrated.activeProjects[0] === oldV38Data.activeProjects[0];
+  const retainsHabits =
+    migrated.habits.length === 2 &&
+    migrated.habits[0] === oldV38Data.habits[0];
+  const retainsRecent =
+    Array.isArray(migrated.recentContext) &&
+    migrated.recentContext.length === 1 &&
+    migrated.recentContext[0] === oldV38Data.recentContext;
+  const hasEmptyNewArrays =
+    Array.isArray(migrated.studySubjects) && migrated.studySubjects.length === 0 &&
+    Array.isArray(migrated.financeGoals) && migrated.financeGoals.length === 0 &&
+    Array.isArray(migrated.moodHistory) && migrated.moodHistory.length === 0;
+
+  const passed = isV2 && retainsFavorites && retainsProjects && retainsHabits && retainsRecent && hasEmptyNewArrays;
+  const score = passed ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day11_Vault_Migration',
+    input: 'Dữ liệu cũ v3.8/v4.6 -> migrateAndNormalizeVault',
+    mode: `VAULT_SCHEMA_V${migrated.schemaVersion}`,
+    output: [
+      `schemaVersion: ${migrated.schemaVersion}`,
+      `favorites: ${migrated.favorites.length}`,
+      `studySubjects: ${migrated.studySubjects.length}`,
+      `financeGoals: ${migrated.financeGoals.length}`,
+    ],
+    score,
+    passed,
+    details: passed
+      ? 'Nâng cấp dữ liệu cũ v3.8/v4.5 giữ nguyên 100% dữ liệu cũ, bổ sung studySubjects: [], financeGoals: [], schemaVersion: 2'
+      : 'Thất bại: Mất mát dữ liệu cũ hoặc thiếu các mảng đa chiều mới',
+  });
+}
+
+// TEST 26: Test_Day11_Study_And_Finance_Upsert
+{
+  let v = memoryVault.migrateAndNormalizeVault(null);
+  // Upsert lần 1: Giải tích 2 (yếu)
+  v = memoryVault.mergeMemoryIntoVault(v, {
+    memory_note: 'Học Giải tích 2 yếu',
+    userMessage: 'môn Giải tích 2 khó hiểu vãi',
+  });
+  // Upsert lần 2: Giải tích 2 (ôn thêm phần tích phân) -> Không tạo 2 bản trùng lặp
+  v = memoryVault.mergeMemoryIntoVault(v, {
+    userMessage: 'Giải tích 2 t ôn thêm phần tích phân',
+  });
+
+  const subjectCheck =
+    v.studySubjects.length === 1 &&
+    v.studySubjects[0].subject.toLowerCase().includes('giải tích 2') &&
+    v.studySubjects[0].level === 'weak' &&
+    v.studySubjects[0].focusTopic === 'Tích phân';
+
+  // Upsert mục tiêu tiết kiệm 15tr
+  v = memoryVault.mergeMemoryIntoVault(v, {
+    userMessage: 'mục tiêu tiết kiệm 15tr trước tết để mua laptop',
+  });
+
+  const financeCheck =
+    v.financeGoals.length >= 1 &&
+    v.financeGoals[0].targetAmount === '15tr' &&
+    v.financeGoals[0].horizon === 'short';
+
+  const passed = subjectCheck && financeCheck;
+  const score = passed ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day11_Study_And_Finance_Upsert',
+    input: 'L1: "Học Giải tích 2 yếu" -> L2: "Giải tích 2 t ôn thêm phần tích phân" -> L3: "tiết kiệm 15tr trước tết"',
+    mode: 'STUDY_AND_FINANCE_UPSERT',
+    output: [
+      `Môn: ${v.studySubjects[0]?.subject} (${v.studySubjects[0]?.level}, focus: ${v.studySubjects[0]?.focusTopic})`,
+      `Tài chính: ${v.financeGoals[0]?.goal} (amount: ${v.financeGoals[0]?.targetAmount}, horizon: ${v.financeGoals[0]?.horizon})`,
+    ],
+    score,
+    passed,
+    details: passed
+      ? 'Upsert môn "Giải tích 2" không tạo 2 bản trùng lặp + tách đúng targetAmount: "15tr" cho mục tiêu tiết kiệm'
+      : 'Thất bại: Tạo bản trùng lặp môn học hoặc tách sai số tiền tài chính',
+  });
+}
+
+// TEST 27: Test_Day11_Selective_Context_Slice
+{
+  const v = memoryVault.migrateAndNormalizeVault({
+    favorites: ['Fan cứng Cristiano Ronaldo (CR7)'],
+    activeProjects: ['Đang phát triển siêu trợ lý Tomorrow (React Native + Vercel)'],
+    habits: ['Làm việc tập trung'],
+    studySubjects: [
+      { id: 'sub-1', subject: 'Giải tích 2', level: 'weak', focusTopic: 'Tích phân suy rộng', updatedAt: new Date().toISOString() },
+    ],
+    financeGoals: [
+      { id: 'fin-1', goal: 'Tiết kiệm mua laptop', targetAmount: '15tr', horizon: 'short', updatedAt: new Date().toISOString() },
+    ],
+  });
+
+  // 1. STOP_SIGNAL trả về ""
+  const stopSlice = memoryVault.buildMemoryContextSlice(v, { intentMode: 'STOP_SIGNAL' });
+  const isStopEmpty = stopSlice === '';
+
+  // 2. STEM_MATH ưu tiên studySubjects
+  const mathSlice = memoryVault.buildMemoryContextSlice(v, {
+    domain: 'STEM_MATH',
+    persona: 'JARVIS_LAB',
+    intentMode: 'EXPERT_JARVIS',
+  });
+  const mathHasSubjects = mathSlice.includes('Giải tích 2') && mathSlice.includes('Môn học:');
+  const mathNoFinance = !mathSlice.includes('Mục tiêu tài chính');
+
+  // 3. FINANCE_QUANT ưu tiên financeGoals
+  const finSlice = memoryVault.buildMemoryContextSlice(v, {
+    domain: 'FINANCE_QUANT',
+    persona: 'JARVIS_LAB',
+    intentMode: 'EXPERT_JARVIS',
+  });
+  const finHasGoals = finSlice.includes('15tr') && finSlice.includes('Mục tiêu tài chính:');
+  const finNoSubjects = !finSlice.includes('Môn học');
+
+  // 4. Độ dài luôn <= 480 ký tự
+  const allUnder480 =
+    stopSlice.length <= 480 &&
+    mathSlice.length <= 480 &&
+    finSlice.length <= 480;
+
+  const passed = isStopEmpty && mathHasSubjects && mathNoFinance && finHasGoals && finNoSubjects && allUnder480;
+  const score = passed ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day11_Selective_Context_Slice',
+    input: 'STOP_SIGNAL vs STEM_MATH vs FINANCE_QUANT context slicing',
+    mode: 'SELECTIVE_CONTEXT_SLICING',
+    output: [
+      `STOP_SIGNAL: "${stopSlice}" (len: ${stopSlice.length})`,
+      `STEM_MATH: "${mathSlice}" (len: ${mathSlice.length})`,
+      `FINANCE_QUANT: "${finSlice}" (len: ${finSlice.length})`,
+    ],
+    score,
+    passed,
+    details: passed
+      ? '"" khi STOP_SIGNAL, ưu tiên studySubjects cho STEM_MATH, ưu tiên financeGoals cho FINANCE_QUANT, độ dài <= 480 ký tự'
+      : 'Thất bại: Sai lệch phân bổ lát cắt hoặc độ dài vượt quá 480 ký tự',
+  });
+}
+
+// TEST 28: Test_Day11_SystemPrompt_Budget
+{
+  const words = aiService.SYSTEM_INSTRUCTION.trim().split(/\s+/).filter(Boolean);
+  const wordCount = words.length;
+  const isBudgetValid = wordCount < 450;
+  const score = isBudgetValid ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day11_SystemPrompt_Budget',
+    input: 'Đếm từ SYSTEM_INSTRUCTION (Day 11)',
+    mode: `PROMPT_BUDGET_${wordCount}_WORDS`,
+    output: [`Số từ: ${wordCount} words (Giới hạn: < 450 words)`],
+    score,
+    passed: isBudgetValid,
+    details: isBudgetValid
+      ? `SYSTEM_INSTRUCTION đạt chuẩn ngân sách Day 11: ${wordCount} từ (< 450 từ), bảo vệ Attention khỏi Lost in the Middle`
+      : `Vượt ngân sách: ${wordCount} từ (vượt mức 450 từ cho phép)`,
+  });
+}
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 24 SCENARIOS (TOMORROW V4.6):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 28 SCENARIOS (TOMORROW V4.7):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
-  console.log(`${icon} [TEST ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(34)} | Điểm: ${r.score}/10 | Mode: ${r.mode}`);
+  console.log(`${icon} [TEST ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(36)} | Điểm: ${r.score}/10 | Mode: ${r.mode}`);
   console.log(`   Input: "${r.input}"`);
   console.log(`   Output: ${JSON.stringify(r.output)}`);
   console.log(`   Chi tiết: ${r.details}`);
@@ -1260,16 +1449,16 @@ results.forEach((r, idx) => {
 const totalScore = results.reduce((acc, cur) => acc + cur.score, 0);
 const allPassed = results.every(r => r.passed);
 
-console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/240 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
+console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/280 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
 console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.6.0',
+  version: 'v4.7.0',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.6 — Dual-Persona Router (Companion Mirror & Jarvis Lab) + Domain Playbooks',
+  architecture: 'Tomorrow v4.7 — Structured Knowledge Vault & Multidimensional Student Profile',
   totalScore,
-  maxScore: 240,
+  maxScore: 280,
   allPassed,
   scenarios: results,
 };
