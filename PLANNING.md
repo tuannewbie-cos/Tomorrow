@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.2` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.3` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -224,7 +224,22 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
     + Thay thế hàm tách chuỗi mong manh bằng Bộ phân tích tuần tự State Machine theo từng dòng (`parseMarkdownBlocks`), bảo vệ trọn vẹn ghi chú comment `#` (không bao giờ bị biến thành Heading), loại bỏ tình trạng nhốt chữ vào code block hoặc sinh code block rỗng.
   - **Bộ kiểm thử tự động `train_simulator.js`:**
     + Bổ sung kịch bản TEST 29: `Test_Day11_Markdown_InlineFence_Normalizer`.
-    + Đạt điểm tuyệt đối 29/29 scenarios (290/290 điểm 100% hoàn hảo). Header cập nhật: **`Online • v4.7.2`**.
+    + Đạt điểm tuyệt đối 29/29 scenarios (290/290 điểm 100% hoàn hảo).
+
+- [x] **Ngày 11++ (`fix/split-ui` — Phiên bản `Online • v4.7.3`): Gom Duy Nhất 1 Component `<ChatPaneView />`, Khóa Cứng Thanh Nhập Liệu Chuẩn 48px & Web Textarea 1 Dòng**
+  - **Gom về duy nhất một component `<ChatPaneView />` chung (`App.tsx`):**
+    + Chuyển toàn bộ nhánh render `panes.map` về một component duy nhất `<ChatPaneView />` dùng chung cho toàn bộ Pane 0, Pane 1 (và Pane 2 nếu mở tối đa 3 pane).
+    + Khung trái (mặc định) và khung phải (split) giống hệt nhau 100% từng pixel, chung cấu trúc Header, Dropdown sessions, EmptyState, FlatList và FloatingInputBar.
+  - **Khóa cứng chiều cao thanh nhập liệu & Web Textarea 1 dòng (`FloatingInputBar.tsx`):**
+    + Vỏ pill dùng chung 1 style duy nhất cho mọi pane: `minHeight: 48, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 24, gap: 8, alignItems: 'center'`.
+    + Xóa sạch toàn bộ logic lệch pha cũ (`alignItems: inputHeight > 36 ? 'flex-end' : 'center'`, `paddingBottom: 8`, `pillContainerSplit`) đã từng làm thanh nhập liệu pane trái phình lên ~85px và đẩy 3 icon + nút Gửi tụt xuống đáy.
+    + Nhóm 3 icon trái (ảnh, emoji, web) và nút Gửi bên phải: `flexDirection: 'row', alignItems: 'center', flexShrink: 0`, icon size 16-19, button size 32x32, luôn căn thẳng hàng tâm dọc với dòng chữ.
+    + Thẻ `<TextInput>` đặt trực tiếp `rows={1}`, style 1 dòng chuẩn (`minHeight: 24, maxHeight: 110, lineHeight: 22, paddingTop: 1, paddingBottom: 1, paddingHorizontal: 4, margin: 0`).
+    + Chặn triệt để `onContentSizeChange` trên Web (nguyên nhân khiến textarea của pane trái tự đo scrollHeight sai và tự phình cao); thay bằng hàm điều chỉnh DOM thực tế: `el.style.height = '24px'; Math.min(110, Math.max(24, el.scrollHeight))`.
+    + Đảm bảo khi gõ 1 dòng ở cả 2 bên Split Screen, thanh nhập liệu bên trái và bên phải đều cao bằng nhau đúng ~48px.
+  - **Khóa Flexbox chống tràn/xén mép trên macOS & Web (`App.tsx`):**
+    + Bổ sung `minWidth: 0, boxSizing: 'border-box'` trên `panesContainer`, `singlePaneWrapper`, `chatAreaWrapper`, `chatListContent`, triệt tiêu hoàn toàn hiện tượng lệch tỷ lệ và xén mép.
+  - Header cập nhật: **`Online • v4.7.3`**.
 
 - [ ] **Ngày 12 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.

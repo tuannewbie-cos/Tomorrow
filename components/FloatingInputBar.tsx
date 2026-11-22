@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import {
   View,
   TextInput,
@@ -63,18 +63,34 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
   const totalKeystrokesRef = useRef<number>(0);
   const recentSendTimestampsRef = useRef<number[]>([]);
 
-  const defaultMinHeight = isSplitMode ? 32 : 44;
   const [inputText, setInputText] = useState('');
-  const [inputHeight, setInputHeight] = useState(defaultMinHeight);
+  const [inputHeight, setInputHeight] = useState(24);
   const [selectedImage, setSelectedImage] = useState<{ uri: string; base64?: string; sizeKB?: number } | null>(null);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [forceWebSearch, setForceWebSearch] = useState(false);
 
-  useEffect(() => {
-    if (!inputText) {
-      setInputHeight(isSplitMode ? 32 : 44);
+  // Điều chỉnh chiều cao DOM thực tế trên Web (chuẩn 1 dòng 24px, tự giãn đến tối đa 110px)
+  const adjustWebTextareaHeight = useCallback(() => {
+    if (Platform.OS !== 'web' || !textInputRef.current) return;
+    const el = (textInputRef.current as any)?._node || (textInputRef.current as any);
+    if (el && typeof el.style === 'object') {
+      try {
+        el.rows = 1;
+        el.style.height = '24px';
+        const nextHeight = Math.min(110, Math.max(24, el.scrollHeight || 24));
+        el.style.height = `${nextHeight}px`;
+        el.style.overflowY = nextHeight >= 110 ? 'auto' : 'hidden';
+      } catch (err) {
+        // Safe fallback
+      }
     }
-  }, [inputText, isSplitMode]);
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      adjustWebTextareaHeight();
+    }
+  }, [inputText, isSplitMode, adjustWebTextareaHeight]);
 
   useImperativeHandle(ref, () => ({
     focus: () => {
@@ -84,22 +100,41 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
       setInputText('');
       setSelectedImage(null);
       setShowEmojiPicker(false);
-      setInputHeight(isSplitMode ? 32 : 44);
+      setInputHeight(24);
       typingStartTimeRef.current = null;
       backspaceCountRef.current = 0;
       totalKeystrokesRef.current = 0;
+      if (Platform.OS === 'web') {
+        const el = (textInputRef.current as any)?._node || (textInputRef.current as any);
+        if (el && el.style) {
+          el.rows = 1;
+          el.style.height = '24px';
+          el.style.overflowY = 'hidden';
+        }
+      }
     },
     reset: () => {
       setInputText('');
       setSelectedImage(null);
       setShowEmojiPicker(false);
-      setInputHeight(isSplitMode ? 32 : 44);
+      setInputHeight(24);
       typingStartTimeRef.current = null;
       backspaceCountRef.current = 0;
       totalKeystrokesRef.current = 0;
+      if (Platform.OS === 'web') {
+        const el = (textInputRef.current as any)?._node || (textInputRef.current as any);
+        if (el && el.style) {
+          el.rows = 1;
+          el.style.height = '24px';
+          el.style.overflowY = 'hidden';
+        }
+      }
     },
     setInputText: (text: string) => {
       setInputText(text);
+      if (Platform.OS === 'web') {
+        setTimeout(adjustWebTextareaHeight, 10);
+      }
     },
     setSelectedImage: (img: { uri: string; base64?: string; sizeKB?: number } | null) => {
       setSelectedImage(img);
@@ -192,10 +227,18 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
 
     onSendMessage(effectiveText, effectiveBase64, effectiveUri, forceWebSearch, telemetry);
     setInputText('');
-    setInputHeight(44); // Thu chiều cao ô nhập về 44px ngay lập tức khi gửi
+    setInputHeight(24); // Thu chiều cao ô nhập về 24px ngay lập tức khi gửi
     setSelectedImage(null);
     setShowEmojiPicker(false);
     setForceWebSearch(false);
+    if (Platform.OS === 'web') {
+      const el = (textInputRef.current as any)?._node || (textInputRef.current as any);
+      if (el && el.style) {
+        el.rows = 1;
+        el.style.height = '24px';
+        el.style.overflowY = 'hidden';
+      }
+    }
 
     // Reset bộ đo sau khi gửi
     typingStartTimeRef.current = null;
@@ -203,34 +246,29 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
     totalKeystrokesRef.current = 0;
   };
 
-  const minAllowedH = isSplitMode ? 32 : 44;
-  const maxAllowedH = isSplitMode ? 120 : 160;
-
   const handleTextChange = (text: string) => {
     setInputText(text);
     if (!text.trim()) {
-      setInputHeight(minAllowedH);
+      setInputHeight(24);
       typingStartTimeRef.current = null;
       backspaceCountRef.current = 0;
       totalKeystrokesRef.current = 0;
-      return;
+    } else {
+      if (typingStartTimeRef.current === null) {
+        typingStartTimeRef.current = Date.now();
+      }
+      totalKeystrokesRef.current++;
     }
-    if (typingStartTimeRef.current === null) {
-      typingStartTimeRef.current = Date.now();
-    }
-    totalKeystrokesRef.current++;
     if (Platform.OS === 'web') {
-      const lines = text.split('\n').length;
-      const estimated = Math.min(Math.max(minAllowedH, lines * (isSplitMode ? 20 : 22) + (isSplitMode ? 8 : 16)), maxAllowedH);
-      setInputHeight(estimated);
+      adjustWebTextareaHeight();
     }
   };
 
   const handleContentSizeChange = (e: any) => {
+    if (Platform.OS === 'web') return; // Cấm onContentSizeChange trên Web để chặn textarea tự nở cao
     const h = e.nativeEvent?.contentSize?.height;
     if (h && typeof h === 'number') {
-      const clamped = Math.min(Math.max(minAllowedH, Math.round(h)), maxAllowedH);
-      setInputHeight(clamped);
+      setInputHeight(Math.min(110, Math.max(24, Math.round(h))));
     }
   };
 
@@ -276,7 +314,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
   };
 
   return (
-    <View style={[styles.wrapper, isSplitMode && styles.wrapperSplit]}>
+    <View style={styles.wrapper}>
       {/* Thanh Quick Emoji Popover */}
       {showEmojiPicker && (
         <View
@@ -325,86 +363,85 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
         </View>
       )}
 
-      {/* Floating Pill Input Bar co giãn đa dòng tự động (minHeight: 44, maxHeight: 160) */}
+      {/* Floating Pill Input Bar chuẩn 1 style duy nhất cho mọi pane, căn thẳng hàng tâm dọc */}
       <View
         style={[
           styles.pillContainer,
-          isSplitMode && styles.pillContainerSplit,
           {
             backgroundColor: theme.inputBg,
             borderColor: theme.inputBorder,
-            alignItems: inputHeight > (isSplitMode ? 36 : 48) ? 'flex-end' : 'center',
-            paddingBottom: inputHeight > (isSplitMode ? 36 : 48) ? (isSplitMode ? 6 : 8) : (isSplitMode ? 4 : 6),
           },
         ]}
       >
-        {/* Nút đính kèm ảnh */}
-        <Pressable
-          style={({ pressed }) => [
-            styles.iconButton,
-            isSplitMode && styles.iconButtonSplit,
-            pressed && { backgroundColor: theme.btnHover },
-            Platform.OS === 'web' && { cursor: 'pointer' as any },
-          ]}
-          onPress={handlePickImage}
-          disabled={isLoading || isTomorrowTyping}
-        >
-          <ImageIcon size={isSplitMode ? 17 : 21} color={selectedImage ? theme.bubbleUser : theme.textSecondary} />
-        </Pressable>
+        {/* Nhóm 3 icon trái: Đính kèm ảnh, Emoji, Web search */}
+        <View style={styles.leftActionsGroup}>
+          {/* Nút đính kèm ảnh */}
+          <Pressable
+            style={({ pressed }) => [
+              styles.iconButton,
+              pressed && { backgroundColor: theme.btnHover },
+              Platform.OS === 'web' && { cursor: 'pointer' as any },
+            ]}
+            onPress={handlePickImage}
+            disabled={isLoading || isTomorrowTyping}
+            hitSlop={6}
+          >
+            <ImageIcon size={isSplitMode ? 17 : 19} color={selectedImage ? theme.bubbleUser : theme.textSecondary} />
+          </Pressable>
 
-        {/* Nút chọn nhanh Emoji */}
-        <Pressable
-          style={({ pressed }) => [
-            styles.iconButton,
-            isSplitMode && styles.iconButtonSplit,
-            pressed && { backgroundColor: theme.btnHover },
-            Platform.OS === 'web' && { cursor: 'pointer' as any },
-          ]}
-          onPress={() => setShowEmojiPicker((prev) => !prev)}
-          disabled={isLoading || isTomorrowTyping}
-        >
-          <Smile size={isSplitMode ? 17 : 21} color={showEmojiPicker ? theme.bubbleUser : theme.textSecondary} />
-        </Pressable>
+          {/* Nút chọn nhanh Emoji */}
+          <Pressable
+            style={({ pressed }) => [
+              styles.iconButton,
+              pressed && { backgroundColor: theme.btnHover },
+              Platform.OS === 'web' && { cursor: 'pointer' as any },
+            ]}
+            onPress={() => setShowEmojiPicker((prev) => !prev)}
+            disabled={isLoading || isTomorrowTyping}
+            hitSlop={6}
+          >
+            <Smile size={isSplitMode ? 17 : 19} color={showEmojiPicker ? theme.bubbleUser : theme.textSecondary} />
+          </Pressable>
 
-        {/* Nút bật/tắt Ép buộc Tìm kiếm Web (🌐 Web) */}
-        <Pressable
-          style={({ pressed }) => [
-            styles.iconButton,
-            isSplitMode && styles.iconButtonSplit,
-            forceWebSearch && { backgroundColor: '#2563EB' },
-            !forceWebSearch && pressed && { backgroundColor: theme.btnHover },
-            Platform.OS === 'web' && { cursor: 'pointer' as any },
-          ]}
-          onPress={() => setForceWebSearch((prev) => !prev)}
-          disabled={isLoading || isTomorrowTyping}
-          hitSlop={6}
-        >
-          <Globe size={isSplitMode ? 16 : 19} color={forceWebSearch ? '#FFFFFF' : theme.textSecondary} />
-        </Pressable>
+          {/* Nút bật/tắt Ép buộc Tìm kiếm Web (🌐 Web) */}
+          <Pressable
+            style={({ pressed }) => [
+              styles.iconButton,
+              forceWebSearch && { backgroundColor: '#2563EB' },
+              !forceWebSearch && pressed && { backgroundColor: theme.btnHover },
+              Platform.OS === 'web' && { cursor: 'pointer' as any },
+            ]}
+            onPress={() => setForceWebSearch((prev) => !prev)}
+            disabled={isLoading || isTomorrowTyping}
+            hitSlop={6}
+          >
+            <Globe size={isSplitMode ? 16 : 18} color={forceWebSearch ? '#FFFFFF' : theme.textSecondary} />
+          </Pressable>
+        </View>
 
-        {/* TextInput co giãn đa dòng mượt mà theo nội dung */}
+        {/* TextInput chuẩn 1 dòng trên Web, tự động mở rộng theo DOM thực tế */}
         <TextInput
           ref={textInputRef}
+          rows={1}
           style={[
             styles.input,
-            isSplitMode && styles.inputSplit,
             {
               color: theme.inputText,
-              height: Math.min(Math.max(minAllowedH, inputHeight), maxAllowedH),
+              fontSize: isSplitMode ? 14 : 15,
+              ...(Platform.OS !== 'web' ? { height: Math.min(110, Math.max(24, inputHeight)) } : {}),
             },
             Platform.OS === 'web' &&
               ({
                 outlineStyle: 'none',
                 boxSizing: 'border-box',
                 resize: 'none',
-                overflowY: inputHeight >= (isSplitMode ? 115 : 155) ? 'auto' : 'hidden',
               } as any),
           ]}
           placeholder="Nhắn cho Tomorrow..."
           placeholderTextColor={theme.placeholderText}
           value={inputText}
           onChangeText={handleTextChange}
-          onContentSizeChange={handleContentSizeChange}
+          {...(Platform.OS !== 'web' ? { onContentSizeChange: handleContentSizeChange } : {})}
           onKeyPress={handleKeyPress}
           {...(Platform.OS === 'web' ? { onKeyDown: handleKeyPress } : {})}
           multiline
@@ -416,7 +453,6 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
         <Pressable
           style={({ pressed }) => [
             styles.sendButton,
-            isSplitMode && styles.sendButtonSplit,
             { backgroundColor: theme.btnBg },
             (inputText.trim().length > 0 || selectedImage) &&
               !isLoading &&
@@ -428,12 +464,13 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
           ]}
           onPress={handleSend}
           disabled={isLoading || isTomorrowTyping || (!inputText.trim() && !selectedImage)}
+          hitSlop={6}
         >
           {isLoading || isTomorrowTyping ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <Send
-              size={isSplitMode ? 15 : 18}
+              size={16}
               color={
                 inputText.trim().length > 0 || selectedImage ? '#FFFFFF' : theme.textMuted
               }
@@ -449,14 +486,11 @@ const styles = StyleSheet.create({
   wrapper: {
     width: '100%',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-    paddingTop: 4,
-    backgroundColor: 'transparent',
-  },
-  wrapperSplit: {
     paddingHorizontal: 12,
     paddingBottom: 12,
+    paddingTop: 4,
+    backgroundColor: 'transparent',
+    ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
   },
   emojiRow: {
     flexDirection: 'row',
@@ -467,7 +501,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderWidth: 1,
     width: '100%',
-    maxWidth: 820,
+    maxWidth: 780,
     alignSelf: 'center',
   },
   emojiBtn: {
@@ -486,7 +520,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 8,
     width: '100%',
-    maxWidth: 820,
+    maxWidth: 780,
     alignSelf: 'center',
   },
   imagePreview: {
@@ -509,82 +543,62 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   pillContainer: {
+    width: '100%',
+    maxWidth: 780,
+    alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 26,
-    paddingLeft: 8,
-    paddingRight: 8,
+    minHeight: 48,
+    paddingHorizontal: 12,
     paddingVertical: 6,
-    minHeight: 52,
+    borderRadius: 24,
     borderWidth: 1,
+    gap: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 10,
     elevation: 4,
-    width: '100%',
-    maxWidth: 820,
-    alignSelf: 'center',
+    ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
   },
-  pillContainerSplit: {
-    minHeight: 46,
-    paddingLeft: 6,
-    paddingRight: 6,
-    paddingVertical: 4,
-    maxWidth: 780,
+  leftActionsGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 4,
+    flexShrink: 0,
   },
   iconButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
-  iconButtonSplit: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-  },
   input: {
     flex: 1,
     minWidth: 0,
-    fontSize: 15.5,
+    minHeight: 24,
+    maxHeight: 110,
     lineHeight: 22,
-    minHeight: 44,
-    maxHeight: 160,
-    paddingHorizontal: 10,
-    paddingTop: Platform.OS === 'web' ? 10 : 8,
-    paddingBottom: Platform.OS === 'web' ? 10 : 8,
+    fontSize: 15,
+    paddingTop: 1,
+    paddingBottom: 1,
+    paddingHorizontal: 4,
+    margin: 0,
     fontFamily:
       Platform.OS === 'web'
         ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
         : undefined,
   },
-  inputSplit: {
-    fontSize: 14,
-    lineHeight: 20,
-    minHeight: 32,
-    maxHeight: 120,
-    paddingHorizontal: 6,
-    paddingTop: Platform.OS === 'web' ? 6 : 4,
-    paddingBottom: Platform.OS === 'web' ? 6 : 4,
-  },
   sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 6,
-    flexShrink: 0,
-  },
-  sendButtonSplit: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    marginLeft: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 2,
+    flexShrink: 0,
   },
   sendButtonPressed: {
     opacity: 0.8,

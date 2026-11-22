@@ -80,6 +80,355 @@ export interface ChatPane {
   sessionId: string | null;
 }
 
+interface ChatPaneViewProps {
+  pane: ChatPane;
+  paneIndex: number;
+  totalPanes: number;
+  isActive: boolean;
+  isSplitMode: boolean;
+  sessions: ChatSession[];
+  paneSession: ChatSession | null;
+  paneMessages: ChatMessage[];
+  isTyping: boolean;
+  isSearching: boolean;
+  statusText?: string;
+  isDropdownOpen: boolean;
+  showScrollDown: boolean;
+  userMemory: UserMemoryProfile;
+  theme: any;
+  isDesktop: boolean;
+  onSelectPane: (paneId: string) => void;
+  onToggleDropdown: (paneId: string) => void;
+  onNewChatInPane: (paneId: string) => void;
+  handleAddPane: () => void;
+  handleClosePane: (paneId: string) => void;
+  handleSwitchSessionInPane: (paneId: string, sessionId: string | null) => void;
+  handleSendMessageInPane: (
+    paneId: string,
+    text: string,
+    imageBase64?: string,
+    imageUri?: string,
+    forceWebSearch?: boolean,
+    telemetry?: KeystrokeTelemetry
+  ) => void;
+  onScroll: (e: any) => void;
+  onScrollDownPress: () => void;
+  setFlatListRef: (r: FlatList<ChatMessage> | null) => void;
+  setInputBarRef: (r: FloatingInputBarRef | null) => void;
+}
+
+// BỘ THÀNH PHẦN CHAT PANE DUY NHẤT CHUNG CHO MỌI KHUNG CHAT (ĐẢM BẢO 100% ĐỒNG NHẤT TỪNG PIXEL)
+const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
+  pane,
+  paneIndex,
+  totalPanes,
+  isActive,
+  isSplitMode,
+  sessions,
+  paneSession,
+  paneMessages,
+  isTyping,
+  isSearching,
+  statusText,
+  isDropdownOpen,
+  showScrollDown,
+  userMemory,
+  theme,
+  isDesktop,
+  onSelectPane,
+  onToggleDropdown,
+  onNewChatInPane,
+  handleAddPane,
+  handleClosePane,
+  handleSwitchSessionInPane,
+  handleSendMessageInPane,
+  onScroll,
+  onScrollDownPress,
+  setFlatListRef,
+  setInputBarRef,
+}) => {
+  const hasPaneHistory = paneMessages.length > 0;
+  const paneGreeting = getColdGreetingText(userMemory, hasPaneHistory);
+
+  const rawTitle = paneSession?.title;
+  const displayTitle = isPlaceholderOrNoiseTitle(rawTitle)
+    ? 'Trò chuyện ngắn'
+    : (rawTitle?.trim() || 'Cuộc trò chuyện mới');
+
+  return (
+    <View
+      key={pane.id}
+      style={[
+        styles.singlePaneWrapper,
+        totalPanes > 1 && {
+          borderLeftWidth: paneIndex > 0 ? 1 : 0,
+          borderLeftColor: theme.borderSubtle,
+        },
+        totalPanes > 1 && isActive && {
+          borderColor: theme.mode === 'dark' ? 'rgba(139, 92, 246, 0.4)' : 'rgba(99, 102, 241, 0.4)',
+        },
+      ]}
+      onStartShouldSetResponder={() => {
+        if (!isActive) {
+          onSelectPane(pane.id);
+        }
+        return false;
+      }}
+    >
+      {/* Header Bar của từng Pane (hiển thị khi có từ 2 panes trở lên) */}
+      {totalPanes > 1 && (
+        <View
+          style={[
+            styles.paneHeaderBar,
+            {
+              backgroundColor: isActive
+                ? (theme.mode === 'dark' ? '#141824' : '#F8FAFC')
+                : (theme.mode === 'dark' ? '#0F121B' : '#F1F5F9'),
+              borderBottomColor: isActive
+                ? (theme.mode === 'dark' ? '#8B5CF6' : '#6366F1')
+                : theme.borderSubtle,
+              borderBottomWidth: isActive ? 2 : 1,
+            },
+          ]}
+        >
+          {/* Dropdown Selector chọn phiên trong pane này */}
+          <Pressable
+            style={({ pressed }) => [
+              styles.paneDropdownBtn,
+              {
+                backgroundColor: isActive
+                  ? (theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)')
+                  : 'transparent',
+                borderColor: isActive ? theme.borderSubtle : 'transparent',
+              },
+              pressed && { opacity: 0.8 },
+              Platform.OS === 'web' && { cursor: 'pointer' as any },
+            ]}
+            onPress={() => onToggleDropdown(pane.id)}
+            hitSlop={6}
+          >
+            {isTyping && (
+              <View style={styles.typingDotGlow} />
+            )}
+            <MessageSquare
+              size={13}
+              color={isActive ? (theme.mode === 'dark' ? '#A78BFA' : '#4F46E5') : theme.textMuted}
+            />
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.paneDropdownText,
+                { color: isActive ? theme.textPrimary : theme.textSecondary },
+              ]}
+            >
+              {displayTitle}
+            </Text>
+            <ChevronDown size={13} color={theme.textMuted} />
+          </Pressable>
+
+          {/* Cụm nút hành động góc phải của pane */}
+          <View style={styles.paneActionsRight}>
+            {/* Nút Tạo chat mới trong pane này */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.paneIconBtn,
+                pressed && { backgroundColor: theme.btnHover },
+                Platform.OS === 'web' && { cursor: 'pointer' as any },
+              ]}
+              onPress={() => onNewChatInPane(pane.id)}
+              hitSlop={6}
+            >
+              <SquarePen size={14} color={theme.textSecondary} />
+            </Pressable>
+
+            {/* Nút Thêm pane (+ tối đa 3) */}
+            {totalPanes < 3 && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.paneIconBtn,
+                  pressed && { backgroundColor: theme.btnHover },
+                  Platform.OS === 'web' && { cursor: 'pointer' as any },
+                ]}
+                onPress={handleAddPane}
+                hitSlop={6}
+              >
+                <Plus size={15} color={theme.textSecondary} />
+              </Pressable>
+            )}
+
+            {/* Nút Đóng pane (×) */}
+            {totalPanes > 1 && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.paneIconBtn,
+                  pressed && { backgroundColor: theme.btnHover },
+                  Platform.OS === 'web' && { cursor: 'pointer' as any },
+                ]}
+                onPress={() => handleClosePane(pane.id)}
+                hitSlop={6}
+              >
+                <X size={15} color={theme.textSecondary} />
+              </Pressable>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* Popover Dropdown chọn phiên trong pane này */}
+      {isDropdownOpen && (
+        <View
+          style={[
+            styles.paneDropdownPopover,
+            {
+              backgroundColor: theme.mode === 'dark' ? '#181C28' : '#FFFFFF',
+              borderColor: theme.borderSubtle,
+              shadowColor: '#000',
+              shadowOpacity: theme.mode === 'dark' ? 0.45 : 0.15,
+            },
+          ]}
+        >
+          <Pressable
+            style={({ pressed }) => [
+              styles.paneDropdownItem,
+              pressed && { backgroundColor: theme.btnHover },
+              Platform.OS === 'web' && { cursor: 'pointer' as any },
+            ]}
+            onPress={() => handleSwitchSessionInPane(pane.id, null)}
+          >
+            <Plus size={14} color="#8B5CF6" />
+            <Text style={[styles.paneDropdownItemText, { color: '#8B5CF6', fontWeight: '600' }]}>
+              + Cuộc trò chuyện mới
+            </Text>
+          </Pressable>
+          <View style={[styles.paneDropdownDivider, { backgroundColor: theme.borderSubtle }]} />
+          <ScrollView style={styles.paneDropdownScroll} showsVerticalScrollIndicator={false}>
+            {sessions.map((sess) => {
+              const isCurrent = sess.id === pane.sessionId;
+              const sTitle = isPlaceholderOrNoiseTitle(sess.title)
+                ? 'Trò chuyện ngắn'
+                : (sess.title || 'Cuộc trò chuyện mới');
+              return (
+                <Pressable
+                  key={sess.id}
+                  style={({ pressed }) => [
+                    styles.paneDropdownItem,
+                    isCurrent && {
+                      backgroundColor:
+                        theme.mode === 'dark'
+                          ? 'rgba(139, 92, 246, 0.15)'
+                          : 'rgba(99, 102, 241, 0.08)',
+                    },
+                    pressed && { backgroundColor: theme.btnHover },
+                    Platform.OS === 'web' && { cursor: 'pointer' as any },
+                  ]}
+                  onPress={() => handleSwitchSessionInPane(pane.id, sess.id)}
+                >
+                  <MessageSquare size={13} color={isCurrent ? '#8B5CF6' : theme.textSecondary} />
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.paneDropdownItemText,
+                      {
+                        color: isCurrent ? theme.textPrimary : theme.textSecondary,
+                        fontWeight: isCurrent ? '700' : '500',
+                      },
+                    ]}
+                  >
+                    {sTitle}
+                  </Text>
+                  {isTyping && (
+                    <View style={styles.typingDotGlow} />
+                  )}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Khu vực Tin nhắn của Pane */}
+      <View style={styles.chatAreaWrapper}>
+        {paneMessages.length === 0 ? (
+          <ColdGreeting
+            greetingText={paneGreeting}
+            userMemory={userMemory}
+            hasHistory={false}
+            onSelectSuggestion={(text) => handleSendMessageInPane(pane.id, text)}
+            theme={theme}
+            compact={isSplitMode}
+          />
+        ) : (
+          <FlatList
+            key={`chat-pane-${pane.id}-${pane.sessionId || 'empty'}`}
+            ref={setFlatListRef}
+            data={paneMessages}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <ChatBubble
+                message={item}
+                isDesktop={isDesktop}
+                theme={theme}
+                compact={isSplitMode}
+                isSplitMode={isSplitMode}
+              />
+            )}
+            style={styles.flatListStyle}
+            contentContainerStyle={[
+              styles.chatListContent,
+              { paddingHorizontal: isSplitMode ? 12 : (isDesktop ? 28 : 16) },
+            ]}
+            showsVerticalScrollIndicator={false}
+            onScroll={onScroll}
+            scrollEventThrottle={16}
+            ListFooterComponent={
+              <TypingIndicator
+                visible={isTyping || isSearching}
+                isSearchingWeb={isSearching}
+                statusText={statusText}
+                isDesktop={isDesktop}
+                theme={theme}
+              />
+            }
+          />
+        )}
+
+        {/* Nút tròn nhỏ "↓" cuộn mượt xuống đáy */}
+        {showScrollDown && (
+          <Pressable
+            style={({ pressed }) => [
+              styles.scrollDownBtn,
+              {
+                backgroundColor: theme.mode === 'dark' ? '#1E2433' : '#FFFFFF',
+                borderColor: theme.borderSubtle,
+                shadowColor: '#000',
+                shadowOpacity: theme.mode === 'dark' ? 0.35 : 0.12,
+              },
+              pressed && { transform: [{ scale: 0.92 }] },
+              Platform.OS === 'web' && ({ cursor: 'pointer', transition: 'all 0.15s ease' } as any),
+            ]}
+            onPress={onScrollDownPress}
+            hitSlop={8}
+          >
+            <ChevronDown size={18} color={theme.textPrimary} />
+          </Pressable>
+        )}
+
+        {/* Floating Input Bar độc lập cho từng Pane */}
+        <FloatingInputBar
+          ref={setInputBarRef}
+          onSendMessage={(text, imgBase64, imgUri, forceWebSearch, telemetry) =>
+            handleSendMessageInPane(pane.id, text, imgBase64, imgUri, forceWebSearch, telemetry)
+          }
+          isLoading={false}
+          isTomorrowTyping={isTyping}
+          theme={theme}
+          isSplitMode={isSplitMode}
+        />
+      </View>
+    </View>
+  );
+});
+
 export default function App() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
@@ -1009,7 +1358,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7.2</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7.3</Text>
               </View>
             </View>
           </View>
@@ -1177,309 +1526,63 @@ export default function App() {
               {displayedPanes.map((pane, paneIndex) => {
                 const isActive = pane.id === activePaneId;
                 const paneSession = pane.sessionId
-                  ? sessions.find((s) => s.id === pane.sessionId)
+                  ? sessions.find((s) => s.id === pane.sessionId) || null
                   : null;
                 const paneMessages = paneSession?.messages || [];
                 const isTyping = !!(pane.sessionId && typingSessionIds[pane.sessionId]);
                 const isSearching = !!(pane.sessionId && searchingWebBySession[pane.sessionId]);
                 const statusText = pane.sessionId ? typingStatusBySession[pane.sessionId] : undefined;
-                const isDropdownOpen = openDropdownPaneId === pane.id;
-                const showPaneScrollDown = !!scrollDownByPane[pane.id];
-                const hasPaneHistory = paneMessages.length > 0;
-                const paneGreeting = getColdGreetingText(userMemory, hasPaneHistory);
-
-                const rawTitle = paneSession?.title;
-                const displayTitle = isPlaceholderOrNoiseTitle(rawTitle)
-                  ? 'Trò chuyện ngắn'
-                  : (rawTitle?.trim() || 'Cuộc trò chuyện mới');
 
                 return (
-                  <View
+                  <ChatPaneView
                     key={pane.id}
-                    style={[
-                      styles.singlePaneWrapper,
-                      panes.length > 1 && {
-                        flex: 1,
-                        flexBasis: 0,
-                        minWidth: 0,
-                        maxWidth: '100%',
-                        overflow: 'hidden',
-                        borderLeftWidth: paneIndex > 0 ? 1 : 0,
-                        borderLeftColor: theme.borderSubtle,
-                      },
-                      panes.length > 1 && isActive && {
-                        borderColor: theme.mode === 'dark' ? 'rgba(139, 92, 246, 0.4)' : 'rgba(99, 102, 241, 0.4)',
-                      },
-                    ]}
-                    onStartShouldSetResponder={() => {
-                      if (activePaneId !== pane.id) {
-                        setActivePaneId(pane.id);
-                        activePaneIdRef.current = pane.id;
+                    pane={pane}
+                    paneIndex={paneIndex}
+                    totalPanes={panes.length}
+                    isActive={isActive}
+                    isSplitMode={panes.length > 1}
+                    sessions={sessions}
+                    paneSession={paneSession}
+                    paneMessages={paneMessages}
+                    isTyping={isTyping}
+                    isSearching={isSearching}
+                    statusText={statusText}
+                    isDropdownOpen={openDropdownPaneId === pane.id}
+                    showScrollDown={!!scrollDownByPane[pane.id]}
+                    userMemory={userMemory}
+                    theme={theme}
+                    isDesktop={isDesktop}
+                    onSelectPane={(paneId) => {
+                      if (activePaneId !== paneId) {
+                        setActivePaneId(paneId);
+                        activePaneIdRef.current = paneId;
                       }
-                      return false;
                     }}
-                  >
-                    {/* Header Bar của từng Pane (hiển thị khi có từ 2 panes trở lên) */}
-                    {panes.length > 1 && (
-                      <View
-                        style={[
-                          styles.paneHeaderBar,
-                          {
-                            backgroundColor: isActive
-                              ? (theme.mode === 'dark' ? '#141824' : '#F8FAFC')
-                              : (theme.mode === 'dark' ? '#0F121B' : '#F1F5F9'),
-                            borderBottomColor: isActive
-                              ? (theme.mode === 'dark' ? '#8B5CF6' : '#6366F1')
-                              : theme.borderSubtle,
-                            borderBottomWidth: isActive ? 2 : 1,
-                          },
-                        ]}
-                      >
-                        {/* Dropdown Selector chọn phiên trong pane này */}
-                        <Pressable
-                          style={({ pressed }) => [
-                            styles.paneDropdownBtn,
-                            {
-                              backgroundColor: isActive
-                                ? (theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)')
-                                : 'transparent',
-                              borderColor: isActive ? theme.borderSubtle : 'transparent',
-                            },
-                            pressed && { opacity: 0.8 },
-                            Platform.OS === 'web' && { cursor: 'pointer' as any },
-                          ]}
-                          onPress={() => setOpenDropdownPaneId(isDropdownOpen ? null : pane.id)}
-                          hitSlop={6}
-                        >
-                          {isTyping && (
-                            <View style={styles.typingDotGlow} />
-                          )}
-                          <MessageSquare
-                            size={13}
-                            color={isActive ? (theme.mode === 'dark' ? '#A78BFA' : '#4F46E5') : theme.textMuted}
-                          />
-                          <Text
-                            numberOfLines={1}
-                            style={[
-                              styles.paneDropdownText,
-                              { color: isActive ? theme.textPrimary : theme.textSecondary },
-                            ]}
-                          >
-                            {displayTitle}
-                          </Text>
-                          <ChevronDown size={13} color={theme.textMuted} />
-                        </Pressable>
-
-                        {/* Cụm nút hành động góc phải của pane */}
-                        <View style={styles.paneActionsRight}>
-                          {/* Nút Tạo chat mới trong pane này */}
-                          <Pressable
-                            style={({ pressed }) => [
-                              styles.paneIconBtn,
-                              pressed && { backgroundColor: theme.btnHover },
-                              Platform.OS === 'web' && { cursor: 'pointer' as any },
-                            ]}
-                            onPress={() => handleNewChatInPane(pane.id)}
-                            hitSlop={6}
-                          >
-                            <SquarePen size={14} color={theme.textSecondary} />
-                          </Pressable>
-
-                          {/* Nút Thêm pane (+ tối đa 3) */}
-                          {panes.length < 3 && (
-                            <Pressable
-                              style={({ pressed }) => [
-                                styles.paneIconBtn,
-                                pressed && { backgroundColor: theme.btnHover },
-                                Platform.OS === 'web' && { cursor: 'pointer' as any },
-                              ]}
-                              onPress={handleAddPane}
-                              hitSlop={6}
-                            >
-                              <Plus size={15} color={theme.textSecondary} />
-                            </Pressable>
-                          )}
-
-                          {/* Nút Đóng pane (×) */}
-                          {panes.length > 1 && (
-                            <Pressable
-                              style={({ pressed }) => [
-                                styles.paneIconBtn,
-                                pressed && { backgroundColor: theme.btnHover },
-                                Platform.OS === 'web' && { cursor: 'pointer' as any },
-                              ]}
-                              onPress={() => handleClosePane(pane.id)}
-                              hitSlop={6}
-                            >
-                              <X size={15} color={theme.textSecondary} />
-                            </Pressable>
-                          )}
-                        </View>
-                      </View>
-                    )}
-
-                    {/* Popover Dropdown chọn phiên trong pane này */}
-                    {isDropdownOpen && (
-                      <View
-                        style={[
-                          styles.paneDropdownPopover,
-                          {
-                            backgroundColor: theme.mode === 'dark' ? '#181C28' : '#FFFFFF',
-                            borderColor: theme.borderSubtle,
-                            shadowColor: '#000',
-                            shadowOpacity: theme.mode === 'dark' ? 0.45 : 0.15,
-                          },
-                        ]}
-                      >
-                        <Pressable
-                          style={({ pressed }) => [
-                            styles.paneDropdownItem,
-                            pressed && { backgroundColor: theme.btnHover },
-                            Platform.OS === 'web' && { cursor: 'pointer' as any },
-                          ]}
-                          onPress={() => handleSwitchSessionInPane(pane.id, null)}
-                        >
-                          <Plus size={14} color="#8B5CF6" />
-                          <Text style={[styles.paneDropdownItemText, { color: '#8B5CF6', fontWeight: '600' }]}>
-                            + Cuộc trò chuyện mới
-                          </Text>
-                        </Pressable>
-                        <View style={[styles.paneDropdownDivider, { backgroundColor: theme.borderSubtle }]} />
-                        <ScrollView style={styles.paneDropdownScroll} showsVerticalScrollIndicator={false}>
-                          {sessions.map((sess) => {
-                            const isCurrent = sess.id === pane.sessionId;
-                            const sTitle = isPlaceholderOrNoiseTitle(sess.title)
-                              ? 'Trò chuyện ngắn'
-                              : (sess.title || 'Cuộc trò chuyện mới');
-                            return (
-                              <Pressable
-                                key={sess.id}
-                                style={({ pressed }) => [
-                                  styles.paneDropdownItem,
-                                  isCurrent && {
-                                    backgroundColor:
-                                      theme.mode === 'dark'
-                                        ? 'rgba(139, 92, 246, 0.15)'
-                                        : 'rgba(99, 102, 241, 0.08)',
-                                  },
-                                  pressed && { backgroundColor: theme.btnHover },
-                                  Platform.OS === 'web' && { cursor: 'pointer' as any },
-                                ]}
-                                onPress={() => handleSwitchSessionInPane(pane.id, sess.id)}
-                              >
-                                <MessageSquare size={13} color={isCurrent ? '#8B5CF6' : theme.textSecondary} />
-                                <Text
-                                  numberOfLines={1}
-                                  style={[
-                                    styles.paneDropdownItemText,
-                                    {
-                                      color: isCurrent ? theme.textPrimary : theme.textSecondary,
-                                      fontWeight: isCurrent ? '700' : '500',
-                                    },
-                                  ]}
-                                >
-                                  {sTitle}
-                                </Text>
-                                {typingSessionIds[sess.id] && (
-                                  <View style={styles.typingDotGlow} />
-                                )}
-                              </Pressable>
-                            );
-                          })}
-                        </ScrollView>
-                      </View>
-                    )}
-
-                    {/* Khu vực Tin nhắn của Pane */}
-                    <View style={styles.chatAreaWrapper}>
-                      {paneMessages.length === 0 ? (
-                        <ColdGreeting
-                          greetingText={paneGreeting}
-                          userMemory={userMemory}
-                          hasHistory={false}
-                          onSelectSuggestion={(text) => handleSendMessageInPane(pane.id, text)}
-                          theme={theme}
-                          compact={panes.length > 1}
-                        />
-                      ) : (
-                        <FlatList
-                          key={`chat-pane-${pane.id}-${pane.sessionId || 'empty'}`}
-                          ref={(r) => {
-                            flatListRefs.current[pane.id] = r;
-                            if (isActive) flatListRef.current = r;
-                          }}
-                          data={paneMessages}
-                          keyExtractor={(item) => item.id}
-                          renderItem={({ item }) => (
-                            <ChatBubble
-                              message={item}
-                              isDesktop={isDesktop}
-                              theme={theme}
-                              compact={panes.length > 1}
-                              isSplitMode={panes.length > 1}
-                            />
-                          )}
-                          style={styles.flatListStyle}
-                          contentContainerStyle={[
-                            styles.chatListContent,
-                            { paddingHorizontal: panes.length > 1 ? 12 : (isDesktop ? 28 : 16) },
-                          ]}
-                          showsVerticalScrollIndicator={false}
-                          onScroll={(e) => {
-                            const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
-                            const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
-                            setScrollDownByPane((prev) => ({ ...prev, [pane.id]: distanceFromBottom > 250 }));
-                          }}
-                          scrollEventThrottle={16}
-                          ListFooterComponent={
-                            <TypingIndicator
-                              visible={isTyping || isSearching}
-                              isSearchingWeb={isSearching}
-                              statusText={statusText}
-                              isDesktop={isDesktop}
-                              theme={theme}
-                            />
-                          }
-                        />
-                      )}
-
-                      {/* Nút tròn nhỏ "↓" cuộn mượt xuống đáy */}
-                      {showPaneScrollDown && (
-                        <Pressable
-                          style={({ pressed }) => [
-                            styles.scrollDownBtn,
-                            {
-                              backgroundColor: theme.mode === 'dark' ? '#1E2433' : '#FFFFFF',
-                              borderColor: theme.borderSubtle,
-                              shadowColor: '#000',
-                              shadowOpacity: theme.mode === 'dark' ? 0.35 : 0.12,
-                            },
-                            pressed && { transform: [{ scale: 0.92 }] },
-                            Platform.OS === 'web' && ({ cursor: 'pointer', transition: 'all 0.15s ease' } as any),
-                          ]}
-                          onPress={() => flatListRefs.current[pane.id]?.scrollToEnd({ animated: true })}
-                          hitSlop={8}
-                        >
-                          <ChevronDown size={18} color={theme.textPrimary} />
-                        </Pressable>
-                      )}
-
-                      {/* Floating Input Bar độc lập cho từng Pane */}
-                      <FloatingInputBar
-                        ref={(r) => {
-                          inputBarRefs.current[pane.id] = r;
-                          if (isActive) inputBarRef.current = r;
-                        }}
-                        onSendMessage={(text, imgBase64, imgUri, forceWebSearch, telemetry) =>
-                          handleSendMessageInPane(pane.id, text, imgBase64, imgUri, forceWebSearch, telemetry)
-                        }
-                        isLoading={false}
-                        isTomorrowTyping={isTyping}
-                        theme={theme}
-                        isSplitMode={panes.length > 1}
-                      />
-                    </View>
-                  </View>
+                    onToggleDropdown={(paneId) => {
+                      setOpenDropdownPaneId((prev) => (prev === paneId ? null : paneId));
+                    }}
+                    onNewChatInPane={handleNewChatInPane}
+                    handleAddPane={handleAddPane}
+                    handleClosePane={handleClosePane}
+                    handleSwitchSessionInPane={handleSwitchSessionInPane}
+                    handleSendMessageInPane={handleSendMessageInPane}
+                    onScroll={(e) => {
+                      const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+                      const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
+                      setScrollDownByPane((prev) => ({ ...prev, [pane.id]: distanceFromBottom > 250 }));
+                    }}
+                    onScrollDownPress={() => {
+                      flatListRefs.current[pane.id]?.scrollToEnd({ animated: true });
+                    }}
+                    setFlatListRef={(r) => {
+                      flatListRefs.current[pane.id] = r;
+                      if (isActive) flatListRef.current = r;
+                    }}
+                    setInputBarRef={(r) => {
+                      inputBarRefs.current[pane.id] = r;
+                      if (isActive) inputBarRef.current = r;
+                    }}
+                  />
                 );
               })}
             </View>
@@ -1646,13 +1749,17 @@ const styles = StyleSheet.create({
     flex: 1,
     height: '100%',
     width: '100%',
+    minWidth: 0,
+    overflow: 'hidden',
   },
   panesContainer: {
     flex: 1,
     flexDirection: 'row',
     width: '100%',
+    minWidth: 0,
     height: '100%',
     overflow: 'hidden',
+    ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
   },
   singlePaneWrapper: {
     flex: 1,
@@ -1771,6 +1878,8 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     paddingVertical: 16,
     paddingBottom: 24,
+    minWidth: 0,
+    ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
   },
   scrollDownBtn: {
     position: 'absolute',
