@@ -41,6 +41,7 @@ import {
 } from './services/aiService';
 import { ChatBubble } from './components/ChatBubble';
 import { ColdGreeting } from './components/ColdGreeting';
+import { TomorrowGlyph, getTimeBasedGreeting } from './components/TomorrowGlyph';
 import { FloatingInputBar, FloatingInputBarRef } from './components/FloatingInputBar';
 import { SidebarDrawer } from './components/SidebarDrawer';
 import { TypingIndicator } from './components/TypingIndicator';
@@ -412,81 +413,114 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
       {/* Khu vực Tin nhắn của Pane */}
       <View style={styles.chatAreaWrapper}>
         {paneMessages.length === 0 ? (
-          <ColdGreeting
-            greetingText={paneGreeting}
-            userMemory={userMemory}
-            hasHistory={false}
-            onSelectSuggestion={(text) => handleSendMessageInPane(pane.id, text)}
-            theme={theme}
-            compact={isSplitMode}
-          />
-        ) : (
-          <FlatList
-            key={`chat-pane-${pane.id}-${pane.sessionId || 'empty'}`}
-            ref={setFlatListRef}
-            data={paneMessages}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <ChatBubble
-                message={item}
-                isDesktop={isDesktop}
+          <View style={styles.claudeWelcomeCenterContainer}>
+            <View style={styles.claudeWelcomeBox}>
+              {/* Hàng chào ngang: Icon lõi Tomorrow + Dòng chào ngắn theo khung giờ thực tế */}
+              <View style={styles.claudeGreetingRow}>
+                <TomorrowGlyph
+                  size={isSplitMode ? 26 : 32}
+                  themeMode={theme.mode}
+                />
+                <Text
+                  style={[
+                    styles.claudeGreetingText,
+                    {
+                      fontSize: isSplitMode ? 24 : 32,
+                      color: theme.mode === 'dark' ? '#ECECEC' : '#1A1A1A',
+                    },
+                  ]}
+                >
+                  {getTimeBasedGreeting()}
+                </Text>
+              </View>
+
+              {/* Khung nhập liệu đặt NGAY DƯỚI dòng chào ở chính giữa màn hình */}
+              <FloatingInputBar
+                ref={setInputBarRef}
+                onSendMessage={(text, imgBase64, imgUri, forceWebSearch, telemetry) =>
+                  handleSendMessageInPane(pane.id, text, imgBase64, imgUri, forceWebSearch, telemetry)
+                }
+                isLoading={false}
+                isTomorrowTyping={isTyping}
                 theme={theme}
-                compact={isSplitMode}
                 isSplitMode={isSplitMode}
+                isCentered={true}
+                maxWidth={680}
+                placeholder="Hôm nay tôi có thể giúp gì cho bạn?"
               />
+            </View>
+          </View>
+        ) : (
+          <>
+            <FlatList
+              key={`chat-pane-${pane.id}-${pane.sessionId || 'empty'}`}
+              ref={setFlatListRef}
+              data={paneMessages}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <ChatBubble
+                  message={item}
+                  isDesktop={isDesktop}
+                  theme={theme}
+                  compact={isSplitMode}
+                  isSplitMode={isSplitMode}
+                />
+              )}
+              style={styles.flatListStyle}
+              contentContainerStyle={[
+                styles.chatListContent,
+                { paddingHorizontal: isSplitMode ? 12 : (isDesktop ? 28 : 16) },
+              ]}
+              showsVerticalScrollIndicator={false}
+              onScroll={onScroll}
+              scrollEventThrottle={16}
+              ListFooterComponent={
+                <TypingIndicator
+                  visible={isTyping || isSearching}
+                  isSearchingWeb={isSearching}
+                  statusText={statusText}
+                  isDesktop={isDesktop}
+                  theme={theme}
+                />
+              }
+            />
+
+            {/* Nút tròn nhỏ "↓" cuộn mượt xuống đáy */}
+            {showScrollDown && (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.scrollDownBtn,
+                  {
+                    backgroundColor: theme.mode === 'dark' ? '#1E2433' : '#FFFFFF',
+                    borderColor: theme.borderSubtle,
+                    shadowColor: '#000',
+                    shadowOpacity: theme.mode === 'dark' ? 0.35 : 0.12,
+                  },
+                  pressed && { transform: [{ scale: 0.92 }] },
+                  Platform.OS === 'web' && ({ cursor: 'pointer', transition: 'all 0.15s ease' } as any),
+                ]}
+                onPress={onScrollDownPress}
+                hitSlop={8}
+              >
+                <ChevronDown size={18} color={theme.textPrimary} />
+              </Pressable>
             )}
-            style={styles.flatListStyle}
-            contentContainerStyle={[
-              styles.chatListContent,
-              { paddingHorizontal: isSplitMode ? 12 : (isDesktop ? 28 : 16) },
-            ]}
-            showsVerticalScrollIndicator={false}
-            onScroll={onScroll}
-            scrollEventThrottle={16}
-            ListFooterComponent={
-              <TypingIndicator
-                visible={isTyping || isSearching}
-                isSearchingWeb={isSearching}
-                statusText={statusText}
-                isDesktop={isDesktop}
-                theme={theme}
-              />
-            }
-          />
-        )}
 
-        {/* Nút tròn nhỏ "↓" cuộn mượt xuống đáy */}
-        {showScrollDown && (
-          <Pressable
-            style={({ pressed }) => [
-              styles.scrollDownBtn,
-              {
-                backgroundColor: theme.mode === 'dark' ? '#1E2433' : '#FFFFFF',
-                borderColor: theme.borderSubtle,
-                shadowColor: '#000',
-                shadowOpacity: theme.mode === 'dark' ? 0.35 : 0.12,
-              },
-              pressed && { transform: [{ scale: 0.92 }] },
-              Platform.OS === 'web' && ({ cursor: 'pointer', transition: 'all 0.15s ease' } as any),
-            ]}
-            onPress={onScrollDownPress}
-            hitSlop={8}
-          >
-            <ChevronDown size={18} color={theme.textPrimary} />
-          </Pressable>
+            {/* Floating Input Bar cố định ở đáy khi có tin nhắn */}
+            <FloatingInputBar
+              ref={setInputBarRef}
+              onSendMessage={(text, imgBase64, imgUri, forceWebSearch, telemetry) =>
+                handleSendMessageInPane(pane.id, text, imgBase64, imgUri, forceWebSearch, telemetry)
+              }
+              isLoading={false}
+              isTomorrowTyping={isTyping}
+              theme={theme}
+              isSplitMode={isSplitMode}
+              isCentered={false}
+              placeholder="Nhắn cho Tomorrow..."
+            />
+          </>
         )}
-
-        {/* Floating Input Bar độc lập cho từng Pane */}
-        <FloatingInputBar
-          ref={setInputBarRef}
-          onSendMessage={(text, imgBase64, imgUri, forceWebSearch, telemetry) =>
-            handleSendMessageInPane(pane.id, text, imgBase64, imgUri, forceWebSearch, telemetry)
-          }
-          isLoading={false}
-          isTomorrowTyping={isTyping}
-          theme={theme}
-          isSplitMode={isSplitMode}
-        />
       </View>
     </View>
   );
@@ -740,16 +774,25 @@ export default function App() {
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  // Chuyển đổi Theme Sáng / Tối
-  const handleToggleTheme = async () => {
-    const nextMode: ThemeMode = themeMode === 'dark' ? 'light' : 'dark';
-    setThemeMode(nextMode);
-    try {
-      await AsyncStorage.setItem(THEME_STORAGE_KEY, nextMode);
-    } catch (err) {
-      console.warn('[Theme] Không thể lưu theme:', err);
-    }
-  };
+  // Chuyển đổi Theme Sáng / Tối 2 chiều dùng functional updater tránh stale closure
+  const toggleTheme = useCallback(() => {
+    setThemeMode((prevMode) => {
+      const nextMode: ThemeMode = prevMode === 'dark' ? 'light' : 'dark';
+      AsyncStorage.setItem(THEME_STORAGE_KEY, nextMode).catch((err) => {
+        console.warn('[Theme] Không thể lưu theme:', err);
+      });
+      if (Platform.OS === 'web' && typeof document !== 'undefined') {
+        const bg = nextMode === 'dark' ? '#171717' : '#FFFFFF';
+        document.body.style.backgroundColor = bg;
+        document.documentElement.style.backgroundColor = bg;
+      }
+      return nextMode;
+    });
+  }, []);
+
+  const toggleThemeRef = useRef(toggleTheme);
+  toggleThemeRef.current = toggleTheme;
+  const handleToggleTheme = toggleTheme;
 
   // 2. XỬ LÝ GỬI TIN NHẮN THEO TỪNG PANE (CÔ LẬP THEO TARGET SESSION ID)
   const handleSendMessageInPane = async (
@@ -1454,7 +1497,7 @@ export default function App() {
       if (isCmdOrCtrl && !e.altKey && !e.shiftKey && (key === 'r' || code === 'KeyR')) {
         e.preventDefault();
         e.stopPropagation();
-        handleToggleTheme();
+        toggleThemeRef.current();
         return;
       }
 
@@ -1673,7 +1716,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7.7</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7.8</Text>
               </View>
             </View>
           </View>
@@ -2242,6 +2285,35 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     position: 'relative',
     ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
+  },
+  claudeWelcomeCenterContainer: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: '6%',
+    ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
+  },
+  claudeWelcomeBox: {
+    width: '100%',
+    maxWidth: 680,
+    alignItems: 'center',
+  },
+  claudeGreetingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    marginBottom: 24,
+  },
+  claudeGreetingText: {
+    fontFamily:
+      Platform.OS === 'web'
+        ? 'Georgia, "Times New Roman", "Plus Jakarta Sans", serif'
+        : undefined,
+    fontWeight: '500',
+    letterSpacing: -0.6,
   },
   flatListStyle: {
     flex: 1,

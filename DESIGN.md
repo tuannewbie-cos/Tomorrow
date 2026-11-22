@@ -29,17 +29,31 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 
 ---
 
-### B. Màn Hình Mở Đầu (EmptyState / Welcome Screen)
-- **Cấu trúc tối giản:**
-  1. **Icon chính thức của ứng dụng (`T.M.R`):** Khối vuông bo góc chuẩn icon macOS `56x56`, `borderRadius: 14`, nền đen bóng nhẹ `#0B0B0D`, viền mờ tinh tế `1px solid rgba(255, 255, 255, 0.12)`, đổ bóng mềm, 5 cột sóng trắng bên trên và chữ `T.M.R` tinh tế bên dưới.
-  2. **Dòng lời chào duy nhất:** Căn giữa, cỡ chữ `22px - 26px`, `fontWeight: '700'`:
-     > **`"Chào ${displayName}, chúng ta nên bắt đầu làm việc gì?"`**
-     *(với `displayName` lấy từ `USER_MEMORY_PROFILE_V1` nếu đã lưu tên người dùng, mặc định là `"bạn"`).*
+### B. Màn Hình Mở Đầu Chuẩn Claude (EmptyState / Welcome Screen Khi Chưa Có Tin Nhắn)
+- **Áp dụng:** Chỉ khi phiên/pane chưa có tin nhắn nào (`messages.length === 0`). Ngay khi gửi tin nhắn đầu tiên (`messages.length > 0`), giao diện tự động chuyển sang chế độ chat tiêu chuẩn với FlatList và thanh nhập liệu cố định ở đáy.
+- **Bố cục căn giữa màn hình (Claude Welcome Layout):**
+  - Căn giữa tuyệt đối theo cả chiều dọc và chiều ngang, dịch nhẹ lên trên tâm `~6%` cho cân thị giác macOS (`claudeWelcomeCenterContainer`).
+  - Trong Split Screen đa tab (`isSplitMode`), mỗi pane trống hiển thị gọn đẹp bố cục này trong phạm vi riêng của pane (`paddingHorizontal: 16`).
+  1. **Hàng chào ngang (`claudeGreetingRow`):**
+     - **Bên trái — Biểu tượng lõi thích ứng (`TomorrowGlyph`):**
+       + Nền trong suốt 100%, không hộp vuông đen, không khung viền bao quanh.
+       + Cụm 5 cột sóng cân đối đặc trưng của Tomorrow với 2 đầu bo tròn êm ái, nhịp điệu hài hòa (`size: 26 - 32px`).
+       + Tự động đổi màu: `#F3F4F6` trên nền Tối (Dark Mode) và `#18181B` trên nền Sáng (Light Mode).
+     - **Bên phải — Lời chào thời gian thực chuẩn Claude:**
+       + Cực ngắn gọn theo khung giờ thực tế trong ngày:
+         * `04:00 – 11:29`: **`"Chào buổi sáng"`**
+         * `11:30 – 13:29`: **`"Chào buổi trưa"`**
+         * `13:30 – 17:59`: **`"Chào buổi chiều"`**
+         * `18:00 – 22:59`: **`"Suy nghĩ buổi tối"`**
+         * `23:00 – 03:59`: **`"Tĩnh lặng đêm khuya"`**
+       + Kiểu chữ thanh lịch: `fontSize: 24 - 32px`, `fontWeight: '500'`, `letterSpacing: -0.6`, font `Georgia, "Times New Roman", "Plus Jakarta Sans", serif` (`#ECECEC` Dark / `#1A1A1A` Light).
+  2. **Khung nhập liệu (Input Box) đặt NGAY DƯỚI dòng chào ở chính giữa màn hình:**
+     - Tỷ lệ rộng thoáng (`maxWidth: 680px`, `borderRadius: 20px`, `minHeight: 52px`, viền mảnh tinh tế, placeholder `"Hôm nay tôi có thể giúp gì cho bạn?"`).
+     - Bảo toàn đầy đủ: nút tròn `+` Gemini (popover `📎 Tệp`) bên trái và nút Gửi bên phải.
 - **NGHIÊM CẤM:**
-  - CẤM dùng badge tím `✨ Tomorrow`.
-  - CẤM dòng gạch chân gradient hoặc lời chào 2 tầng.
-  - CẤM dòng phụ kiểu `"Buổi chiều hiệu quả! Tiếp tục dự án..."`.
-  - CẤM các thẻ gợi ý tâm sự nhanh / câu hỏi mẫu.
+  - CẤM dùng khung vuông đen bọc ngoài icon.
+  - CẤM dùng badge tím `✨ Tomorrow` hay dòng phụ dài dòng.
+  - CẤM đặt các thẻ gợi ý tâm sự nhanh / mẫu câu hỏi rườm rà.
 
 ---
 
@@ -88,8 +102,23 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 ---
 
 ## 4. Hệ Thống Chuyển Động & Kiểu Chữ (Motion & Typography)
-- **Typography:** Ưu tiên font `Plus Jakarta Sans` / `SF Pro Text` / `SF Pro Display` / `Inter`, hiển thị siêu mịn chuẩn Retina macOS.
+- **Typography:** Ưu tiên font `Plus Jakarta Sans` / `SF Pro Text` / `SF Pro Display` / `Inter`, hiển thị siêu mịn chuẩn Retina macOS. Dòng chào mở đầu dùng font serif thanh thoát (`Georgia, "Times New Roman", "Plus Jakarta Sans", serif`).
 - **Đường cong chuyển động (Easing Curves):**
   - Popups & Modals: `cubic-bezier(0.16, 1, 0.3, 1)` (chuẩn macOS App Launch Spring).
   - Trượt Sidebar & Drawer: `cubic-bezier(0.22, 1, 0.36, 1)` trong `240ms`.
   - Hiệu ứng đạt mượt mà 60fps, không giật lag.
+
+---
+
+## 5. Bảng Màu & Độ Tương Phản Tách Lớp (Surface Contrast Tokens)
+Để đạt chuẩn chiều sâu thị giác macOS, Sidebar và Khung chat chính luôn có độ tương phản tách lớp rõ rệt:
+
+| Thành phần | Nền Tối (Dark Mode) | Nền Sáng (Light Mode) |
+| :--- | :--- | :--- |
+| **Khung chat chính & Header** | `#171717` (Đen sâu than chì) | `#FFFFFF` (Trắng tinh khiết) |
+| **Thanh Sidebar (Cạnh trái)** | `#202020` (Xám đậm tách lớp) | `#F5F5F7` (Xám bạc nhẹ macOS) |
+| **Đường viền phân tách (`borderSubtle`)** | `#2E2E2E` | `#E5E7EB` |
+| **Khung nhập liệu (`inputBg` / `inputBorder`)** | `#262626` / `#363636` | `#FFFFFF` / `#E2E4E8` |
+| **Item Sổ ghi chú đang chọn (`activeBg`)** | `#2C2C2E` | `#EAEAEE` |
+| **Biểu tượng lõi (`TomorrowGlyph`)** | `#F3F4F6` (Trắng ngà sắc nét) | `#18181B` (Đen than sang trọng) |
+| **Dòng chữ chào (`claudeGreetingText`)** | `#ECECEC` | `#1A1A1A` |

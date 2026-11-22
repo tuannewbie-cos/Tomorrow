@@ -2,27 +2,21 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
 import { UserMemoryProfile } from '../types/chat';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
+import { TomorrowGlyph, getTimeBasedGreeting } from './TomorrowGlyph';
 
 interface ColdGreetingProps {
   greetingText?: string;
-  userMemory: UserMemoryProfile;
-  hasHistory: boolean;
+  userMemory?: UserMemoryProfile;
+  hasHistory?: boolean;
   onSelectSuggestion?: (text: string) => void;
   theme?: ThemeColors;
   compact?: boolean;
 }
 
 export const ColdGreeting: React.FC<ColdGreetingProps> = ({
-  userMemory,
   theme = DARK_THEME,
   compact = false,
 }) => {
-  const displayName =
-    userMemory?.nickname ||
-    userMemory?.userName ||
-    (userMemory?.vault as any)?.userName ||
-    'bạn';
-
   return (
     <ScrollView
       contentContainerStyle={[
@@ -33,30 +27,23 @@ export const ColdGreeting: React.FC<ColdGreetingProps> = ({
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.brandContainer}>
-        {/* Icon ứng dụng chính thức T.M.R khối vuông bo góc chuẩn macOS */}
+        {/* Biểu tượng lõi không khung TomorrowGlyph thích ứng Dark/Light */}
         <View style={styles.appIconContainer}>
-          <View style={styles.appIconBox}>
-            {/* 5 cột sóng âm trắng chuẩn biểu tượng Tomorrow */}
-            <View style={styles.waveformContainer}>
-              <View style={[styles.waveBar, { height: 10 }]} />
-              <View style={[styles.waveBar, { height: 16 }]} />
-              <View style={[styles.waveBar, { height: 22 }]} />
-              <View style={[styles.waveBar, { height: 15 }]} />
-              <View style={[styles.waveBar, { height: 9 }]} />
-            </View>
-            <Text style={styles.appIconText}>T.M.R</Text>
-          </View>
+          <TomorrowGlyph
+            size={compact ? 28 : 34}
+            color={theme.mode === 'dark' ? '#F3F4F6' : '#18181B'}
+          />
         </View>
 
-        {/* 1 dòng lời chào duy nhất căn giữa tinh tế chuẩn DESIGN.md */}
+        {/* Lời chào theo khung giờ chuẩn Claude */}
         <Text
           style={[
             styles.greetingTitle,
-            { color: theme.textPrimary },
-            compact && { fontSize: 20, lineHeight: 28 },
+            { color: theme.mode === 'dark' ? '#ECECEC' : '#1A1A1A' },
+            compact && { fontSize: 22, lineHeight: 28 },
           ]}
         >
-          Chào {displayName}, chúng ta nên bắt đầu làm việc gì?
+          {getTimeBasedGreeting()}
         </Text>
       </View>
     </ScrollView>
@@ -82,60 +69,20 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   appIconContainer: {
-    marginBottom: 20,
+    marginBottom: 16,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  appIconBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 14,
-    backgroundColor: '#0B0B0D',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.14)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    elevation: 8,
-    paddingTop: 5,
-    paddingBottom: 4,
-  },
-  waveformContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    gap: 3,
-    height: 24,
-    marginBottom: 3,
-  },
-  waveBar: {
-    width: 2.5,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 2,
-  },
-  appIconText: {
-    color: '#FFFFFF',
-    fontSize: 9.5,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-    fontFamily:
-      Platform.OS === 'web'
-        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
-        : undefined,
   },
   greetingTitle: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '500',
     textAlign: 'center',
-    letterSpacing: -0.4,
-    lineHeight: 32,
+    letterSpacing: -0.6,
+    lineHeight: 36,
     maxWidth: 620,
     fontFamily:
       Platform.OS === 'web'
-        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
+        ? 'Georgia, "Times New Roman", "Plus Jakarta Sans", serif'
         : undefined,
   },
 });

@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.7` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.8` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -331,6 +331,28 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
   - Reset cooldown 10 phút cho OpenAI 429 rate limit, tuyệt đối không khóa vĩnh viễn OpenAI khi chỉ bị `AbortError` / Timeout.
   - Bộ kiểm thử tự động `train_simulator.js` bổ sung TEST 39: `Test_v477_Idle_Wake_Retry_And_PromptBudget` đạt 39/39 (390/390 điểm 100% hoàn hảo).
   - Header cập nhật: **`Online • v4.7.7`**.
+
+#### ✅ Đã hoàn thành (Bản tinh chỉnh giao diện & sửa lỗi v4.7.8):
+- [x] **Màn hình mở đầu chuẩn Claude khi phiên trống (`messages.length === 0`):**
+  - Căn giữa tuyệt đối cả chiều dọc và ngang, dịch nhẹ lên tâm ~6% cho cân thị giác macOS.
+  - Hàng chào ngang thanh lịch: Biểu tượng lõi `TomorrowGlyph` thích ứng nền + dòng chào ngắn theo khung giờ thực tế (04:00–11:29 "Chào buổi sáng", 11:30–13:29 "Chào buổi trưa", 13:30–17:59 "Chào buổi chiều", 18:00–22:59 "Suy nghĩ buổi tối", 23:00–03:59 "Tĩnh lặng đêm khuya", font serif `Georgia, "Times New Roman", "Plus Jakarta Sans", serif`).
+  - Khung nhập liệu rộng thoáng (`maxWidth: 680`, `borderRadius: 20`, placeholder `"Hôm nay tôi có thể giúp gì cho bạn?"`) đặt ngay dưới dòng chào ở chính giữa màn hình.
+  - Ngay khi `messages.length > 0`, giao diện chuyển tức thì sang luồng chat hoạt động với FlatList và thanh nhập liệu cố định ở đáy.
+  - Tương thích hoàn hảo từng pane trong chế độ Split Screen đa tab.
+- [x] **Cắt bỏ khung vuông đen icon — Biểu tượng lõi thích ứng nền Đen / Trắng (`components/TomorrowGlyph.tsx`):**
+  - 100% nền trong suốt, không viền, không hộp vuông đen bao quanh.
+  - Cụm 5 cột sóng cân đối đặc trưng của Tomorrow với 2 đầu bo tròn êm ái.
+  - Tự động đổi màu: `#F3F4F6` trên nền Tối và `#18181B` trên nền Sáng.
+- [x] **Vá triệt để lỗi `Cmd + R` chỉ chuyển được Tối → Sáng:**
+  - Dùng functional state updater `setThemeMode((prev) => ...)` trong `toggleTheme` và lưu vào `toggleThemeRef.current`.
+  - Bắt phím `Cmd/Ctrl + R` gọi `toggleThemeRef.current()`, loại trừ hoàn toàn stale closure, hỗ trợ chuyển đổi 2 chiều mượt mà giữa Dark và Light mode (giữ nguyên `Cmd+Shift+R` cho browser hard reload).
+- [x] **Độ tương phản tách lớp giữa Sidebar và Khung chat chính (Dual-tone Contrast Tokens):**
+  - Dark Mode: Canvas & Header `#171717`, Sidebar `#202020`, Border `#2E2E2E`, Input `#262626` (border `#363636`), Active Pill `#2C2C2E`.
+  - Light Mode: Canvas & Header `#FFFFFF`, Sidebar `#F5F5F7`, Border `#E5E7EB`, Input `#FFFFFF` (border `#E2E4E8`), Active Pill `#EAEAEE`.
+  - Đồng bộ màu nền `document.body` và `document.documentElement`.
+- [x] **Đồng bộ hóa quy chuẩn `DESIGN.md`:**
+  - Cập nhật mục 2.B (Claude Welcome Layout & TomorrowGlyph) và mục 5 (Surface Contrast Tokens).
+- [x] **Header cập nhật:** **`Online • v4.7.8`**. Bộ kiểm thử 39/39 scenarios đạt 390/390 điểm 100% hoàn hảo.
 
 - [ ] **Ngày 12 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.

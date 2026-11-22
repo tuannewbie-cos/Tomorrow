@@ -43,6 +43,9 @@ export interface FloatingInputBarProps {
   isTomorrowTyping?: boolean;
   theme?: ThemeColors;
   isSplitMode?: boolean;
+  placeholder?: string;
+  isCentered?: boolean;
+  maxWidth?: number;
 }
 
 export interface FloatingInputBarRef {
@@ -60,6 +63,9 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
   isTomorrowTyping = false,
   theme = DARK_THEME,
   isSplitMode = false,
+  placeholder = 'Nhắn cho Tomorrow...',
+  isCentered = false,
+  maxWidth,
 }, ref) => {
   const { width } = useWindowDimensions();
 
@@ -443,7 +449,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
     inputText.trim().length > 0 || Boolean(selectedImage) || Boolean(attachedFile);
 
   return (
-    <View style={styles.wrapper}>
+    <View style={[styles.wrapper, isCentered && { paddingBottom: 0, paddingTop: 0, paddingHorizontal: 0 }]}>
       {/* Hidden Web File Input */}
       {Platform.OS === 'web' && (
         <input
@@ -461,6 +467,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
           style={[
             styles.imagePreviewContainer,
             { backgroundColor: theme.inputBg, borderColor: theme.bubbleUser },
+            isCentered && { maxWidth: maxWidth || 680 },
           ]}
         >
           <Image source={{ uri: selectedImage.uri }} style={styles.imagePreview} />
@@ -485,6 +492,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
           style={[
             styles.filePreviewContainer,
             { backgroundColor: theme.inputBg, borderColor: theme.bubbleUser },
+            isCentered && { maxWidth: maxWidth || 680 },
           ]}
         >
           <View
@@ -518,6 +526,16 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
             backgroundColor: theme.inputBg,
             borderColor: theme.inputBorder,
           },
+          isCentered && {
+            maxWidth: maxWidth || 680,
+            borderRadius: 20,
+            minHeight: 52,
+            paddingHorizontal: 12,
+            paddingVertical: 7,
+            shadowOpacity: theme.mode === 'dark' ? 0.35 : 0.08,
+            shadowRadius: 14,
+          },
+          !isCentered && maxWidth ? { maxWidth } : {},
         ]}
       >
         {/* Nút tròn dấu + kiểu Gemini & Popover Tệp */}
@@ -609,7 +627,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
                 resize: 'none',
               } as any),
           ]}
-          placeholder="Nhắn cho Tomorrow..."
+          placeholder={placeholder}
           placeholderTextColor={theme.placeholderText}
           value={inputText}
           onChangeText={handleTextChange}

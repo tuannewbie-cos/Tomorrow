@@ -426,7 +426,7 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                           styles.sessionRowContainer,
                           {
                             backgroundColor: isActive
-                              ? (isDark ? 'rgba(255, 255, 255, 0.09)' : 'rgba(15, 23, 42, 0.07)')
+                              ? (theme.sidebarItemActiveBg || (isDark ? '#2C2C2E' : '#EAEAEE'))
                               : isHovered
                               ? (isDark ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.03)')
                               : 'transparent',
