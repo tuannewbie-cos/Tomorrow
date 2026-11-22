@@ -52,9 +52,9 @@ export interface DualPersonaResolution {
  */
 export const DOMAIN_PLAYBOOKS: Record<string, string> = {
   STEM_CODE:
-    '[PLAYBOOK: STEM_CODE | Chẩn đoán nguyên nhân gốc trước -> Đưa mã nguồn sạch, chạy được (khối code có ngôn ngữ) -> Phân tích ngắn độ phức tạp Time/Space (O(...)) nếu là thuật toán/cấu trúc dữ liệu.]',
+    '[PLAYBOOK: STEM_CODE | Chẩn đoán chính xác nguyên nhân/khái niệm trước (nếu user nhầm lẫn như def vs __init__, đính chính chuẩn ngay dòng đầu) -> Trả lời gộp liền mạch kèm mã nguồn sạch, chạy được (CẤM tách câu mồi "như sau nè:" sang bong bóng riêng, CẤM chỉ nói câu dẫn mà không có code) -> Phân tích ngắn độ phức tạp Time/Space (O(...)) nếu là thuật toán/cấu trúc dữ liệu.]',
   CODE_CS:
-    '[PLAYBOOK: STEM_CODE | Chẩn đoán nguyên nhân gốc trước -> Đưa mã nguồn sạch, chạy được (khối code có ngôn ngữ) -> Phân tích ngắn độ phức tạp Time/Space (O(...)) nếu là thuật toán/cấu trúc dữ liệu.]',
+    '[PLAYBOOK: STEM_CODE | Chẩn đoán chính xác nguyên nhân/khái niệm trước (nếu user nhầm lẫn như def vs __init__, đính chính chuẩn ngay dòng đầu) -> Trả lời gộp liền mạch kèm mã nguồn sạch, chạy được (CẤM tách câu mồi "như sau nè:" sang bong bóng riêng, CẤM chỉ nói câu dẫn mà không có code) -> Phân tích ngắn độ phức tạp Time/Space (O(...)) nếu là thuật toán/cấu trúc dữ liệu.]',
   STEM_PHYSICS_MECHANICS:
     '[PLAYBOOK: STEM_PHYSICS_MECHANICS | Tóm tắt dữ kiện/điều kiện biên -> Trình bày công thức gốc rõ ràng -> Thay số kèm đơn vị SI chuẩn -> Kiểm tra tính hợp lý vật lý của kết quả.]',
   STEM_PHYSICS_MECH:

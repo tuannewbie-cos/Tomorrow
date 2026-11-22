@@ -1479,8 +1479,104 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
   });
 }
 
+// TEST 30: Test_Day11_Followup_Code_Inheritance
+{
+  // 1. Giả lập lịch sử giải thích hàm def trong Python
+  const history = [
+    {
+      id: 'h1',
+      sender: 'user',
+      role: 'user',
+      text: 'độ phức tạp hàm def trong python là gì',
+      timestamp: Date.now() - 60000,
+    },
+    {
+      id: 'h2',
+      sender: 'ai',
+      role: 'model',
+      text: 'Hàm `def` trong Python có chi phí định nghĩa O(1):\n```python\ndef greet(name):\n    return f"Hello {name}"\n```',
+      timestamp: Date.now() - 50000,
+    },
+  ];
+
+  // 2. User nhắn: "innit là contrucstor mà" -> nhận diện đúng CODE_CS và JARVIS_LAB
+  const d1 = aiService.buildLocalReflexDirective(
+    'innit là contrucstor mà',
+    history,
+    false,
+    undefined,
+    undefined,
+    false
+  );
+
+  // Cập nhật history với tin nhắn mới
+  const updatedHistory = [
+    ...history,
+    {
+      id: 'h3',
+      sender: 'user',
+      role: 'user',
+      text: 'innit là contrucstor mà',
+      timestamp: Date.now() - 30000,
+    },
+    {
+      id: 'h4',
+      sender: 'ai',
+      role: 'model',
+      text: 'Trong Python, `def` khai báo hàm thông thường, còn constructor là `__init__` chứ không phải `innit`.',
+      timestamp: Date.now() - 20000,
+    },
+  ];
+
+  // 3. User nhắn tiếp câu ngắn nối tiếp: "ví dụ đi"
+  const d2 = aiService.buildLocalReflexDirective(
+    'ví dụ đi',
+    updatedHistory,
+    false,
+    undefined,
+    undefined,
+    false
+  );
+
+  const words = aiService.SYSTEM_INSTRUCTION.trim().split(/\s+/).filter(Boolean);
+  const isBudgetValid = words.length < 450;
+
+  // Kiểm tra d1: nhận diện đúng EXPERT_JARVIS / CODE_CS / dynamicMaxTokens >= 1200
+  const d1Valid =
+    d1.intentMode === 'EXPERT_JARVIS' &&
+    d1.domain === 'CODE_CS' &&
+    d1.dynamicMaxTokens >= 1200 &&
+    d1.dualPersona?.persona === 'JARVIS_LAB';
+
+  // Kiểm tra d2: câu ngắn "ví dụ đi" kế thừa EXPERT_JARVIS / CODE_CS / dynamicMaxTokens >= 1200 (không rơi về 250)
+  const d2Valid =
+    d2.intentMode === 'EXPERT_JARVIS' &&
+    d2.domain === 'CODE_CS' &&
+    d2.dynamicMaxTokens >= 1200 &&
+    d2.dualPersona?.persona === 'JARVIS_LAB';
+
+  const passed = d1Valid && d2Valid && isBudgetValid;
+  const score = passed ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day11_Followup_Code_Inheritance',
+    input: 'Lịch sử Python code -> L1: "innit là contrucstor mà" -> L2: "ví dụ đi"',
+    mode: `${d2.intentMode} / ${d2.domain} / ${d2.dualPersona?.persona}`,
+    output: [
+      `L1 ("innit là contrucstor mà"): ${d1.intentMode} | Domain: ${d1.domain} | Persona: ${d1.dualPersona?.persona} | Tokens: ${d1.dynamicMaxTokens}`,
+      `L2 ("ví dụ đi"): ${d2.intentMode} | Domain: ${d2.domain} | Persona: ${d2.dualPersona?.persona} | Tokens: ${d2.dynamicMaxTokens}`,
+      `Prompt Budget: ${words.length} words (< 450 words)`,
+    ],
+    score,
+    passed,
+    details: passed
+      ? 'Kế thừa 100% ngữ cảnh chuyên môn CODE_CS / JARVIS_LAB cho câu hỏi nối tiếp ngắn ("ví dụ đi"), cấp budget 2000 tokens, 0% rớt về CASUAL_FRIEND'
+      : 'Thất bại: Bị rớt về CASUAL_FRIEND hoặc dynamicMaxTokens bị giới hạn ở 250 tokens',
+  });
+}
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 29 SCENARIOS (TOMORROW V4.7.2):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 30 SCENARIOS (TOMORROW V4.7.4):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
@@ -1494,16 +1590,16 @@ results.forEach((r, idx) => {
 const totalScore = results.reduce((acc, cur) => acc + cur.score, 0);
 const allPassed = results.every(r => r.passed);
 
-console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/290 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
+console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/300 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
 console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.7.2',
+  version: 'v4.7.4',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.7.2 — Structured Knowledge Vault, 50/50 Split Panes & Resilient Markdown Normalizer',
+  architecture: 'Tomorrow v4.7.4 — Domain Inheritance, Zero-Teaser Code Bubbles & 50/50 Split Panes',
   totalScore,
-  maxScore: 290,
+  maxScore: 300,
   allPassed,
   scenarios: results,
 };

@@ -44,7 +44,9 @@ const ChatBubbleBase: React.FC<ChatBubbleProps> = ({
   const rawMessageText = safeText === '[object Object]' ? '' : safeText;
   const messageText = normalizeMarkdownFences(rawMessageText);
   const normalizedText = messageText.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
-  const hasRichBlock = /```|\|.*\||^#{1,3}\s|\$\$|\$/.test(normalizedText);
+  const hasCodeBlock = /```/.test(normalizedText);
+  const hasTable = /\|.*\|/.test(normalizedText);
+  const hasRichBlock = hasCodeBlock || hasTable || /^#{1,3}\s|\$\$|\$/.test(normalizedText);
 
   // 2. Tính toán Dual-Width Bubble:
   // - Khi isSplitMode === true: mở rộng AI lên 95% (98% khi có khối code/bảng) và User 85%
@@ -61,6 +63,19 @@ const ChatBubbleBase: React.FC<ChatBubbleProps> = ({
       ? (isDesktop ? 760 : '92%')
       : (isDesktop ? '75%' : '85%');
   }
+
+  // Ép bong bóng chứa Code Block hoặc Bảng mở rộng đúng tỷ lệ thay vì tự co hẹp
+  const isCodeOrTable = isAI && (hasCodeBlock || hasTable);
+  const codeTableBubbleStyle = isCodeOrTable
+    ? {
+        width: compact ? ('96%' as any) : ('88%' as any),
+        maxWidth: compact ? ('98%' as any) : 740,
+        minWidth: compact ? 260 : 320,
+        alignSelf: 'flex-start' as const,
+      }
+    : {
+        maxWidth: bubbleMaxWidth,
+      };
 
   const getDomainName = (url: string, sourceName?: string): string => {
     if (sourceName && !['Google News', 'Web Search', 'Google Grounding'].includes(sourceName)) {
@@ -104,11 +119,11 @@ const ChatBubbleBase: React.FC<ChatBubbleProps> = ({
             backgroundColor: bubbleBg,
             borderColor: borderColor,
             borderWidth: isAI ? 1 : 0,
-            maxWidth: bubbleMaxWidth,
             paddingHorizontal: compact ? 12 : (hasRichBlock ? 18 : 16),
             paddingVertical: compact ? 9 : (hasRichBlock ? 12 : 10),
             shadowOpacity: theme.mode === 'light' ? 0.05 : 0.12,
           },
+          codeTableBubbleStyle,
           isAI ? styles.bubbleAI : styles.bubbleUser,
         ]}
       >

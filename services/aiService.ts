@@ -304,6 +304,7 @@ export interface ReflexDirective {
   chrono?: ChronoContext;
   psych?: MicroPsychProfile;
   dualPersona?: DualPersonaResolution;
+  isFollowUpPrompt?: boolean;
 }
 
 /**
@@ -376,7 +377,7 @@ export function detectExpertDomain(userText: string, hasImage: boolean = false):
     'vật lý', 'vat ly', 'cơ học', 'co hoc', 'thuyết tương đối', 'quang phổ',
     'giao thoa', 'tần số góc', 'dao động điều hòa', 'dao dong dieu hoa'
   ];
-  const hasForceWord = /\b(lực|luc)\b/i.test(lower);
+  const hasForceWord = /(?<!\p{L})(lực|luc)(?!\p{L})/iu.test(lower);
   if (physicsPatterns.some((p) => lower.includes(p)) || hasForceWord) {
     return 'STEM_PHYSICS_MECH';
   }
@@ -392,7 +393,7 @@ export function detectExpertDomain(userText: string, hasImage: boolean = false):
     'nhiễm sắc thể', 'nhiem sac the', 'kiểu gen', 'kiểu hình', 'quang hợp',
     'liên kết ion', 'liên kết cộng hóa trị', 'bảng tuần hoàn'
   ];
-  const hasShortChemBio = /\b(mol|ph|adn|arn|dna|rna|alen|gen)\b/i.test(lower);
+  const hasShortChemBio = /(?<!\p{L})(mol|ph|độ ph|adn|arn|dna|rna|alen|gen)(?!\p{L})/iu.test(lower);
   if (chemBioPatterns.some((p) => lower.includes(p)) || hasShortChemBio) {
     return 'STEM_CHEM_BIO';
   }
@@ -406,7 +407,7 @@ export function detectExpertDomain(userText: string, hasImage: boolean = false):
     'rủi ro tài chính', 'rui ro tai chinh', 'danh mục đầu tư', 'cổ tức',
     'trái phiếu', 'thị trường vốn', 'đòn bẩy tài chính'
   ];
-  const hasShortFinance = /\b(btc|eth|dcf|npv|irr|p\/e|pe ratio|roe|roa|eps)\b/i.test(lower);
+  const hasShortFinance = /(?<!\p{L})(btc|eth|dcf|npv|irr|p\/e|pe ratio|roe|roa|eps)(?!\p{L})/iu.test(lower);
   if (financePatterns.some((p) => lower.includes(p)) || hasShortFinance) {
     return 'FINANCE_QUANT';
   }
@@ -418,9 +419,13 @@ export function detectExpertDomain(userText: string, hasImage: boolean = false):
     'con trỏ', 'con tro', 'đệ quy', 'de quy', 'bubblesort', 'bubble sort', 'quicksort',
     'mergesort', 'database', 'indexing', 'backend', 'frontend', 'compiler', 'regex',
     'kế thừa', 'ke thua', 'đa hình', 'da hinh', 'lập trình', 'lap trinh', 'viết code',
-    'viet code', 'printf', 'scanf', 'docker', 'kubernetes'
+    'viet code', 'printf', 'scanf', 'docker', 'kubernetes',
+    // Bổ sung OOP, constructor & typo phổ biến (innit, contrucstor...)
+    'constructor', 'contrucstor', 'constructer', 'destructor', '__init__', 'innit', 'init',
+    'pointer', 'struct', 'class', 'function', 'method', 'biến', 'bien', 'tham số', 'tham so',
+    'đối số', 'doi so', 'phương thức', 'phuong thuc', 'đóng gói', 'dong goi', 'trừu tượng'
   ];
-  const hasShortCode = /\b(code|bug|lỗi|big-o|sql|api|git)\b/i.test(lower);
+  const hasShortCode = /(?<!\p{L})(code|bug|lỗi|loi|big-o|sql|api|git|def|loop|o\(1\)|o\(n\)|hàm|ham|lớp|lop)(?!\p{L})/iu.test(lower);
   if (codePatterns.some((p) => lower.includes(p)) || hasShortCode || trimmed.includes('```')) {
     return 'CODE_CS';
   }
@@ -585,7 +590,48 @@ export function buildLocalReflexDirective(
   }
 
   // 3. Nhận diện Chuyên Môn Con (Domain Sub-Router)
-  const domain = detectExpertDomain(userText, hasImage);
+  let domain = detectExpertDomain(userText, hasImage);
+  const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
+
+  // 3.1. BỘ NHẬN DIỆN FOLLOW-UP DOMAIN INHERITANCE (Kế thừa chuyên môn cho câu hỏi nối tiếp ngắn)
+  // Quét 4 tin nhắn gần nhất trong recentHistory
+  const last4History = (recentHistory || []).slice(-4);
+  const hasRecentCode = last4History.some((m) => {
+    const t = (m.text || '').toLowerCase();
+    return t.includes('```') || t.includes('def ') || t.includes('class ') || t.includes('function ') || t.includes('o(1)') || t.includes('o(n)');
+  });
+  const hasRecentExpert = last4History.some((m) => {
+    const t = (m.text || '');
+    const d = detectExpertDomain(t, false);
+    return d !== 'GENERAL';
+  });
+
+  const isFollowUpPrompt =
+    wordCount <= 8 &&
+    (/\b(ví dụ|vi du|vd|đâu|dau|chi tiết|chi tiet|giải thích|giai thich|tại sao|tai sao|sao lại|sao lai|code|chạy thử|chay thu|sửa lại|sua lai|còn|con|thế còn|the con|là gì|la gi|mà|ma|thử|nữa|tiep|tiếp)\b/i.test(lower) ||
+      /\b(init|innit|__init__|constructor|contrucstor|def|class|struct|o\(1\)|o\(n\)|loop|pointer|hàm|biến|lớp)\b/i.test(lower));
+
+  let isInheritedFollowUp = false;
+  if (domain === 'GENERAL' && (isFollowUpPrompt || hasRecentCode) && (hasRecentCode || hasRecentExpert)) {
+    for (let i = last4History.length - 1; i >= 0; i--) {
+      const hText = last4History[i].text || '';
+      const d = detectExpertDomain(hText, false);
+      if (d !== 'GENERAL') {
+        domain = d;
+        isInheritedFollowUp = true;
+        break;
+      }
+      if (hText.includes('```')) {
+        domain = 'CODE_CS';
+        isInheritedFollowUp = true;
+        break;
+      }
+    }
+    if (!isInheritedFollowUp && hasRecentCode) {
+      domain = 'CODE_CS';
+      isInheritedFollowUp = true;
+    }
+  }
 
   // C. WEB_INTEL
   if (isWebSearched) {
@@ -617,7 +663,6 @@ export function buildLocalReflexDirective(
   }
 
   // D. EXPERT_JARVIS
-  const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
   const expertKeywords = [
     'giải thích', 'giai thich', 'phân tích', 'phan tich', 'tại sao', 'tai sao',
     'như thế nào', 'code', 'thuật toán', 'thuat toan', 'kiến trúc', 'kien truc',
@@ -655,13 +700,13 @@ export function buildLocalReflexDirective(
     (lastModelMsg.includes('```') || lastModelMsg.toLowerCase().includes('thuật toán') || lastModelMsg.toLowerCase().includes('bubble sort')) &&
     (lower.includes(' c') || lower.includes('ngôn ngữ') || lower.includes('code') || lower.includes('python') || lower.includes('java') || lower.includes('viết lại') || lower.includes('tối ưu') || lower.includes('trong '));
 
-  const hasExpertWord = expertKeywords.some((kw) => lower.includes(kw)) || trimmed.includes('```') || isCodeFollowUp;
+  const hasExpertWord = expertKeywords.some((kw) => lower.includes(kw)) || trimmed.includes('```') || isCodeFollowUp || isInheritedFollowUp;
   const isExpertDomainActive = domain !== 'GENERAL';
 
   if (hasImage || isExpertDomainActive || wordCount > 18 || hasExpertWord) {
     const domainLine = getDomainDirectiveLine(domain);
     const domainPart = domainLine ? ` ${domainLine} |` : '';
-    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS |${domainPart} ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng (explicit line breaks), thụt lề chuẩn (4 spaces cho Python, 2 spaces cho TS/JS), CẤM viết dồn 1 dòng. Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau. Mảng "replies" BẮT BUỘC chỉ chứa các chuỗi văn bản Markdown thuần (string[]), TUYỆT ĐỐI KHÔNG đặt object {} lồng bên trong mảng "replies".]`;
+    const directivePrompt = `[DIRECTIVE: MODE=EXPERT_JARVIS |${domainPart} ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Vận hành trí tuệ sắc bén cấp độ ChatGPT/Gemini/J.A.R.V.I.S.: giải quyết triệt để, rõ ràng, sâu sắc. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). Khi có code hoặc ví dụ: BẮT BUỘC trả lời gộp liền mạch đầy đủ ngay trong lượt này (CẤM tuyệt đối chỉ trả lời câu dẫn mồi "như sau nè", "ví dụ nhé" mà không có code/nội dung). CẤM tách câu dẫn sang bong bóng riêng. CẤM TUYỆT ĐỐI hùa theo hoặc nói sai kiến thức cơ bản để chiều lòng user: nếu user nhầm lẫn khái niệm (như def vs __init__, constructor), phải đính chính ngắn gọn, chuẩn xác ngay dòng đầu trước khi đưa code. Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng (explicit line breaks), thụt lề chuẩn (4 spaces cho Python, 2 spaces cho TS/JS), CẤM viết dồn 1 dòng. Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau. Mảng "replies" BẮT BUỘC chỉ chứa các chuỗi văn bản Markdown thuần (string[]), TUYỆT ĐỐI KHÔNG đặt object {} lồng bên trong mảng "replies".]`;
 
     let dynamicMaxTokens = 1200;
     let dynamicTimeout = 30000;
@@ -709,6 +754,7 @@ export function buildLocalReflexDirective(
       chrono,
       psych,
       dualPersona,
+      isFollowUpPrompt: isFollowUpPrompt || isInheritedFollowUp,
     };
   }
 
@@ -744,6 +790,7 @@ export function buildLocalReflexDirective(
     chrono,
     psych,
     dualPersona,
+    isFollowUpPrompt,
   };
 }
 
@@ -761,7 +808,7 @@ NGUYÊN TẮC CỐT LÕI:
 3. KHÓA ĐẠI TỪ: Bắt đúng cặp xưng hô từ [DIRECTIVE] (t - m, mình - bạn, anh/chị - em). Khi giải toán/code: đi thẳng vào vấn đề hoặc tỉnh lược chủ ngữ.
 4. MODE=STOP_SIGNAL: Đáp 1 bong bóng cực ngắn (1-4 chữ), CẤM hỏi ngược lại.
 5. MODE=WEB_INTEL: Cung cấp ngay dữ liệu thực tế kèm URL thật, CẤM hứa suông câu giờ.
-6. CODE & BẢNG: Xuống dòng rõ ràng, thụt lề chuẩn. Mỗi khối code/bảng phải nằm trọn trong 1 phần tử của "replies".
+6. CODE & BẢNG: Xuống dòng rõ ràng, thụt lề chuẩn. Trả lời gộp liền mạch kèm code, CẤM tách câu dẫn mồi sang bong bóng riêng.
 7. MEMORY VAULT: Đọc thẻ [MEMORY_VAULT] để cá nhân hóa lời giảng/phân tích. Ghi ngắn vào "memory_note" khi user nêu môn học hoặc mục tiêu tài chính.
 
 7 VÍ DỤ MẪU (GOLDEN FEW-SHOT BANK):
@@ -1798,7 +1845,54 @@ export function sanitizeAndMergeBrokenBlocks(replies: string[]): string[] {
     merged.push(currentAccumulator.trim() + '\n```');
   }
 
+  // Tự động gộp câu mồi ngắn ở replies[0] với khối nội dung/code kế tiếp để không bị tách bong bóng rời vô nghĩa
+  if (merged.length >= 2) {
+    const first = merged[0].trim();
+    const firstLower = first.toLowerCase();
+    const firstWords = first.split(/\s+/).filter(Boolean).length;
+    const isTeaserOpening =
+      firstWords <= 12 &&
+      !first.includes('```') &&
+      (first.endsWith(':') ||
+        firstLower.includes('như sau') ||
+        firstLower.includes('ví dụ') ||
+        firstLower.includes('dưới đây') ||
+        firstLower.includes('đây nè') ||
+        firstLower.includes('đây nhé') ||
+        firstLower.includes('sau đây'));
+    if (isTeaserOpening) {
+      merged[1] = first + '\n\n' + merged[1];
+      merged.shift();
+    }
+  }
+
   return merged;
+}
+
+/**
+ * Kiểm tra câu trả lời có phải câu mồi rỗng không kèm nội dung (Empty Teaser) không:
+ * Ví dụ: ["như sau nè:"], ["ví dụ nhé"], ["đây nhé:"] mà không có code hay giải thích
+ */
+export function isEmptyTeaserReply(replies: string[]): boolean {
+  if (!Array.isArray(replies) || replies.length === 0) return true;
+  const combined = replies.join(' ').trim();
+  if (combined.includes('```') || combined.includes('|') || combined.length > 120) {
+    return false;
+  }
+  const words = combined.split(/\s+/).filter(Boolean);
+  if (words.length > 15) return false;
+
+  const lower = combined.toLowerCase();
+  const endsWithColon = combined.endsWith(':');
+  const teaserSuffixes = [
+    'như sau nè', 'như sau nhé', 'như sau', 'ví dụ nhé', 'ví dụ nè',
+    'ví dụ về', 'đây nhé', 'sau đây', 'dưới đây nè', 'cụ thể là',
+    'như này nè', 'như này nhé', 'xem nhé', 'tham khảo nhé'
+  ];
+  const hasTeaserSuffix = teaserSuffixes.some(
+    (s) => lower.endsWith(s) || lower.endsWith(s + ':') || lower.endsWith(s + '.') || lower.endsWith(s + '!')
+  );
+  return endsWithColon || hasTeaserSuffix;
 }
 
 /**
@@ -2767,6 +2861,34 @@ export function localResilientFallback(
     };
   }
 
+  // 3C. LẬP TRÌNH PYTHON / CONSTRUCTOR / __INIT__ (CHÍNH XÁC KỸ THUẬT, 0 CÂU DẪN MỒI)
+  if (
+    lower.includes('innit') ||
+    lower.includes('__init__') ||
+    lower.includes('constructor') ||
+    lower.includes('contrucstor') ||
+    (lower.includes('ví dụ') && (lower.includes('def') || lower.includes('hàm') || lower.includes('python') || lower.includes('code')))
+  ) {
+    const isTM = userMemory?.nickname === 'm' || /^(t|m|tao|mày)\b/i.test(lower);
+    const expl = isTM
+      ? 'Trong Python, `def` là từ khóa khai báo hàm/phương thức thông thường. Còn constructor (hàm khởi tạo) của class là `__init__` (hai dấu gạch dưới mỗi bên, không phải `innit`).\n\n```python\nclass Student:\n    # Constructor khởi tạo thuộc tính\n    def __init__(self, name, major):\n        self.name = name\n        self.major = major\n\n    # Phương thức thông thường\n    def introduce(self):\n        return f"Sinh viên: {self.name} - Ngành: {self.major}"\n\n# Khởi tạo đối tượng (gọi ngầm __init__)\ns1 = Student("Tuấn", "Khoa học Máy tính")\nprint(s1.introduce())\n```\n• `__init__` tự động chạy khi tạo instance mới, `self` đại diện cho chính đối tượng đó.'
+      : 'Trong Python, `def` là từ khóa khai báo hàm/phương thức thông thường. Còn constructor (hàm khởi tạo) của class là `__init__` (hai dấu gạch dưới mỗi bên, không phải `innit`).\n\n```python\nclass Student:\n    # Constructor khởi tạo thuộc tính\n    def __init__(self, name, major):\n        self.name = name\n        self.major = major\n\n    # Phương thức thông thường\n    def introduce(self):\n        return f"Sinh viên: {self.name} - Ngành: {self.major}"\n\n# Khởi tạo đối tượng (gọi ngầm __init__)\ns1 = Student("Tuấn", "Khoa học Máy tính")\nprint(s1.introduce())\n```\n• `__init__` tự động chạy khi tạo instance mới, `self` đại diện cho chính đối tượng đó.';
+
+    return {
+      replies: [expl],
+      reply: expl,
+      session_title: 'Constructor __init__ trong Python',
+      sessionTitle: 'Constructor __init__ trong Python',
+      should_update_title: true,
+      shouldUpdateTitle: true,
+      conversation_state: 'gemini_expert',
+      conversationState: 'gemini_expert',
+      memory_note: 'Học OOP Python và hàm khởi tạo __init__',
+      memoryNote: 'Học OOP Python và hàm khởi tạo __init__',
+      jarvis_intent: 'work_assist',
+    };
+  }
+
   // 4. NHỊP MỞ ĐẦU (PING) ("yo", "ê", "hello", "alo", "hi", "hí", "halo", "ơi")
   if (/^(yo|ê|e|alo|hú|hu|helo|hello|hi|hii|halo|hí|ơi)[!.? ]*$/i.test(lower)) {
     return {
@@ -3224,7 +3346,30 @@ export async function sendMessageToTomorrow(
           directive.dynamicTimeout,
           directive.temperature ?? 0.75
         );
-        const parsed = parseAIResponseJson(openAiRaw, userText, recentChats, webSearchContext.sources);
+        let parsed = parseAIResponseJson(openAiRaw, userText, recentChats, webSearchContext.sources);
+        if (
+          parsed &&
+          parsed.replies &&
+          isEmptyTeaserReply(parsed.replies) &&
+          (directive.intentMode === 'EXPERT_JARVIS' || directive.domain === 'CODE_CS' || directive.isFollowUpPrompt)
+        ) {
+          try {
+            const forcedMsg = `${finalUserMessage}\n\n[CẢNH BÁO BẮT BUỘC]: Trả lời trực tiếp bằng ví dụ/code đầy đủ ngay trong mảng replies[0], CẤM chỉ nói câu dẫn mồi.`;
+            const retryRaw = await callOpenAI(
+              systemPrompt,
+              forcedMsg,
+              recentChats,
+              effectiveImageBase64,
+              directive.dynamicMaxTokens,
+              directive.dynamicTimeout,
+              0.25
+            );
+            const retryParsed = parseAIResponseJson(retryRaw, userText, recentChats, webSearchContext.sources);
+            if (retryParsed && retryParsed.replies && !isEmptyTeaserReply(retryParsed.replies)) {
+              parsed = retryParsed;
+            }
+          } catch (_) {}
+        }
         if (parsed && parsed.replies && parsed.replies.length > 0) {
           const rawNote = parsed.memory_note || (parsed as any).memoryNote || '';
           const rawUpdate = (parsed as any).memory_update;
@@ -3284,7 +3429,35 @@ export async function sendMessageToTomorrow(
           hasImage,
           failoverTrace
         );
-        const parsed = parseAIResponseJson(rawRes.text, userText, recentChats, webSearchContext.sources);
+        let parsed = parseAIResponseJson(rawRes.text, userText, recentChats, webSearchContext.sources);
+        if (
+          parsed &&
+          parsed.replies &&
+          isEmptyTeaserReply(parsed.replies) &&
+          (directive.intentMode === 'EXPERT_JARVIS' || directive.domain === 'CODE_CS' || directive.isFollowUpPrompt)
+        ) {
+          try {
+            const forcedMsg = `${finalUserMessage}\n\n[CẢNH BÁO BẮT BUỘC]: Trả lời trực tiếp bằng ví dụ/code đầy đủ ngay trong mảng replies[0], CẤM chỉ nói câu dẫn mồi.`;
+            const retryRes = await callModelFallbackChain(
+              key,
+              systemPrompt,
+              forcedMsg,
+              effectiveImageBase64,
+              webSearchContext.searched,
+              directive.dynamicMaxTokens,
+              directive.dynamicTimeout,
+              recentChats,
+              0.25,
+              preferSmartFlash,
+              hasImage,
+              failoverTrace
+            );
+            const retryParsed = parseAIResponseJson(retryRes.text, userText, recentChats, webSearchContext.sources);
+            if (retryParsed && retryParsed.replies && !isEmptyTeaserReply(retryParsed.replies)) {
+              parsed = retryParsed;
+            }
+          } catch (_) {}
+        }
         if (parsed && parsed.replies && parsed.replies.length > 0) {
           const rawNote = parsed.memory_note || (parsed as any).memoryNote || '';
           const rawUpdate = (parsed as any).memory_update;

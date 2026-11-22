@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.3` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.4` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -240,6 +240,24 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
   - **Khóa Flexbox chống tràn/xén mép trên macOS & Web (`App.tsx`):**
     + Bổ sung `minWidth: 0, boxSizing: 'border-box'` trên `panesContainer`, `singlePaneWrapper`, `chatAreaWrapper`, `chatListContent`, triệt tiêu hoàn toàn hiện tượng lệch tỷ lệ và xén mép.
   - Header cập nhật: **`Online • v4.7.3`**.
+
+- [x] **Ngày 11+++ (`fix/code-followup-ui` — Phiên bản `Online • v4.7.4`): Kế Thừa Ngữ Cảnh Chuyên Môn Cho Câu Hỏi Nối Tiếp Ngắn, Triệt Tiêu Câu Mồi Rỗng & Nới Rộng Khung Code Block**
+  - **Bộ nhận diện Follow-up Domain Inheritance (`services/aiService.ts`, `services/personaRouter.ts`):**
+    + Chạy cục bộ < 1ms: Quét 4 tin nhắn gần nhất trong lịch sử khi người dùng gửi câu hỏi/yêu cầu nối tiếp ngắn (<= 8 từ hoặc các cụm "ví dụ", "đâu", "chi tiết", "giải thích", "tại sao", "code", "sửa lại", "thế còn", "là gì", hoặc typo/từ viết tắt OOP như "innit", "contrucstor", "def", "class", "pointer").
+    + Tự động kế thừa ngay `MODE = EXPERT_JARVIS`, `domain = CODE_CS`, `persona = JARVIS_LAB`, ép `dynamicMaxTokens = 2000` và `temperature <= 0.35`, chấm dứt việc bị rơi nhầm về `CASUAL_FRIEND` (250 tokens).
+  - **Triệt tiêu câu mồi rỗng & Siết độ chính xác kỹ thuật:**
+    + Cấm tuyệt đối hùa theo hoặc giải thích sai lệch kiến thức cơ bản (như nhầm `def` với constructor `__init__`); đính chính ngắn gọn, chuẩn xác ngay dòng đầu trước khi đưa code.
+    + Cơ chế tự động gộp câu dẫn ngắn (`"như sau nè:"`) ở phần tử 1 với khối code/nội dung ở phần tử 2 trong `sanitizeAndMergeBrokenBlocks`, trả về 1 bong bóng duy nhất, không tách rời câu mồi vô nghĩa.
+    + Cơ chế retry 1 lần sau `safeParseAIJson` nếu câu trả lời chỉ là câu dẫn mồi (`isEmptyTeaserReply`) mà không hề có mã nguồn hoặc nội dung chi tiết.
+  - **Nới rộng bong bóng chứa Code Block & Tách thoáng Header (`ChatBubble.tsx`, `RichMarkdownView.tsx`):**
+    + Khi bong bóng AI chứa khối code (`hasCodeBlock`) hoặc bảng biểu (`hasTable`), áp dụng tỷ lệ: `width: compact ? '96%' : '88%'`, `maxWidth: compact ? '98%' : 740`, `minWidth: compact ? 260 : 320`, `alignSelf: 'flex-start'`, chống co rúm khung code theo chiều ngang.
+    + Header của `CodeBlock`: `flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingHorizontal: 12, paddingVertical: 8, minWidth: 0`.
+    + Nhóm nhãn trái: `flex: 1, minWidth: 0, marginRight: 8`, nhãn `numberOfLines={1}` và `ellipsizeMode="tail"`.
+    + Nút `📋 Sao chép`: `flexShrink: 0, paddingHorizontal: 10, paddingVertical: 4`, luôn tách biệt rõ ràng, không bao giờ dính sát vào dòng `PYTHON • 6 DÒNG`.
+  - **Bộ kiểm thử tự động `train_simulator.js`:**
+    + Bổ sung kịch bản TEST 30: `Test_Day11_Followup_Code_Inheritance`.
+    + Đạt điểm tuyệt đối 30/30 scenarios (300/300 điểm 100% hoàn hảo).
+  - Header cập nhật: **`Online • v4.7.4`**.
 
 - [ ] **Ngày 12 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.

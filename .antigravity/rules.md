@@ -1,4 +1,4 @@
-# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.7.3)
+# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.7.4)
 
 ## 1. MÔI TRƯỜNG, NỀN TẢNG CỐT LÕI & CÁC KHÓA LƯU TRỮ
 - **Hệ điều hành phát triển & vận hành:** macOS (Ứng dụng đích chạy tại `/Applications/Tomorrow.app` kết nối Vercel Production). Mọi script/shell dùng chuẩn Unix/macOS, không dùng cú pháp Windows.
@@ -38,7 +38,13 @@
   + Công thức Toán học LaTeX Unicode (`$$...$$` hộp căn giữa viền Indigo `#6366F1`, `$...$` nội dòng).
   + Nút Quick Copy phản hồi ở góc dưới bên phải cho tin nhắn >120 ký tự hoặc có rich block.
 - **Thanh Nhập Liệu Co Giãn Đa Dòng (`FloatingInputBar.tsx`):** Co giãn từ `44px` đến `160px` theo nội dung; thu về `44px` sau khi gửi; đo đạc nhịp gõ ẩn `KeystrokeTelemetry` bằng `useRef` (zero re-render).
-- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.7.3`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.7.4`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Quy chuẩn Kế thừa Ngữ cảnh Chuyên môn & Bong bóng Code Nới Rộng (`v4.7.4`):**
+  + Tự động kế thừa chuyên môn `CODE_CS` / `JARVIS_LAB` cho câu hỏi/yêu cầu nối tiếp ngắn (<= 8 từ hoặc các cụm "ví dụ", "đâu", "chi tiết", "giải thích", "tại sao", "code", "innit", "constructor") khi lịch sử gần nhất có code hoặc chuyên môn STEM/Finance/Code. Cấp phát `dynamicMaxTokens = 2000`, `temperature <= 0.35`.
+  + Triệt tiêu câu mồi rỗng (`isEmptyTeaserReply`): Tự động gộp câu dẫn mồi ngắn ở phần tử 1 với phần tử 2 trong `sanitizeAndMergeBrokenBlocks`, trả lời 1 bong bóng duy nhất. Tự động retry 1 lần nếu câu trả lời không có code/nội dung.
+  + Đính chính chuẩn xác kiến thức nền tảng ngay dòng đầu tiên (như `def` vs constructor `__init__`), cấm hùa theo hoặc giải thích sai lệch.
+  + Bong bóng chứa Code/Bảng mở rộng đúng tỷ lệ: `width: compact ? '96%' : '88%'`, `maxWidth: compact ? '98%' : 740`, `minWidth: compact ? 260 : 320`.
+  + Header của `CodeBlock`: `flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingHorizontal: 12, paddingVertical: 8`. Nút `📋 Sao chép` tách biệt rõ ràng, không bao giờ dính sát dòng ngôn ngữ code.
 - **Quy chuẩn Split Screen 50/50, Hợp nhất `<ChatPaneView />` & Khóa chiều cao Input Pill (`v4.7.3`):**
   + Hợp nhất toàn bộ các khung chat thành DUY NHẤT một component `ChatPaneView` trong `App.tsx`, đảm bảo khung mặc định bên trái và khung phụ bên phải có cùng 100% cây DOM, props và cấu trúc styling.
   + Khung chia đôi buộc đặt `flex: 1, flexBasis: 0, minWidth: 0, maxWidth: '100%', overflow: 'hidden'` triệt tiêu lỗi phình/xén mép trái. Màn hình `< 1280px` tự động đóng Sidebar khi bật Split Screen.
