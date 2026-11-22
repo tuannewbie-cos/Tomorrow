@@ -185,7 +185,7 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
           borderLeftColor: theme.borderSubtle,
         },
         totalPanes > 1 && isActive && !isCloseMode && {
-          borderColor: theme.mode === 'dark' ? 'rgba(139, 92, 246, 0.4)' : 'rgba(99, 102, 241, 0.4)',
+          borderColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.15)',
         },
         isCloseMode && !isCloseTarget && {
           opacity: 0.72,
@@ -216,10 +216,10 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
             styles.paneHeaderBar,
             {
               backgroundColor: isActive
-                ? (theme.mode === 'dark' ? '#141824' : '#F8FAFC')
-                : (theme.mode === 'dark' ? '#0F121B' : '#F1F5F9'),
+                ? (theme.mode === 'dark' ? '#1C1C1E' : '#F7F7F8')
+                : (theme.mode === 'dark' ? '#141414' : '#F1F1F3'),
               borderBottomColor: isActive
-                ? (theme.mode === 'dark' ? '#8B5CF6' : '#6366F1')
+                ? (theme.mode === 'dark' ? '#FFFFFF' : '#000000')
                 : theme.borderSubtle,
               borderBottomWidth: isActive ? 2 : 1,
             },
@@ -231,7 +231,7 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
               styles.paneDropdownBtn,
               {
                 backgroundColor: isActive
-                  ? (theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)')
+                  ? (theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)')
                   : 'transparent',
                 borderColor: isActive ? theme.borderSubtle : 'transparent',
               },
@@ -246,7 +246,7 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
             )}
             <MessageSquare
               size={13}
-              color={isActive ? (theme.mode === 'dark' ? '#A78BFA' : '#4F46E5') : theme.textMuted}
+              color={isActive ? (theme.mode === 'dark' ? '#F4F4F5' : '#18181B') : theme.textMuted}
             />
             <Text
               numberOfLines={1}
@@ -330,7 +330,7 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
           style={[
             styles.paneDropdownPopover,
             {
-              backgroundColor: theme.mode === 'dark' ? '#181C28' : '#FFFFFF',
+              backgroundColor: theme.mode === 'dark' ? '#202020' : '#FFFFFF',
               borderColor: theme.borderSubtle,
               shadowColor: '#000',
               shadowOpacity: theme.mode === 'dark' ? 0.45 : 0.15,
@@ -345,8 +345,8 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
             ]}
             onPress={() => handleSwitchSessionInPane(pane.id, null)}
           >
-            <Plus size={14} color="#8B5CF6" />
-            <Text style={[styles.paneDropdownItemText, { color: '#8B5CF6', fontWeight: '600' }]}>
+            <Plus size={14} color={theme.textPrimary} />
+            <Text style={[styles.paneDropdownItemText, { color: theme.textPrimary, fontWeight: '600' }]}>
               + Cuộc trò chuyện mới
             </Text>
           </Pressable>
@@ -378,15 +378,15 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
                       isCurrent && {
                         backgroundColor:
                           theme.mode === 'dark'
-                            ? 'rgba(139, 92, 246, 0.15)'
-                            : 'rgba(99, 102, 241, 0.08)',
+                            ? 'rgba(255, 255, 255, 0.1)'
+                            : 'rgba(0, 0, 0, 0.06)',
                       },
                       pressed && { backgroundColor: theme.btnHover },
                       Platform.OS === 'web' && { cursor: 'pointer' as any },
                     ]}
                     onPress={() => handleSwitchSessionInPane(pane.id, sess.id)}
                   >
-                    <MessageSquare size={13} color={isCurrent ? '#8B5CF6' : theme.textSecondary} />
+                    <MessageSquare size={13} color={isCurrent ? (theme.mode === 'dark' ? '#F4F4F5' : '#18181B') : theme.textSecondary} />
                     <Text
                       numberOfLines={1}
                       style={[
@@ -1716,7 +1716,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7.8</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7.9</Text>
               </View>
             </View>
           </View>

@@ -122,3 +122,16 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 | **Item Sổ ghi chú đang chọn (`activeBg`)** | `#2C2C2E` | `#EAEAEE` |
 | **Biểu tượng lõi (`TomorrowGlyph`)** | `#F3F4F6` (Trắng ngà sắc nét) | `#18181B` (Đen than sang trọng) |
 | **Dòng chữ chào (`claudeGreetingText`)** | `#ECECEC` | `#1A1A1A` |
+| **Đường line Split Pane active (`activePaneLine`)** | **`#FFFFFF` (Trắng đơn sắc, 1.5–2px)** | **`#000000` (Đen đơn sắc, 1.5–2px)** |
+
+---
+
+## 6. Chỉ Báo Cửa Sổ Chat Đa Tab (Active Split-Pane Indicator)
+- **Quy chuẩn đường line active:**
+  - **NGHIÊM CẤM** dùng đường line màu tím (`#8B5CF6`, `#6366F1`) hay bất kỳ màu sắc ngoại lai nào khác trên thanh tiêu đề Split Pane.
+  - **Bắt buộc dùng đường line đơn sắc tương phản tuyệt đối theo theme:**
+    + **Khi giao diện là Theme Tối (Dark Mode):** Đường line đáy của pane đang active có màu **Trắng (`#FFFFFF`)**, độ dày `1.5px`–`2px` sắc nét. Pane không active giữ viền mảnh trung tính `#2E2E2E`.
+    + **Khi giao diện là Theme Sáng (Light Mode):** Đường line đáy của pane đang active có màu **Đen (`#000000`)**, độ dày `1.5px`–`2px` sắc nét. Pane không active giữ viền mảnh trung tính `#E5E7EB`.
+- **Đồng bộ thanh tiêu đề & Icon:**
+  - Nền thanh header pane dùng tông xám trung tính tinh tế (`#1C1C1E` Dark / `#F7F7F8` Light khi active), loại bỏ hoàn toàn ánh xanh/tím.
+  - Icon chat (`MessageSquare`) cạnh tên phiên chuyển sang đơn sắc `#F4F4F5` (Dark Mode) / `#18181B` (Light Mode) khi active.

@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.8` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.9` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -353,6 +353,15 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
 - [x] **Đồng bộ hóa quy chuẩn `DESIGN.md`:**
   - Cập nhật mục 2.B (Claude Welcome Layout & TomorrowGlyph) và mục 5 (Surface Contrast Tokens).
 - [x] **Header cập nhật:** **`Online • v4.7.8`**. Bộ kiểm thử 39/39 scenarios đạt 390/390 điểm 100% hoàn hảo.
+
+#### ✅ Đã hoàn thành (Bản tinh chỉnh giao diện v4.7.9):
+- [x] **Loại bỏ đường line tím — Đổi sang đường line đơn sắc Trắng / Đen cho Split-Pane active (`App.tsx`):**
+  - Thanh header pane active chuyển sang đường viền dưới `borderBottomColor: #FFFFFF` (Trắng trên Dark Mode) và `#000000` (Đen trên Light Mode) dày 2px sắc nét (pane inactive giữ viền mảnh trung tính).
+  - Nền header pane active đổi sang tông xám trung tính tinh tế (`#1C1C1E` Dark / `#F7F7F8` Light), xóa bỏ toàn bộ ánh xanh/tím.
+  - Icon chat `MessageSquare` cạnh dropdown tên phiên chuyển sang đơn sắc `#F4F4F5` (Dark Mode) / `#18181B` (Light Mode) khi active.
+  - Viền ngoài pane active (`singlePaneWrapper`) chuyển sang đơn sắc mờ không màu tím.
+- [x] **Cập nhật quy chuẩn `DESIGN.md`:** Thêm mục 6 (Active Split-Pane Indicator) khóa cứng luật cấm line tím, bắt buộc Trắng/Đen đơn sắc.
+- [x] **Header cập nhật:** **`Online • v4.7.9`**. Bộ kiểm thử 39/39 scenarios đạt 390/390 điểm 100% hoàn hảo.
 
 - [ ] **Ngày 12 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
