@@ -45,6 +45,8 @@ const fs = require('fs');
 const path = require('path');
 const ts = require('typescript');
 
+const asyncStorageMap = {};
+
 function loadTsModule(filePath) {
   const code = fs.readFileSync(filePath, 'utf8');
   const res = ts.transpileModule(code, {
@@ -67,10 +69,10 @@ function loadTsModule(filePath) {
       }
       if (mod === '@react-native-async-storage/async-storage') {
         return {
-          getItem: async () => null,
-          setItem: async () => {},
-          removeItem: async () => {},
-          multiRemove: async () => {},
+          getItem: async (k) => asyncStorageMap[k] || null,
+          setItem: async (k, v) => { asyncStorageMap[k] = v; },
+          removeItem: async (k) => { delete asyncStorageMap[k]; },
+          multiRemove: async (keys) => { keys.forEach((k) => delete asyncStorageMap[k]); },
         };
       }
       if (mod === 'react-native') {
@@ -105,6 +107,7 @@ const aiService = loadTsModule(path.resolve(__dirname, 'services/aiService.ts'))
 const profiler = loadTsModule(path.resolve(__dirname, 'services/microPsychProfiler.ts'));
 const memoryVault = loadTsModule(path.resolve(__dirname, 'services/memoryVaultService.ts'));
 const richMarkdownView = loadTsModule(path.resolve(__dirname, 'components/RichMarkdownView.tsx'));
+const notebookStorage = loadTsModule(path.resolve(__dirname, 'storage/notebookStorage.ts'));
 
 // 1. BỘ LỌC TIÊU ĐỀ RÁC (Đồng bộ storage/chatStorage.ts)
 function isPlaceholderOrNoiseTitle(title) {
@@ -563,8 +566,9 @@ console.log('='.repeat(75));
 console.log('🚀 TOMORROW V4.7: STRUCTURED KNOWLEDGE VAULT & MULTIDIMENSIONAL STUDENT PROFILE');
 console.log('='.repeat(75));
 
-const results = [];
-let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
+async function runAllTests() {
+  const results = [];
+  let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
 
 // TEST 1: Test_Pronoun_No_Bro
 {
@@ -1870,12 +1874,139 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
   });
 }
 
+// TEST 37: Test_Day11_Notebook_Workspace_4Panes
+{
+  // 1. Kiểm tra tải notebooks ban đầu -> Tự khởi tạo default-notebook 'Ghi chú chung'
+  const initialNotebooks = await notebookStorage.loadNotebooks();
+  const hasDefaultNotebook =
+    initialNotebooks.length >= 1 &&
+    initialNotebooks.some((n) => n.id === notebookStorage.DEFAULT_NOTEBOOK_ID && n.name === 'Ghi chú chung');
+
+  // 2. Tạo sổ mới 'Dự án AI Hackathon'
+  const newNb = await notebookStorage.createNotebook('Dự án AI Hackathon');
+  const isCreated = newNb && newNb.name === 'Dự án AI Hackathon' && newNb.id.startsWith('nb-');
+
+  // 3. Quản lý 1..4 panes Split Screen riêng cho sổ này
+  const panes4 = [
+    { id: 'pane-1', sessionId: 'sess-1' },
+    { id: 'pane-2', sessionId: 'sess-2' },
+    { id: 'pane-3', sessionId: null },
+    { id: 'pane-4', sessionId: null },
+  ];
+  await notebookStorage.saveNotebookWorkspace(newNb.id, panes4, 'pane-2');
+  const updatedNbs = await notebookStorage.loadNotebooks();
+  const targetNb = updatedNbs.find((n) => n.id === newNb.id);
+  const isWorkspaceSaved =
+    targetNb &&
+    targetNb.savedPanes &&
+    targetNb.savedPanes.length === 4 &&
+    targetNb.activePaneId === 'pane-2';
+
+  // 4. Giới hạn tối đa 4 panes (thử lưu 6 panes -> chỉ nhận tối đa 4)
+  const panes6 = [
+    { id: 'p1', sessionId: null },
+    { id: 'p2', sessionId: null },
+    { id: 'p3', sessionId: null },
+    { id: 'p4', sessionId: null },
+    { id: 'p5', sessionId: null },
+    { id: 'p6', sessionId: null },
+  ];
+  await notebookStorage.saveNotebookWorkspace(newNb.id, panes6);
+  const nbsAfterMax = await notebookStorage.loadNotebooks();
+  const targetNbAfterMax = nbsAfterMax.find((n) => n.id === newNb.id);
+  const isMax4Enforced = targetNbAfterMax && targetNbAfterMax.savedPanes.length === 4;
+
+  // 5. Xóa sổ tùy biến -> Chuyển session bên trong về default-notebook an toàn
+  const fakeSessions = [
+    { id: 's1', title: 'Chat trong sổ mới', updatedAt: Date.now(), messages: [], notebookId: newNb.id },
+    { id: 's2', title: 'Chat chung', updatedAt: Date.now(), messages: [], notebookId: notebookStorage.DEFAULT_NOTEBOOK_ID },
+  ];
+  const { updatedNotebooks: nbsAfterDel, updatedSessions: sessionsAfterDel } =
+    await notebookStorage.deleteNotebook(newNb.id, fakeSessions);
+
+  const isDeleted = !nbsAfterDel.some((n) => n.id === newNb.id);
+  const isSessionMoved = sessionsAfterDel.find((s) => s.id === 's1')?.notebookId === notebookStorage.DEFAULT_NOTEBOOK_ID;
+
+  const passed = Boolean(
+    hasDefaultNotebook &&
+    isCreated &&
+    isWorkspaceSaved &&
+    isMax4Enforced &&
+    isDeleted &&
+    isSessionMoved
+  );
+  const score = passed ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day11_Notebook_Workspace_4Panes',
+    input: 'Tạo sổ ghi chú mới, quản lý 1-4 panes theo sổ, xóa sổ di chuyển session an toàn về default-notebook',
+    mode: 'NOTEBOOK_WORKSPACE_4PANES',
+    output: [
+      `Default notebook: ${hasDefaultNotebook ? 'OK (default-notebook)' : 'FAIL'}`,
+      `Create notebook: ${isCreated ? `OK (${newNb.name})` : 'FAIL'}`,
+      `Workspace saved (4 panes): ${isWorkspaceSaved ? 'OK' : 'FAIL'}`,
+      `Max 4 panes enforced: ${isMax4Enforced ? 'OK (sliced to 4)' : 'FAIL'}`,
+      `Delete notebook & move sessions: ${isDeleted && isSessionMoved ? 'OK (moved to default-notebook)' : 'FAIL'}`,
+    ],
+    score,
+    passed,
+    details: passed
+      ? 'Hệ thống Sổ ghi chú độc lập, lưu riêng bộ 1..4 panes Split Screen theo từng sổ, tự giới hạn max 4 panes và bảo toàn dữ liệu khi xóa sổ'
+      : 'Thất bại: Kiểm thử Sổ ghi chú và Workspace 4 panes không đạt',
+  });
+}
+
+// TEST 38: Test_Day11_Relative_Time_And_PromptBudget
+{
+  const now = Date.now();
+  // 1. Dưới 5 phút -> 'now'
+  const t1 = notebookStorage.formatRelativeTime(now - 2 * 60 * 1000);
+  // 2. Dưới 1 giờ -> '15m'
+  const t2 = notebookStorage.formatRelativeTime(now - 15 * 60 * 1000);
+  // 3. Dưới 24 giờ -> '3h'
+  const t3 = notebookStorage.formatRelativeTime(now - 3 * 3600 * 1000);
+  // 4. 1 ngày -> '1d'
+  const t4 = notebookStorage.formatRelativeTime(now - 24 * 3600 * 1000);
+  // 5. 8 ngày -> '8d'
+  const t5 = notebookStorage.formatRelativeTime(now - 8 * 24 * 3600 * 1000);
+
+  const isRelativeTimeValid =
+    t1 === 'now' &&
+    t2 === '15m' &&
+    t3 === '3h' &&
+    t4 === '1d' &&
+    t5 === '8d';
+
+  // 6. Kiểm tra SYSTEM_INSTRUCTION ngân sách < 450 từ
+  const words = aiService.SYSTEM_INSTRUCTION.trim().split(/\s+/).filter(Boolean);
+  const count = words.length;
+  const isBudgetValid = count < 450;
+
+  const passed = isRelativeTimeValid && isBudgetValid;
+  const score = passed ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day11_Relative_Time_And_PromptBudget',
+    input: 'Kiểm tra mốc thời gian tương đối Antigravity (now/15m/3h/1d/8d) & System Prompt < 450 từ',
+    mode: `RELATIVE_TIME_AND_BUDGET_${count}_WORDS`,
+    output: [
+      `Relative time: now="${t1}", 15m="${t2}", 3h="${t3}", 1d="${t4}", 8d="${t5}" -> ${isRelativeTimeValid ? 'OK' : 'FAIL'}`,
+      `System Prompt: ${count} words (< 450 words) -> ${isBudgetValid ? 'OK' : 'FAIL'}`,
+    ],
+    score,
+    passed,
+    details: passed
+      ? `Định dạng thời gian tương đối Antigravity chuẩn xác 100% (now, 15m, 3h, 1d, 8d), SYSTEM_INSTRUCTION v4.7.6 đạt ${count} từ (< 450 từ)`
+      : 'Thất bại: Mốc thời gian tương đối hoặc ngân sách prompt không đạt',
+  });
+}
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 36 SCENARIOS (TOMORROW V4.7.6):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 38 SCENARIOS (TOMORROW V4.7.6):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
-  console.log(`${icon} [TEST ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(36)} | Điểm: ${r.score}/10 | Mode: ${r.mode}`);
+  console.log(`${icon} [TEST ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(40)} | Điểm: ${r.score}/10 | Mode: ${r.mode}`);
   console.log(`   Input: "${r.input}"`);
   console.log(`   Output: ${JSON.stringify(r.output)}`);
   console.log(`   Chi tiết: ${r.details}`);
@@ -1885,16 +2016,16 @@ results.forEach((r, idx) => {
 const totalScore = results.reduce((acc, cur) => acc + cur.score, 0);
 const allPassed = results.every(r => r.passed);
 
-console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/360 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
+console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/380 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
 console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
   version: 'v4.7.6',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.7.6 — Additive Multi-Pane Split Screen, Interactive Pane Close Picker & Resilient Markdown Table/H4 Parser',
+  architecture: 'Tomorrow v4.7.6 — Antigravity Notebooks, 4-Pane Workspace, Additive Multi-Pane Split Screen, Interactive Pane Close Picker & Resilient Markdown Table/H4 Parser',
   totalScore,
-  maxScore: 360,
+  maxScore: 380,
   allPassed,
   scenarios: results,
 };
@@ -1911,3 +2042,9 @@ if (!allPassed) {
 } else {
   process.exit(0);
 }
+}
+
+runAllTests().catch((err) => {
+  console.error('Lỗi khi chạy simulator:', err);
+  process.exit(1);
+});

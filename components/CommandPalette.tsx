@@ -23,10 +23,12 @@ import {
   Columns2,
   RefreshCw,
   Brain,
+  FolderPlus,
 } from 'lucide-react-native';
 import { ChatSession } from '../types/chat';
 import { ThemeColors, ThemeMode } from '../constants/theme';
 import { isPlaceholderOrNoiseTitle } from '../storage/chatStorage';
+import { Notebook } from '../storage/notebookStorage';
 import { getQuotaSummarySync, resetOpenAICircuitBreaker } from '../services/quotaShield';
 import { resetOpenAICircuitBreaker as resetAiBreaker } from '../services/aiService';
 
@@ -34,9 +36,11 @@ export interface CommandPaletteProps {
   visible: boolean;
   onClose: () => void;
   sessions: ChatSession[];
+  notebooks?: Notebook[];
   onSelectSession: (sessionId: string) => void;
   onCreateNewSession: () => void;
   onNewChat?: () => void;
+  onCreateNewNotebook?: () => void;
   onToggleSidebar: () => void;
   onToggleTheme: () => void;
   onToggleSplitPanes?: () => void;
@@ -55,7 +59,16 @@ export interface PaletteItem {
   subtitle?: string;
   snippet?: string;
   badge?: string;
-  iconType: 'new_chat' | 'toggle_sidebar' | 'toggle_theme' | 'session' | 'split_panes' | 'reset_circuit_breaker' | 'memory_vault';
+  notebookName?: string;
+  iconType:
+    | 'new_chat'
+    | 'toggle_sidebar'
+    | 'toggle_theme'
+    | 'session'
+    | 'split_panes'
+    | 'reset_circuit_breaker'
+    | 'memory_vault'
+    | 'new_notebook';
   sessionId?: string;
   action?: () => void;
   group: 'actions' | 'recent' | 'search';
@@ -118,9 +131,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   visible,
   onClose,
   sessions,
+  notebooks,
   onSelectSession,
   onCreateNewSession,
   onNewChat,
+  onCreateNewNotebook,
   onToggleSidebar,
   onToggleTheme,
   onToggleSplitPanes,
@@ -157,7 +172,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     onClose();
   }, [onNewChat, onCreateNewSession, onClose]);
 
-  // Nhóm Thao Tác Nhanh (⌘N, ⌘B, Đổi theme, Quota Reset)
+  // Nhóm Thao Tác Nhanh (⌘N, ⌘B, Đổi theme, Quota Reset, Sổ ghi chú)
   const quickActions: PaletteItem[] = useMemo(
     () => [
       {
@@ -169,6 +184,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         iconType: 'new_chat',
         group: 'actions',
         action: handleTriggerNewChat,
+      },
+      {
+        id: 'act-new-notebook',
+        type: 'action',
+        title: '📁 Tạo Sổ ghi chú mới',
+        subtitle: 'Tạo sổ ghi chú mới để gom nhóm các phiên trò chuyện theo chủ đề',
+        badge: 'Notebook',
+        iconType: 'new_notebook',
+        group: 'actions',
+        action: () => {
+          onClose();
+          onCreateNewNotebook?.();
+        },
       },
       {
         id: 'act-toggle-sidebar',
@@ -243,7 +271,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         },
       },
     ],
-    [themeMode, isSplitPanes, handleTriggerNewChat, onToggleSidebar, onToggleTheme, onToggleSplitPanes, onOpenMemoryVault, onClose]
+    [themeMode, isSplitPanes, handleTriggerNewChat, onCreateNewNotebook, onToggleSidebar, onToggleTheme, onToggleSplitPanes, onOpenMemoryVault, onClose]
   );
 
   // Nhóm Các Phiên Gần Đây (hiển thị khi chưa tìm kiếm)
@@ -262,12 +290,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           : lastMsg.replace(/[\r\n]+/g, ' ')
         : `${msgCount} tin nhắn • ${dateStr}`;
 
+      const matchedNb = notebooks?.find((n) => n.id === (sess.notebookId || 'default-notebook'));
+      const notebookName = matchedNb ? matchedNb.name : undefined;
+
       return {
         id: `sess-${sess.id}`,
         type: 'session',
         title: formattedTitle,
         subtitle,
         badge: dateStr,
+        notebookName,
         iconType: 'session',
         sessionId: sess.id,
         group: 'recent',
@@ -277,7 +309,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         },
       };
     });
-  }, [sessions, onSelectSession, onClose]);
+  }, [sessions, notebooks, onSelectSession, onClose]);
 
   // Tìm kiếm thông minh: Lọc theo tiêu đề và nội dung tin nhắn bên trong phiên
   const searchResults: PaletteItem[] = useMemo(() => {
@@ -293,11 +325,22 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       matchedActions.push(quickActions[0]);
     }
     if (
+      'tạo sổ ghi chú mới notebook folder sổ thư mục gom nhóm'.includes(q) ||
+      'sổ'.includes(q) ||
+      'notebook'.includes(q) ||
+      'folder'.includes(q)
+    ) {
+      const nbAction = quickActions.find((a) => a.id === 'act-new-notebook');
+      if (nbAction && !matchedActions.includes(nbAction)) {
+        matchedActions.push(nbAction);
+      }
+    }
+    if (
       'đóng mở sidebar menu thanh bên'.includes(q) ||
       'sidebar'.includes(q) ||
       'menu'.includes(q)
     ) {
-      matchedActions.push(quickActions[1]);
+      matchedActions.push(quickActions[2]);
     }
     if (
       'đổi giao diện sáng tối theme dark light mode màu nền'.includes(q) ||
@@ -307,7 +350,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       'sáng'.includes(q) ||
       'tối'.includes(q)
     ) {
-      matchedActions.push(quickActions[2]);
+      matchedActions.push(quickActions[3]);
     }
     if (
       'chia đôi gộp cửa sổ song song split panes pane màn hình'.includes(q) ||
@@ -316,7 +359,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       'chia'.includes(q) ||
       'song song'.includes(q)
     ) {
-      matchedActions.push(quickActions[3]);
+      matchedActions.push(quickActions[4]);
     }
     if (
       'hồ sơ trí nhớ memory vault môn học tài chính kiến thức tri thức học tập'.includes(q) ||
@@ -353,7 +396,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         }
       }
 
-      if (titleMatches || matchingMsgText) {
+      const matchedNb = notebooks?.find((n) => n.id === (sess.notebookId || 'default-notebook'));
+      const notebookName = matchedNb ? matchedNb.name : undefined;
+      const nbMatches = Boolean(notebookName && notebookName.toLowerCase().includes(q));
+
+      if (titleMatches || matchingMsgText || nbMatches) {
         const dateStr = formatSessionDate(sess.updatedAt);
         const snippet = matchingMsgText
           ? extractSnippet(matchingMsgText, q)
@@ -368,6 +415,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           subtitle: snippet,
           snippet,
           badge: dateStr,
+          notebookName,
           iconType: 'session',
           sessionId: sess.id,
           group: 'search',
@@ -380,7 +428,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     }
 
     return [...matchedActions, ...matchedSessions].slice(0, 8);
-  }, [searchQuery, sessions, quickActions, onSelectSession, onClose]);
+  }, [searchQuery, sessions, notebooks, quickActions, onSelectSession, onClose]);
 
   // Danh sách hiển thị theo trạng thái tìm kiếm
   const displayList: PaletteItem[] = useMemo(() => {
@@ -453,6 +501,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         return <RefreshCw size={15} color={isSelected ? activeColor : '#EC4899'} />;
       case 'memory_vault':
         return <Brain size={16} color={isSelected ? activeColor : '#A855F7'} />;
+      case 'new_notebook':
+        return <FolderPlus size={16} color={isSelected ? activeColor : '#F59E0B'} />;
       case 'session':
       default:
         return (
@@ -636,21 +686,48 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                       </View>
 
                       <View style={styles.itemTextBox}>
-                        <Text
-                          style={[
-                            styles.itemTitle,
-                            {
-                              color: isSelected
-                                ? theme.mode === 'dark'
-                                  ? '#93C5FD'
-                                  : '#2563EB'
-                                : theme.textPrimary,
-                            },
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {item.title}
-                        </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text
+                            style={[
+                              styles.itemTitle,
+                              {
+                                color: isSelected
+                                  ? theme.mode === 'dark'
+                                    ? '#93C5FD'
+                                    : '#2563EB'
+                                  : theme.textPrimary,
+                                flexShrink: 1,
+                              },
+                            ]}
+                            numberOfLines={1}
+                          >
+                            {item.title}
+                          </Text>
+                          {item.notebookName ? (
+                            <View
+                              style={{
+                                paddingHorizontal: 5,
+                                paddingVertical: 1,
+                                borderRadius: 4,
+                                backgroundColor:
+                                  theme.mode === 'dark'
+                                    ? 'rgba(255, 255, 255, 0.08)'
+                                    : 'rgba(0, 0, 0, 0.05)',
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 10,
+                                  color: theme.textMuted,
+                                  fontWeight: '500',
+                                }}
+                                numberOfLines={1}
+                              >
+                                📁 {item.notebookName}
+                              </Text>
+                            </View>
+                          ) : null}
+                        </View>
                         {item.subtitle && (
                           <Text
                             style={[

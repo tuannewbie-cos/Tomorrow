@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 import { ChatSession, UserMemoryProfile } from '../types/chat';
 import { isPlaceholderOrNoiseTitle } from '../storage/chatStorage';
+import { Notebook, DEFAULT_NOTEBOOK_ID } from '../storage/notebookStorage';
+import { NotebookSidebarList } from './NotebookSidebarList';
 import {
   X,
   MessageSquare,
@@ -27,12 +29,20 @@ interface SidebarDrawerProps {
   onClose: () => void;
   sessions: ChatSession[];
   activeSessionId: string | null;
-  onSelectSession: (id: string) => void;
+  onSelectSession: (id: string, notebookId?: string) => void;
   onCreateNewSession: () => void;
   onDeleteSession: (id: string) => void;
   onClearAll: () => void;
   userMemory: UserMemoryProfile;
   theme?: ThemeColors;
+  notebooks?: Notebook[];
+  activeNotebookId?: string;
+  openSessionIdsInWorkspace?: string[];
+  onSelectNotebook?: (notebookId: string) => void;
+  onCreateNotebook?: (name: string) => Promise<void> | void;
+  onRenameNotebook?: (notebookId: string, newName: string) => Promise<void> | void;
+  onDeleteNotebook?: (notebookId: string) => Promise<void> | void;
+  onCreateSessionInNotebook?: (notebookId: string) => void;
 }
 
 export const formatSessionTitle = (rawTitle?: string): string => {
@@ -53,12 +63,18 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   onClearAll,
   userMemory,
   theme = DARK_THEME,
+  notebooks = [{ id: DEFAULT_NOTEBOOK_ID, name: 'Ghi chú chung', createdAt: 0, updatedAt: 0 }],
+  activeNotebookId = DEFAULT_NOTEBOOK_ID,
+  openSessionIdsInWorkspace = [],
+  onSelectNotebook = () => {},
+  onCreateNotebook = async () => {},
+  onRenameNotebook = async () => {},
+  onDeleteNotebook = async () => {},
+  onCreateSessionInNotebook = () => onCreateNewSession(),
 }) => {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
 
-  const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
-  const [isNewChatHovered, setIsNewChatHovered] = useState<boolean>(false);
   const [isClearHovered, setIsClearHovered] = useState<boolean>(false);
 
   // Xác nhận xóa toàn bộ
@@ -98,18 +114,6 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
     );
   };
 
-  // Xóa 1 phiên trò chuyện: chặn nổi bọt sự kiện và xóa tức thì
-  const handleDeleteSessionItem = (session: ChatSession, e?: any) => {
-    if (e) {
-      if (typeof e.stopPropagation === 'function') e.stopPropagation();
-      if (typeof e.preventDefault === 'function') e.preventDefault();
-      if (e.nativeEvent && typeof e.nativeEvent.stopPropagation === 'function') {
-        e.nativeEvent.stopPropagation();
-      }
-    }
-    onDeleteSession(session.id);
-  };
-
   // Nội dung chính của Sidebar (dùng chung cho cả Split-View và Drawer)
   const renderSidebarContent = (showCloseBtn: boolean = true) => (
     <View
@@ -143,144 +147,29 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
       </View>
 
       <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Nút Tạo Phiên Mới - Duy nhất 1 dấu + */}
-        <Pressable
-          style={({ pressed }) => [
-            styles.newChatBtn,
-            {
-              backgroundColor: theme.mode === 'dark' ? 'rgba(30, 34, 45, 0.85)' : '#FFFFFF',
-              borderColor: isNewChatHovered
-                ? (theme.mode === 'dark' ? '#60A5FA' : '#3B82F6')
-                : (theme.mode === 'dark' ? 'rgba(96, 165, 250, 0.35)' : 'rgba(37, 99, 235, 0.25)'),
-            },
-            isNewChatHovered && {
-              backgroundColor: theme.mode === 'dark' ? 'rgba(37, 99, 235, 0.16)' : 'rgba(37, 99, 235, 0.08)',
-              shadowColor: '#3B82F6',
-              shadowOpacity: 0.25,
-              shadowRadius: 10,
-            },
-            pressed && styles.btnPressed,
-            Platform.OS === 'web' && ({
-              cursor: 'pointer',
-              transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-            } as any),
-          ]}
-          onPress={() => {
-            onCreateNewSession();
+        {/* Danh sách phân nhóm Sổ ghi chú Antigravity */}
+        <NotebookSidebarList
+          notebooks={notebooks}
+          activeNotebookId={activeNotebookId}
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          openSessionIdsInWorkspace={openSessionIdsInWorkspace}
+          theme={theme}
+          onSelectNotebook={onSelectNotebook}
+          onCreateNotebook={onCreateNotebook}
+          onRenameNotebook={onRenameNotebook}
+          onDeleteNotebook={onDeleteNotebook}
+          onSelectSession={(sessId, nbId) => {
+            onSelectSession(sessId, nbId);
             if (!isDesktop) onClose();
           }}
-          onHoverIn={() => setIsNewChatHovered(true)}
-          onHoverOut={() => setIsNewChatHovered(false)}
-        >
-          <Plus size={18} color={isNewChatHovered ? '#60A5FA' : theme.textPrimary} />
-          <Text
-            style={[
-              styles.newChatText,
-              { color: isNewChatHovered ? (theme.mode === 'dark' ? '#93C5FD' : '#2563EB') : theme.textPrimary },
-            ]}
-          >
-            Cuộc trò chuyện mới
-          </Text>
-        </Pressable>
-
-        {/* Danh sách Gần đây (Recent Sessions) */}
-        <View style={styles.sessionSection}>
-          <View style={styles.recentSectionHeader}>
-            <Clock size={13} color={theme.textMuted} />
-            <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>GẦN ĐÂY</Text>
-          </View>
-
-          {sessions.length === 0 ? (
-            <View style={styles.emptySessionBox}>
-              <Text style={[styles.emptySessionText, { color: theme.textMuted }]}>
-                Chưa có cuộc trò chuyện nào trước đó
-              </Text>
-            </View>
-          ) : (
-            sessions.map((sess) => {
-              const isActive = sess.id === activeSessionId;
-              const isHovered = hoveredSessionId === sess.id;
-              return (
-                <View
-                  key={sess.id}
-                  style={[
-                    styles.sessionItemContainer,
-                    {
-                      backgroundColor: theme.mode === 'dark' ? 'transparent' : 'transparent',
-                      borderColor: 'transparent',
-                    },
-                    isActive && {
-                      backgroundColor: theme.sidebarItemActiveBg,
-                      borderColor: theme.mode === 'dark' ? 'rgba(96, 165, 250, 0.3)' : 'rgba(37, 99, 235, 0.25)',
-                    },
-                    isHovered && !isActive && {
-                      backgroundColor: theme.sidebarItemHoverBg,
-                      borderColor: theme.borderSubtle,
-                    },
-                  ]}
-                  onPointerEnter={() => setHoveredSessionId(sess.id)}
-                  onPointerLeave={() => setHoveredSessionId(null)}
-                >
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.sessionMainClickArea,
-                      pressed && styles.btnPressed,
-                      Platform.OS === 'web' && { cursor: 'pointer' as any },
-                    ]}
-                    onPress={() => {
-                      onSelectSession(sess.id);
-                      if (!isDesktop) onClose();
-                    }}
-                  >
-                    <MessageSquare
-                      size={15}
-                      color={isActive ? (theme.mode === 'dark' ? '#60A5FA' : '#2563EB') : theme.textSecondary}
-                    />
-                    <Text
-                      style={[
-                        styles.sessionItemTitle,
-                        { color: theme.textSecondary },
-                        isActive && {
-                          color: theme.sidebarItemActiveText,
-                          fontWeight: '600',
-                        },
-                        isHovered && !isActive && {
-                          color: theme.textPrimary,
-                        },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {formatSessionTitle(sess.title)}
-                    </Text>
-                  </Pressable>
-
-                  {/* Nút xóa session (icon thùng rác nhỏ) */}
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.sessionDeleteBtn,
-                      pressed && styles.btnPressed,
-                      Platform.OS === 'web' && { cursor: 'pointer' as any },
-                    ]}
-                    onPress={(e: any) => {
-                      if (e) {
-                        if (typeof e.stopPropagation === 'function') e.stopPropagation();
-                        if (typeof e.preventDefault === 'function') e.preventDefault();
-                        if (e.nativeEvent && typeof e.nativeEvent.stopPropagation === 'function') {
-                          e.nativeEvent.stopPropagation();
-                        }
-                      }
-                      handleDeleteSessionItem(sess, e);
-                    }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    disabled={false}
-                  >
-                    <Trash2 size={14} color={theme.textMuted} />
-                  </Pressable>
-                </View>
-              );
-            })
-          )}
-        </View>
+          onCreateSessionInNotebook={(nbId) => {
+            onCreateSessionInNotebook(nbId);
+            if (!isDesktop) onClose();
+          }}
+          onDeleteSession={onDeleteSession}
+          onCloseSidebarMobile={onClose}
+        />
       </ScrollView>
 
       {/* Footer nút xóa toàn bộ lịch sử */}

@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.5` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.6` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -363,9 +363,9 @@ Mỗi bước cập nhật tính năng mới phải tuân thủ nghiêm ngặt 3
    ```bash
    node train_simulator.js
    ```
-   *Yêu cầu bắt buộc: 17/17 kịch bản phải PASS (170/170 điểm) trước khi tạo commit.*
+   *Yêu cầu bắt buộc: 38/38 kịch bản phải PASS (380/380 điểm) trước khi tạo commit.*
 3. **Tăng Version Header & Deploy Production:**
-   - Cập nhật số phiên bản trên `App.tsx` (VD: `Online • v4.5` -> `Online • v4.5.1`).
+   - Cập nhật số phiên bản trên `App.tsx` (VD: `Online • v4.7.6`).
    - Kiểm tra `.gitignore` đảm bảo không sót `.env` hoặc file nhạy cảm.
    - Deploy Vercel Production:
      ```bash

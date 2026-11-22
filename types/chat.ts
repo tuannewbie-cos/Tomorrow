@@ -109,6 +109,7 @@ export interface ChatSession {
   messages: ChatMessage[];
   messageCount?: number;
   lastIntent?: string;
+  notebookId?: string; // Sổ ghi chú mà phiên này trực thuộc (mặc định 'default-notebook')
 }
 
 export interface MemeItem {

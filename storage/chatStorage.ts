@@ -428,8 +428,14 @@ export async function loadSessions(): Promise<ChatSession[]> {
       const parsed: ChatSession[] = JSON.parse(raw);
       if (Array.isArray(parsed)) {
         const sorted = parsed.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-        const { cleanedSessions, changed } = cleanOldSessionsWithGenericTitles(sorted);
-        if (changed) {
+        // Đảm bảo mọi session cũ đều có notebookId (mặc định 'default-notebook')
+        const withNotebookId = sorted.map((s) => ({
+          ...s,
+          notebookId: s.notebookId || 'default-notebook',
+        }));
+        const hasMissingNotebookId = sorted.some((s) => !s.notebookId);
+        const { cleanedSessions, changed } = cleanOldSessionsWithGenericTitles(withNotebookId);
+        if (changed || hasMissingNotebookId) {
           await saveSessions(cleanedSessions);
         }
         return cleanedSessions;
@@ -457,6 +463,7 @@ export async function loadSessions(): Promise<ChatSession[]> {
           id: `session-migrated-${Date.now()}`,
           title,
           updatedAt: Date.now(),
+          notebookId: 'default-notebook',
           messages: legacyMsgs.map((m) => ({
             id: m.id || `migrated-${Date.now()}-${Math.random()}`,
             role: m.role || (m.sender === 'user' ? 'user' : 'model'),
@@ -563,6 +570,26 @@ export async function deleteSession(sessionId: string): Promise<ChatSession[]> {
     return updatedSessions;
   } catch (error) {
     console.error('[Storage] Lỗi khi xóa session:', error);
+    return [];
+  }
+}
+
+/**
+ * Di chuyển 1 phiên trò chuyện sang Sổ ghi chú khác
+ */
+export async function moveSessionToNotebook(
+  sessionId: string,
+  targetNotebookId: string
+): Promise<ChatSession[]> {
+  try {
+    const currentSessions = await loadSessions();
+    const updatedSessions = currentSessions.map((sess) =>
+      sess.id === sessionId ? { ...sess, notebookId: targetNotebookId, updatedAt: Date.now() } : sess
+    );
+    await saveSessions(updatedSessions);
+    return updatedSessions;
+  } catch (error) {
+    console.error('[Storage] Lỗi khi di chuyển session sang sổ:', error);
     return [];
   }
 }

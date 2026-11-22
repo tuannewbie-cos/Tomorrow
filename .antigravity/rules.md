@@ -39,7 +39,7 @@
   + Công thức Toán học LaTeX Unicode (`$$...$$` hộp căn giữa viền Indigo `#6366F1`, `$...$` nội dòng).
   + Nút Quick Copy phản hồi ở góc dưới bên phải cho tin nhắn >120 ký tự hoặc có rich block.
 - **Thanh Nhập Liệu Co Giãn Đa Dòng (`FloatingInputBar.tsx`):** Co giãn từ `44px` đến `160px` theo nội dung; thu về `44px` sau khi gửi; đo đạc nhịp gõ ẩn `KeystrokeTelemetry` bằng `useRef` (zero re-render).
-- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.7.4`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.7.6`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
 - **Quy chuẩn Kế thừa Ngữ cảnh Chuyên môn & Bong bóng Code Nới Rộng (`v4.7.4`):**
   + Tự động kế thừa chuyên môn `CODE_CS` / `JARVIS_LAB` cho câu hỏi/yêu cầu nối tiếp ngắn (<= 8 từ hoặc các cụm "ví dụ", "đâu", "chi tiết", "giải thích", "tại sao", "code", "innit", "constructor") khi lịch sử gần nhất có code hoặc chuyên môn STEM/Finance/Code. Cấp phát `dynamicMaxTokens = 2000`, `temperature <= 0.35`.
   + Triệt tiêu câu mồi rỗng (`isEmptyTeaserReply`): Tự động gộp câu dẫn mồi ngắn ở phần tử 1 với phần tử 2 trong `sanitizeAndMergeBrokenBlocks`, trả lời 1 bong bóng duy nhất. Tự động retry 1 lần nếu câu trả lời không có code/nội dung.

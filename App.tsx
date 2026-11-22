@@ -48,6 +48,17 @@ import { CommandPalette } from './components/CommandPalette';
 import { MemoryVaultModal } from './components/MemoryVaultModal';
 import { StructuredMemoryVault } from './types/chat';
 import {
+  Notebook,
+  loadNotebooks,
+  saveNotebooks,
+  createNotebook,
+  renameNotebook,
+  deleteNotebook,
+  saveNotebookWorkspace,
+  DEFAULT_NOTEBOOK,
+  DEFAULT_NOTEBOOK_ID,
+} from './storage/notebookStorage';
+import {
   Menu,
   Sparkles,
   Dot,
@@ -99,6 +110,8 @@ interface ChatPaneViewProps {
   isDesktop: boolean;
   isCloseMode?: boolean;
   isCloseTarget?: boolean;
+  activeNotebookId?: string;
+  activeNotebookName?: string;
   onConfirmClose?: () => void;
   onSelectPane: (paneId: string) => void;
   onToggleDropdown: (paneId: string) => void;
@@ -129,6 +142,8 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
   isSplitMode,
   isCloseMode,
   isCloseTarget,
+  activeNotebookId = DEFAULT_NOTEBOOK_ID,
+  activeNotebookName,
   onConfirmClose,
   sessions,
   paneSession,
@@ -336,46 +351,60 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
           </Pressable>
           <View style={[styles.paneDropdownDivider, { backgroundColor: theme.borderSubtle }]} />
           <ScrollView style={styles.paneDropdownScroll} showsVerticalScrollIndicator={false}>
-            {sessions.map((sess) => {
-              const isCurrent = sess.id === pane.sessionId;
-              const sTitle = isPlaceholderOrNoiseTitle(sess.title)
-                ? 'Trò chuyện ngắn'
-                : (sess.title || 'Cuộc trò chuyện mới');
-              return (
-                <Pressable
-                  key={sess.id}
-                  style={({ pressed }) => [
-                    styles.paneDropdownItem,
-                    isCurrent && {
-                      backgroundColor:
-                        theme.mode === 'dark'
-                          ? 'rgba(139, 92, 246, 0.15)'
-                          : 'rgba(99, 102, 241, 0.08)',
-                    },
-                    pressed && { backgroundColor: theme.btnHover },
-                    Platform.OS === 'web' && { cursor: 'pointer' as any },
-                  ]}
-                  onPress={() => handleSwitchSessionInPane(pane.id, sess.id)}
-                >
-                  <MessageSquare size={13} color={isCurrent ? '#8B5CF6' : theme.textSecondary} />
-                  <Text
-                    numberOfLines={1}
-                    style={[
-                      styles.paneDropdownItemText,
-                      {
-                        color: isCurrent ? theme.textPrimary : theme.textSecondary,
-                        fontWeight: isCurrent ? '700' : '500',
-                      },
-                    ]}
-                  >
-                    {sTitle}
-                  </Text>
-                  {isTyping && (
-                    <View style={styles.typingDotGlow} />
-                  )}
-                </Pressable>
+            {(() => {
+              const notebookSessions = sessions.filter(
+                (s) => (s.notebookId || DEFAULT_NOTEBOOK_ID) === activeNotebookId
               );
-            })}
+              if (notebookSessions.length === 0) {
+                return (
+                  <View style={{ paddingHorizontal: 12, paddingVertical: 10 }}>
+                    <Text style={{ color: theme.textMuted, fontSize: 12, textAlign: 'center' }}>
+                      Chưa có cuộc trò chuyện nào trong sổ này
+                    </Text>
+                  </View>
+                );
+              }
+              return notebookSessions.map((sess) => {
+                const isCurrent = sess.id === pane.sessionId;
+                const sTitle = isPlaceholderOrNoiseTitle(sess.title)
+                  ? 'Trò chuyện ngắn'
+                  : (sess.title || 'Cuộc trò chuyện mới');
+                return (
+                  <Pressable
+                    key={sess.id}
+                    style={({ pressed }) => [
+                      styles.paneDropdownItem,
+                      isCurrent && {
+                        backgroundColor:
+                          theme.mode === 'dark'
+                            ? 'rgba(139, 92, 246, 0.15)'
+                            : 'rgba(99, 102, 241, 0.08)',
+                      },
+                      pressed && { backgroundColor: theme.btnHover },
+                      Platform.OS === 'web' && { cursor: 'pointer' as any },
+                    ]}
+                    onPress={() => handleSwitchSessionInPane(pane.id, sess.id)}
+                  >
+                    <MessageSquare size={13} color={isCurrent ? '#8B5CF6' : theme.textSecondary} />
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.paneDropdownItemText,
+                        {
+                          color: isCurrent ? theme.textPrimary : theme.textSecondary,
+                          fontWeight: isCurrent ? '700' : '500',
+                        },
+                      ]}
+                    >
+                      {sTitle}
+                    </Text>
+                    {isTyping && (
+                      <View style={styles.typingDotGlow} />
+                    )}
+                  </Pressable>
+                );
+              });
+            })()}
           </ScrollView>
         </View>
       )}
@@ -476,6 +505,14 @@ export default function App() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
   const [isMemoryVaultOpen, setIsMemoryVaultOpen] = useState<boolean>(false);
 
+  // HỆ THỐNG SỔ GHI CHÚ (NOTEBOOKS) VÀ WORKSPACE ĐA TAB
+  const [notebooks, setNotebooks] = useState<Notebook[]>([DEFAULT_NOTEBOOK]);
+  const [activeNotebookId, setActiveNotebookId] = useState<string>(DEFAULT_NOTEBOOK_ID);
+  const notebooksRef = useRef<Notebook[]>([DEFAULT_NOTEBOOK]);
+  notebooksRef.current = notebooks;
+  const activeNotebookIdRef = useRef<string>(activeNotebookId);
+  activeNotebookIdRef.current = activeNotebookId;
+
   // HẠNG MỤC 2: Quản lý Split Chat Panes kiểu VS Code (mặc định 1 pane, Cmd+↑ mở thêm, tối đa 4 pane)
   const [panes, setPanes] = useState<ChatPane[]>([{ id: 'pane-1', sessionId: null }]);
   const [activePaneId, setActivePaneId] = useState<string>('pane-1');
@@ -496,6 +533,9 @@ export default function App() {
   const currentSessionId = activePane.sessionId;
   const activeSession = currentSessionId ? sessions.find((s) => s.id === currentSessionId) : null;
   const messages = activeSession?.messages || [];
+
+  const activeNotebook = notebooks.find((n) => n.id === activeNotebookId) || notebooks[0] || DEFAULT_NOTEBOOK;
+  const openSessionIdsInWorkspace = panes.map((p) => p.sessionId).filter(Boolean) as string[];
 
   const isTomorrowTyping = !!(currentSessionId && typingSessionIds[currentSessionId]);
   const isSearchingWeb = !!(currentSessionId && searchingWebBySession[currentSessionId]);
@@ -589,11 +629,12 @@ export default function App() {
 
     async function rehydrateContext() {
       try {
-        console.log('[Bootstrap] Đang nạp danh sách phiên trò chuyện và theme...');
-        const [savedSessions, savedMemory, savedTheme] = await Promise.all([
+        console.log('[Bootstrap] Đang nạp danh sách phiên trò chuyện, theme và notebooks...');
+        const [savedSessions, savedMemory, savedTheme, savedNotebooks] = await Promise.all([
           loadSessions(),
           loadUserMemoryProfile(),
           AsyncStorage.getItem(THEME_STORAGE_KEY),
+          loadNotebooks(),
         ]);
 
         if (savedSessions && savedSessions.length > 0) {
@@ -632,12 +673,35 @@ export default function App() {
           setThemeMode(savedTheme);
         }
 
-        // Luôn mở ra màn hình mới hoàn toàn trống
-        const initialPanes: ChatPane[] = [{ id: 'pane-1', sessionId: null }];
-        panesRef.current = initialPanes;
-        setPanes(initialPanes);
-        setActivePaneId('pane-1');
-        activePaneIdRef.current = 'pane-1';
+        // Khôi phục notebooks và workspace tab của notebook đang active
+        if (savedNotebooks && savedNotebooks.length > 0) {
+          setNotebooks(savedNotebooks);
+          notebooksRef.current = savedNotebooks;
+          const defaultNb = savedNotebooks.find((n) => n.id === DEFAULT_NOTEBOOK_ID) || savedNotebooks[0];
+          const initialNbId = defaultNb ? defaultNb.id : DEFAULT_NOTEBOOK_ID;
+          setActiveNotebookId(initialNbId);
+          activeNotebookIdRef.current = initialNbId;
+
+          if (defaultNb && defaultNb.savedPanes && defaultNb.savedPanes.length > 0) {
+            setPanes(defaultNb.savedPanes);
+            panesRef.current = defaultNb.savedPanes;
+            const restoredActive = defaultNb.activePaneId || defaultNb.savedPanes[0].id;
+            setActivePaneId(restoredActive);
+            activePaneIdRef.current = restoredActive;
+          } else {
+            const initialPanes: ChatPane[] = [{ id: 'pane-1', sessionId: null }];
+            panesRef.current = initialPanes;
+            setPanes(initialPanes);
+            setActivePaneId('pane-1');
+            activePaneIdRef.current = 'pane-1';
+          }
+        } else {
+          const initialPanes: ChatPane[] = [{ id: 'pane-1', sessionId: null }];
+          panesRef.current = initialPanes;
+          setPanes(initialPanes);
+          setActivePaneId('pane-1');
+          activePaneIdRef.current = 'pane-1';
+        }
       } catch (err) {
         console.error('[Bootstrap] Lỗi khi nạp dữ liệu:', err);
       } finally {
@@ -742,6 +806,7 @@ export default function App() {
         title: sessionTitle,
         updatedAt: Date.now(),
         messages: updatedMessages,
+        notebookId: activeNotebookIdRef.current || DEFAULT_NOTEBOOK_ID,
       };
 
       // Cập nhật pane này gắn với targetSessionId
@@ -750,6 +815,7 @@ export default function App() {
       );
       panesRef.current = nextPanes;
       setPanes(nextPanes);
+      saveNotebookWorkspace(activeNotebookIdRef.current, nextPanes, paneId);
 
       const nextSessions = [newSession, ...sessionsRef.current];
       sessionsRef.current = nextSessions;
@@ -761,6 +827,7 @@ export default function App() {
         title: sessionTitle,
         updatedAt: Date.now(),
         messages: updatedMessages,
+        notebookId: currentSess?.notebookId || activeNotebookIdRef.current || DEFAULT_NOTEBOOK_ID,
       };
       const remaining = sessionsRef.current.filter((s) => s.id !== targetSessionId);
       const nextSessions = [updatedSession, ...remaining];
@@ -1039,6 +1106,77 @@ export default function App() {
   // Giữ alias handleCreateNewSession để bảo toàn 100% tương thích ngược
   const handleCreateNewSession = handleNewChat;
 
+  // 3.5 CÁC THAO TÁC QUẢN LÝ SỔ GHI CHÚ (NOTEBOOKS)
+  const handleSelectNotebook = useCallback(async (targetNotebookId: string) => {
+    if (targetNotebookId === activeNotebookIdRef.current) return;
+
+    // 1. Lưu workspace hiện tại của active notebook
+    await saveNotebookWorkspace(activeNotebookIdRef.current, panesRef.current, activePaneIdRef.current);
+
+    // 2. Cập nhật active notebook
+    setActiveNotebookId(targetNotebookId);
+    activeNotebookIdRef.current = targetNotebookId;
+
+    // 3. Khôi phục savedPanes của target notebook
+    const currentNbs = await loadNotebooks();
+    setNotebooks(currentNbs);
+    notebooksRef.current = currentNbs;
+    const targetNb = currentNbs.find((n) => n.id === targetNotebookId);
+
+    if (targetNb && targetNb.savedPanes && targetNb.savedPanes.length > 0) {
+      setPanes(targetNb.savedPanes);
+      panesRef.current = targetNb.savedPanes;
+      const targetActive = targetNb.activePaneId || targetNb.savedPanes[0].id;
+      setActivePaneId(targetActive);
+      activePaneIdRef.current = targetActive;
+    } else {
+      const nbSessions = sessionsRef.current.filter((s) => (s.notebookId || DEFAULT_NOTEBOOK_ID) === targetNotebookId);
+      const latestSessionId = nbSessions.length > 0 ? nbSessions[0].id : null;
+      const newPanes: ChatPane[] = [{ id: `pane-${Date.now()}`, sessionId: latestSessionId }];
+      setPanes(newPanes);
+      panesRef.current = newPanes;
+      setActivePaneId(newPanes[0].id);
+      activePaneIdRef.current = newPanes[0].id;
+    }
+
+    if (!isDesktop) {
+      setIsSidebarOpen(false);
+    }
+  }, [isDesktop]);
+
+  const handleCreateNotebook = useCallback(async (name: string) => {
+    const newNb = await createNotebook(name);
+    const updated = await loadNotebooks();
+    setNotebooks(updated);
+    notebooksRef.current = updated;
+    await handleSelectNotebook(newNb.id);
+  }, [handleSelectNotebook]);
+
+  const handleRenameNotebook = useCallback(async (id: string, newName: string) => {
+    const updated = await renameNotebook(id, newName);
+    setNotebooks(updated);
+    notebooksRef.current = updated;
+  }, []);
+
+  const handleDeleteNotebook = useCallback(async (id: string) => {
+    const { updatedNotebooks, updatedSessions } = await deleteNotebook(id, sessionsRef.current);
+    setNotebooks(updatedNotebooks);
+    notebooksRef.current = updatedNotebooks;
+    setSessions(updatedSessions);
+    sessionsRef.current = updatedSessions;
+
+    if (activeNotebookIdRef.current === id) {
+      await handleSelectNotebook(DEFAULT_NOTEBOOK_ID);
+    }
+  }, [handleSelectNotebook]);
+
+  const handleCreateSessionInNotebook = useCallback(async (notebookId: string) => {
+    if (activeNotebookIdRef.current !== notebookId) {
+      await handleSelectNotebook(notebookId);
+    }
+    handleNewChatInPane(activePaneIdRef.current);
+  }, [handleSelectNotebook, handleNewChatInPane]);
+
   // HẠNG MỤC 2: CÁC THAO TÁC SPLIT PANES (CHIA ĐÔI, THÊM PANE, ĐÓNG PANE, ĐỔI PHIÊN)
   // Cmd+ArrowUp: Luôn mở thêm pane trống mới (tối đa 4), không bao giờ gộp lại
   const handleAddNewSplitPane = useCallback(() => {
@@ -1060,6 +1198,7 @@ export default function App() {
       panesRef.current = next;
       setActivePaneId(newPaneId);
       activePaneIdRef.current = newPaneId;
+      saveNotebookWorkspace(activeNotebookIdRef.current, next, newPaneId);
       setTimeout(() => {
         inputBarRefs.current[newPaneId]?.focus?.();
       }, 50);
@@ -1102,6 +1241,7 @@ export default function App() {
       }
       const remaining = prev.filter((p) => p.id !== paneId);
       panesRef.current = remaining;
+      let nextActiveId = activePaneIdRef.current;
       if (remaining.length <= 1) {
         setIsPaneCloseMode(false);
       } else {
@@ -1111,7 +1251,9 @@ export default function App() {
         const nextActive = remaining[0];
         setActivePaneId(nextActive.id);
         activePaneIdRef.current = nextActive.id;
+        nextActiveId = nextActive.id;
       }
+      saveNotebookWorkspace(activeNotebookIdRef.current, remaining, nextActiveId);
       return remaining;
     });
   }, []);
@@ -1130,6 +1272,7 @@ export default function App() {
     setPanes(nextPanes);
     setActivePaneId(paneId);
     activePaneIdRef.current = paneId;
+    saveNotebookWorkspace(activeNotebookIdRef.current, nextPanes, paneId);
 
     inputBarRefs.current[paneId]?.setSelectedImage?.(null);
     setOpenDropdownPaneId(null);
@@ -1148,7 +1291,15 @@ export default function App() {
   handleClosePaneRef.current = handleClosePane;
 
   // 4. CHỌN 1 PHIÊN TRÒ CHUYỆN CŨ TỪ SIDEBAR HOẶC COMMAND PALETTE (mở trong active pane)
-  const handleSelectSession = useCallback((sessionId: string) => {
+  const handleSelectSession = useCallback((sessionId: string, targetNotebookId?: string) => {
+    // Nếu session thuộc notebook khác, chuyển active notebook trước
+    const foundSession = sessionsRef.current.find((s) => s.id === sessionId);
+    const sessionNbId = targetNotebookId || foundSession?.notebookId || DEFAULT_NOTEBOOK_ID;
+    if (sessionNbId && sessionNbId !== activeNotebookIdRef.current) {
+      setActiveNotebookId(sessionNbId);
+      activeNotebookIdRef.current = sessionNbId;
+    }
+
     // 1. Nếu sessionId đã đang mở ở active pane hiện tại -> chỉ đóng mobile drawer nếu cần và return
     const curActivePane = panesRef.current.find((p) => p.id === activePaneIdRef.current);
     if (curActivePane?.sessionId === sessionId) {
@@ -1162,6 +1313,7 @@ export default function App() {
     );
     panesRef.current = nextPanes;
     setPanes(nextPanes);
+    saveNotebookWorkspace(activeNotebookIdRef.current, nextPanes, activePaneIdRef.current);
 
     // 3. Xóa ảnh tạm đang soạn nếu chưa gửi
     inputBarRef.current?.setSelectedImage?.(null);
@@ -1467,6 +1619,13 @@ export default function App() {
                   <Dot size={18} color={theme.liveBadgeText} />
                   <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7.6</Text>
                 </View>
+                {activeNotebook && (
+                  <View style={[styles.liveBadge, { backgroundColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.05)', marginLeft: 2 }]}>
+                    <Text style={[styles.liveText, { color: theme.textSecondary, fontWeight: '500' }]}>
+                      📁 {activeNotebook.name}
+                    </Text>
+                  </View>
+                )}
               </View>
           </View>
 
@@ -1599,6 +1758,14 @@ export default function App() {
             onClearAll={handleClearAll}
             userMemory={userMemory}
             theme={theme}
+            notebooks={notebooks}
+            activeNotebookId={activeNotebookId}
+            openSessionIdsInWorkspace={openSessionIdsInWorkspace}
+            onSelectNotebook={handleSelectNotebook}
+            onCreateNotebook={handleCreateNotebook}
+            onRenameNotebook={handleRenameNotebook}
+            onDeleteNotebook={handleDeleteNotebook}
+            onCreateSessionInNotebook={handleCreateSessionInNotebook}
           />
 
           {/* Khung chat chính: Hỗ trợ Split Chat Panes kiểu VS Code song song */}
@@ -1676,6 +1843,8 @@ export default function App() {
                     isSplitMode={panes.length > 1}
                     isCloseMode={isPaneCloseMode}
                     isCloseTarget={isCloseTarget}
+                    activeNotebookId={activeNotebookId}
+                    activeNotebookName={activeNotebook?.name}
                     onConfirmClose={() => {
                       handleClosePane(pane.id);
                       setIsPaneCloseMode(false);
@@ -1738,9 +1907,13 @@ export default function App() {
           visible={isCommandPaletteOpen}
           onClose={() => setIsCommandPaletteOpen(false)}
           sessions={sessions}
+          notebooks={notebooks}
           onSelectSession={handleSelectSession}
           onCreateNewSession={handleNewChat}
           onNewChat={handleNewChat}
+          onCreateNewNotebook={() => {
+            setIsSidebarOpen(true);
+          }}
           onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
           onToggleTheme={handleToggleTheme}
           onToggleSplitPanes={handleToggleSplitPanes}
