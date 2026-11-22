@@ -17,7 +17,7 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
 
 | Giai đoạn | Nội dung trọng tâm | Thời gian | Trạng thái |
 | :--- | :--- | :--- | :--- |
-| **Phase 1** | **Core Foundation, 3-Layer Reflex, Quota Shield & Vision Lab** | Ngày 1 – 15 | 🟡 Đang hoàn thiện (Ngày 1-11 Xong, v4.7 Xong) |
+| **Phase 1** | **Core Foundation, 3-Layer Reflex, Quota Shield & Vision Lab** | Ngày 1 – 15 | 🟡 Đang hoàn thiện (Ngày 1-11 Xong, v4.7.1 Xong) |
 | **Phase 2** | **Tri thức Chuyên sâu, Khoa học & Thị trường** | Ngày 16 – 30 | ⚪ Chưa bắt đầu |
 | **Phase 3** | **Voice HUD, Realtime Waveform & Voiceprint** | Ngày 31 – 45 | ⚪ Chưa bắt đầu |
 | **Phase 4** | **Camera MediaPipe Nội bộ (100% Private RAM)** | Ngày 46 – 60 | ⚪ Chưa bắt đầu |
@@ -202,7 +202,7 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
     + Modal macOS tiêu chuẩn 4 tab (Học tập, Tài chính, Cốt lõi & Dự án, Thói quen & Gần đây) với form thêm nhanh & xóa từng mục, đồng bộ trực tiếp xuống `AsyncStorage`.
   - **Bộ kiểm thử tự động `train_simulator.js`:**
     + Bổ sung 4 scenarios Ngày 11: `Test_Day11_Vault_Migration`, `Test_Day11_Study_And_Finance_Upsert`, `Test_Day11_Selective_Context_Slice`, `Test_Day11_SystemPrompt_Budget`.
-    + Đạt điểm tuyệt đối 28/28 scenarios (280/280 điểm 100% hoàn hảo). Header cập nhật **`Online • v4.7`**.
+    + Đạt điểm tuyệt đối 28/28 scenarios (280/280 điểm 100% hoàn hảo). Header cập nhật **`Online • v4.7.1`** (Hotfix: Single Source of Truth cho session switching, triệt tiêu freeze UI và stale messages khi chuyển phiên).
 
 - [ ] **Ngày 12 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.

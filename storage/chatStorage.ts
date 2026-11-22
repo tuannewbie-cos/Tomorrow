@@ -481,13 +481,57 @@ export async function loadSessions(): Promise<ChatSession[]> {
 }
 
 /**
+ * Lược bỏ ảnh Base64 cũ ở các phiên từ thứ 3 trở đi để tránh QuotaExceededError trên Web/LocalStorage
+ * Bảo toàn 100% hình ảnh ở 2 phiên gần nhất
+ */
+export function sanitizeSessionsForStorage(sessions: ChatSession[]): ChatSession[] {
+  return sessions.map((sess, idx) => {
+    // 2 phiên gần nhất (idx 0 và idx 1) giữ nguyên toàn bộ ảnh Base64
+    if (idx <= 1) return sess;
+
+    const hasHeavyImage = sess.messages.some(
+      (m) => m.imageBase64 || (m.imageUri && m.imageUri.startsWith('data:image'))
+    );
+    if (!hasHeavyImage) return sess;
+
+    return {
+      ...sess,
+      messages: sess.messages.map((m) => {
+        if (m.imageBase64 || (m.imageUri && m.imageUri.startsWith('data:image'))) {
+          return {
+            ...m,
+            imageBase64: undefined,
+            imageUri: undefined,
+          };
+        }
+        return m;
+      }),
+    };
+  });
+}
+
+/**
  * 2. Lưu toàn bộ danh sách phiên trò chuyện vào CHAT_SESSIONS_V2
+ * Tự động phòng vệ QuotaExceededError trên Web/AsyncStorage
  */
 export async function saveSessions(sessions: ChatSession[]): Promise<void> {
   try {
-    await AsyncStorage.setItem(STORAGE_KEYS.CHAT_SESSIONS, JSON.stringify(sessions));
+    const jsonStr = JSON.stringify(sessions);
+    // Nếu kích thước vượt quá ~3.5MB (gần ngưỡng 5MB của localStorage), chủ động dọn ảnh cũ trước
+    if (jsonStr.length > 3.5 * 1024 * 1024) {
+      const sanitized = sanitizeSessionsForStorage(sessions);
+      await AsyncStorage.setItem(STORAGE_KEYS.CHAT_SESSIONS, JSON.stringify(sanitized));
+      return;
+    }
+    await AsyncStorage.setItem(STORAGE_KEYS.CHAT_SESSIONS, jsonStr);
   } catch (error) {
-    console.error('[Storage] Lỗi khi lưu Sessions vào CHAT_SESSIONS_V2:', error);
+    console.warn('[Storage] Lỗi hoặc QuotaExceeded khi lưu CHAT_SESSIONS_V2, dọn dẹp ảnh cũ...', error);
+    try {
+      const sanitized = sanitizeSessionsForStorage(sessions);
+      await AsyncStorage.setItem(STORAGE_KEYS.CHAT_SESSIONS, JSON.stringify(sanitized));
+    } catch (innerError) {
+      console.error('[Storage] Không thể lưu sau khi dọn dẹp ảnh cũ:', innerError);
+    }
   }
 }
 
@@ -515,7 +559,7 @@ export async function deleteSession(sessionId: string): Promise<ChatSession[]> {
   try {
     const currentSessions = await loadSessions();
     const updatedSessions = currentSessions.filter((s) => s.id !== sessionId);
-    await AsyncStorage.setItem('CHAT_SESSIONS_V2', JSON.stringify(updatedSessions));
+    await saveSessions(updatedSessions);
     return updatedSessions;
   } catch (error) {
     console.error('[Storage] Lỗi khi xóa session:', error);

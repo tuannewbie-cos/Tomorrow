@@ -13,7 +13,7 @@ interface ChatBubbleProps {
   theme?: ThemeColors;
 }
 
-export const ChatBubble: React.FC<ChatBubbleProps> = ({
+const ChatBubbleBase: React.FC<ChatBubbleProps> = ({
   message,
   onPressImage,
   isDesktop: propIsDesktop,
@@ -211,6 +211,19 @@ export const ChatBubble: React.FC<ChatBubbleProps> = ({
     </View>
   );
 };
+
+export const ChatBubble = React.memo(ChatBubbleBase, (prevProps, nextProps) => {
+  return (
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.text === nextProps.message.text &&
+    prevProps.message.timestamp === nextProps.message.timestamp &&
+    prevProps.message.role === nextProps.message.role &&
+    prevProps.message.imageUri === nextProps.message.imageUri &&
+    prevProps.message.imageBase64 === nextProps.message.imageBase64 &&
+    prevProps.isDesktop === nextProps.isDesktop &&
+    prevProps.theme?.mode === nextProps.theme?.mode
+  );
+});
 
 const styles = StyleSheet.create({
   container: {

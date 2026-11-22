@@ -104,13 +104,11 @@ export default function App() {
   const [searchingWebBySession, setSearchingWebBySession] = useState<Record<string, boolean>>({});
   const [scrollDownByPane, setScrollDownByPane] = useState<Record<string, boolean>>({});
 
-  // Tương thích ngược: currentSessionId & messages cho pane đang active
+  // Single Source of Truth: currentSessionId & messages cho pane đang active từ sessions & panes
   const activePane = panes.find((p) => p.id === activePaneId) || panes[0] || { id: 'pane-1', sessionId: null };
   const currentSessionId = activePane.sessionId;
   const activeSession = currentSessionId ? sessions.find((s) => s.id === currentSessionId) : null;
   const messages = activeSession?.messages || [];
-  const [, setMessagesState] = useState<ChatMessage[]>(messages);
-  const [, setCurrentSessionIdState] = useState<string | null>(currentSessionId);
 
   const isTomorrowTyping = !!(currentSessionId && typingSessionIds[currentSessionId]);
   const isSearchingWeb = !!(currentSessionId && searchingWebBySession[currentSessionId]);
@@ -150,28 +148,23 @@ export default function App() {
     inputBarRef.current = inputBarRefs.current[activePaneId] || null;
   }, [activePaneId]);
 
-  // Đồng bộ messages state và currentSessionId state tương thích ngược
-  useEffect(() => {
-    const actSess = currentSessionId ? sessions.find((s) => s.id === currentSessionId) : null;
-    setMessagesState(actSess?.messages || []);
-    setCurrentSessionIdState(currentSessionId);
-  }, [currentSessionId, sessions]);
-
-  // Setters giữ tương thích ngược
+  // Setters giữ tương thích ngược không nhân bản state
   const setCurrentSessionId = useCallback((id: string | null) => {
-    setCurrentSessionIdState(id);
-    setPanes((prev) =>
-      prev.map((p) => (p.id === activePaneIdRef.current ? { ...p, sessionId: id } : p))
+    const nextPanes = panesRef.current.map((p) =>
+      p.id === activePaneIdRef.current ? { ...p, sessionId: id } : p
     );
+    panesRef.current = nextPanes;
+    setPanes(nextPanes);
   }, []);
 
   const setMessages = useCallback((msgs: ChatMessage[]) => {
-    setMessagesState(msgs);
     const actId = panesRef.current.find((p) => p.id === activePaneIdRef.current)?.sessionId;
     if (actId) {
-      setSessions((prev) =>
-        prev.map((s) => (s.id === actId ? { ...s, messages: msgs } : s))
-      );
+      setSessions((prev) => {
+        const next = prev.map((s) => (s.id === actId ? { ...s, messages: msgs } : s));
+        sessionsRef.current = next;
+        return next;
+      });
     }
   }, []);
 
@@ -249,10 +242,11 @@ export default function App() {
         }
 
         // Luôn mở ra màn hình mới hoàn toàn trống
-        setPanes([{ id: 'pane-1', sessionId: null }]);
+        const initialPanes: ChatPane[] = [{ id: 'pane-1', sessionId: null }];
+        panesRef.current = initialPanes;
+        setPanes(initialPanes);
         setActivePaneId('pane-1');
-        setCurrentSessionId(null);
-        setMessages([]);
+        activePaneIdRef.current = 'pane-1';
       } catch (err) {
         console.error('[Bootstrap] Lỗi khi nạp dữ liệu:', err);
       } finally {
@@ -261,7 +255,7 @@ export default function App() {
     }
 
     rehydrateContext();
-  }, [setCurrentSessionId, setMessages]);
+  }, []);
 
   // Cập nhật màu nền body trên Web đồng bộ theo theme
   useEffect(() => {
@@ -360,14 +354,14 @@ export default function App() {
       };
 
       // Cập nhật pane này gắn với targetSessionId
-      setPanes((prev) =>
-        prev.map((p) => (p.id === paneId ? { ...p, sessionId: targetSessionId } : p))
+      const nextPanes = panesRef.current.map((p) =>
+        p.id === paneId ? { ...p, sessionId: targetSessionId } : p
       );
-      if (paneId === activePaneIdRef.current) {
-        setCurrentSessionIdState(targetSessionId);
-      }
+      panesRef.current = nextPanes;
+      setPanes(nextPanes);
 
       const nextSessions = [newSession, ...sessionsRef.current];
+      sessionsRef.current = nextSessions;
       setSessions(nextSessions);
       await saveSessions(nextSessions);
     } else {
@@ -379,6 +373,7 @@ export default function App() {
       };
       const remaining = sessionsRef.current.filter((s) => s.id !== targetSessionId);
       const nextSessions = [updatedSession, ...remaining];
+      sessionsRef.current = nextSessions;
       setSessions(nextSessions);
       await saveSessions(nextSessions);
     }
@@ -606,11 +601,11 @@ export default function App() {
 
     // B. Chuyển focus giao diện chính sang phiên mới trống trên pane đang active (sessionId = null)
     const activeId = activePaneIdRef.current;
-    setPanes((prev) =>
-      prev.map((p) => (p.id === activeId ? { ...p, sessionId: null } : p))
+    const nextPanes = panesRef.current.map((p) =>
+      p.id === activeId ? { ...p, sessionId: null } : p
     );
-    setCurrentSessionId(null);
-    setMessages([]);
+    panesRef.current = nextPanes;
+    setPanes(nextPanes);
 
     // C. Dọn ô nhập / ảnh tạm của khung đang soạn trong pane đó
     inputBarRef.current?.clear?.();
@@ -626,25 +621,25 @@ export default function App() {
       inputBarRef.current?.focus();
       inputBarRefs.current[activeId]?.focus();
     }, 50);
-  }, [setCurrentSessionId, setMessages]);
+  }, []);
 
   const handleNewChatInActivePane = handleNewChat;
 
   const handleNewChatInPane = useCallback((paneId: string) => {
-    setPanes((prev) =>
-      prev.map((p) => (p.id === paneId ? { ...p, sessionId: null } : p))
+    const nextPanes = panesRef.current.map((p) =>
+      p.id === paneId ? { ...p, sessionId: null } : p
     );
+    panesRef.current = nextPanes;
+    setPanes(nextPanes);
     setActivePaneId(paneId);
-    if (paneId === activePaneIdRef.current) {
-      setCurrentSessionId(null);
-      setMessages([]);
-    }
+    activePaneIdRef.current = paneId;
+
     inputBarRefs.current[paneId]?.clear?.();
     inputBarRefs.current[paneId]?.reset?.();
     setTimeout(() => {
       inputBarRefs.current[paneId]?.focus();
     }, 50);
-  }, [setCurrentSessionId, setMessages]);
+  }, []);
 
   // Lưu tham chiếu mới nhất để tránh stale closure trong global event listener
   const handleNewChatRef = useRef(handleNewChat);
@@ -664,13 +659,18 @@ export default function App() {
           id: `pane-${Date.now()}`,
           sessionId: otherSession ? otherSession.id : null,
         };
+        const next = [firstPane, newPane];
+        panesRef.current = next;
         setActivePaneId(newPane.id);
-        return [firstPane, newPane];
+        activePaneIdRef.current = newPane.id;
+        return next;
       } else {
         // Đang chia pane: Gộp lại còn 1 pane chính (pane đang active)
         const currentActive =
           prev.find((p) => p.id === activePaneIdRef.current) || prev[0];
-        return [currentActive];
+        const next = [currentActive];
+        panesRef.current = next;
+        return next;
       }
     });
   }, []);
@@ -679,14 +679,17 @@ export default function App() {
     setPanes((prev) => {
       if (prev.length >= 3) return prev; // Hỗ trợ tối đa 3 cửa sổ
       const newPaneId = `pane-${Date.now()}`;
-      setActivePaneId(newPaneId);
-      return [
+      const next = [
         ...prev,
         {
           id: newPaneId,
           sessionId: null,
         },
       ];
+      panesRef.current = next;
+      setActivePaneId(newPaneId);
+      activePaneIdRef.current = newPaneId;
+      return next;
     });
   }, []);
 
@@ -694,69 +697,99 @@ export default function App() {
     setPanes((prev) => {
       if (prev.length <= 1) return prev; // Giữ ít nhất 1 pane
       const remaining = prev.filter((p) => p.id !== paneId);
+      panesRef.current = remaining;
       if (activePaneIdRef.current === paneId) {
         const nextActive = remaining[0];
         setActivePaneId(nextActive.id);
-        setCurrentSessionId(nextActive.sessionId);
+        activePaneIdRef.current = nextActive.id;
       }
       return remaining;
     });
-  }, [setCurrentSessionId]);
+  }, []);
 
   const handleSwitchSessionInPane = useCallback((paneId: string, sessionId: string | null) => {
-    setPanes((prev) =>
-      prev.map((p) => (p.id === paneId ? { ...p, sessionId } : p))
-    );
-    setActivePaneId(paneId);
-    if (paneId === activePaneIdRef.current) {
-      setCurrentSessionId(sessionId);
+    const curPane = panesRef.current.find((p) => p.id === paneId);
+    if (curPane?.sessionId === sessionId) {
+      setOpenDropdownPaneId(null);
+      return;
     }
+
+    const nextPanes = panesRef.current.map((p) =>
+      p.id === paneId ? { ...p, sessionId } : p
+    );
+    panesRef.current = nextPanes;
+    setPanes(nextPanes);
+    setActivePaneId(paneId);
+    activePaneIdRef.current = paneId;
+
+    inputBarRefs.current[paneId]?.setSelectedImage?.(null);
     setOpenDropdownPaneId(null);
     setTimeout(() => {
-      flatListRefs.current[paneId]?.scrollToEnd({ animated: true });
-    }, 50);
-  }, [setCurrentSessionId]);
+      flatListRefs.current[paneId]?.scrollToEnd({ animated: false });
+    }, 40);
+  }, []);
 
   const handleToggleSplitPanesRef = useRef(handleToggleSplitPanes);
   handleToggleSplitPanesRef.current = handleToggleSplitPanes;
 
   // 4. CHỌN 1 PHIÊN TRÒ CHUYỆN CŨ TỪ SIDEBAR HOẶC COMMAND PALETTE (mở trong active pane)
-  const handleSelectSession = (sessionId: string) => {
-    setPanes((prev) =>
-      prev.map((p) => (p.id === activePaneId ? { ...p, sessionId } : p))
-    );
-    setCurrentSessionId(sessionId);
-    const selected = sessions.find((s) => s.id === sessionId);
-    if (selected) {
-      setMessages(selected.messages || []);
-      setTimeout(() => {
-        flatListRefs.current[activePaneId]?.scrollToEnd({ animated: true });
-      }, 100);
+  const handleSelectSession = useCallback((sessionId: string) => {
+    // 1. Nếu sessionId đã đang mở ở active pane hiện tại -> chỉ đóng mobile drawer nếu cần và return
+    const curActivePane = panesRef.current.find((p) => p.id === activePaneIdRef.current);
+    if (curActivePane?.sessionId === sessionId) {
+      if (!isDesktop) setIsSidebarOpen(false);
+      return;
     }
-  };
+
+    // 2. Cập nhật panes ngay lập tức trong 1 batch gọn
+    const nextPanes = panesRef.current.map((p) =>
+      p.id === activePaneIdRef.current ? { ...p, sessionId } : p
+    );
+    panesRef.current = nextPanes;
+    setPanes(nextPanes);
+
+    // 3. Xóa ảnh tạm đang soạn nếu chưa gửi
+    inputBarRef.current?.setSelectedImage?.(null);
+    inputBarRefs.current[activePaneIdRef.current]?.setSelectedImage?.(null);
+
+    // 4. Đóng Command Palette nếu đang mở
+    setIsCommandPaletteOpen(false);
+
+    // 5. Đóng drawer trên mobile nếu đang mở
+    if (!isDesktop) {
+      setIsSidebarOpen(false);
+    }
+
+    // 6. Cuộn xuống đáy mượt mà sau khi khung chat mới được mount
+    setTimeout(() => {
+      flatListRefs.current[activePaneIdRef.current]?.scrollToEnd({ animated: false });
+    }, 40);
+  }, [isDesktop]);
 
   // 5. XÓA 1 PHIÊN TRÒ CHUYỆN
   const handleDeleteSession = async (sessionId: string) => {
     const updated = await deleteSession(sessionId);
+    sessionsRef.current = updated;
     setSessions(updated);
-    setPanes((prev) =>
-      prev.map((p) => (p.sessionId === sessionId ? { ...p, sessionId: null } : p))
+    const nextPanes = panesRef.current.map((p) =>
+      p.sessionId === sessionId ? { ...p, sessionId: null } : p
     );
-    if (currentSessionId === sessionId) {
-      setCurrentSessionId(null);
-      setMessages([]);
-    }
+    panesRef.current = nextPanes;
+    setPanes(nextPanes);
   };
 
   // 6. XÓA TOÀN BỘ LỊCH SỬ & RESET
   const handleClearAll = async () => {
     await clearAllChatData();
+    sessionsRef.current = [];
     setSessions([]);
-    setPanes([{ id: 'pane-1', sessionId: null }]);
+    const resetPanes: ChatPane[] = [{ id: 'pane-1', sessionId: null }];
+    panesRef.current = resetPanes;
+    setPanes(resetPanes);
     setActivePaneId('pane-1');
-    setCurrentSessionId(null);
-    setMessages([]);
+    activePaneIdRef.current = 'pane-1';
     setUserMemory(DEFAULT_USER_MEMORY);
+    userMemoryRef.current = DEFAULT_USER_MEMORY;
   };
 
   // 7. LẮNG NGHE PHÍM TẮT TOÀN CỤC CHUẨN MACOS TRÊN WEB (Cmd+K, Cmd+N, Cmd+B, Cmd+ArrowUp, Escape)
@@ -972,7 +1005,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7.1</Text>
               </View>
             </View>
           </View>
@@ -1173,7 +1206,7 @@ export default function App() {
                     onStartShouldSetResponder={() => {
                       if (activePaneId !== pane.id) {
                         setActivePaneId(pane.id);
-                        setCurrentSessionIdState(pane.sessionId);
+                        activePaneIdRef.current = pane.id;
                       }
                       return false;
                     }}
@@ -1361,6 +1394,7 @@ export default function App() {
                         />
                       ) : (
                         <FlatList
+                          key={`chat-pane-${pane.id}-${pane.sessionId || 'empty'}`}
                           ref={(r) => {
                             flatListRefs.current[pane.id] = r;
                             if (isActive) flatListRef.current = r;
