@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.4` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.5` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -258,6 +258,28 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
     + Bổ sung kịch bản TEST 30: `Test_Day11_Followup_Code_Inheritance`.
     + Đạt điểm tuyệt đối 30/30 scenarios (300/300 điểm 100% hoàn hảo).
   - Header cập nhật: **`Online • v4.7.4`**.
+
+- [x] **Ngày 11++++ (`feat/web-intel-v4.7.5` — Phiên bản `Online • v4.7.5`): Universal Web Intel, Live Free APIs, Smart Follow-up Ref & Multi-Topic Structured Output**
+  - **Multi-Scenario Follow-up Reference Resolution (`services/webSearchService.ts`, `services/aiService.ts`):**
+    + Hàm `resolveReferenceFromHistory`: nhận diện tham chiếu số ("trích dẫn tin tức 1 đi", "bài 2", "đầu tiên", "thứ hai", "cuối cùng"), so sánh nhiều mục ("so sánh tin 1 và 2"), và tham chiếu đại từ ("bài đó", "tin trên", "link gốc").
+    + Quét ngược `recentHistory` trích xuất chính xác `targetText`, `targetUrl`, `targetSource` từ mảng `sources` hoặc danh sách đánh số của model lượt trước.
+    + Tự động tạo `[REF_TARGET: Item #N = "..."]`, viết lại truy vấn `rewrittenQuery`, thay thế tìm kiếm mù mờ bằng trích dẫn chuẩn xác.
+    + Hàm `normalizeHistoryForAPI`: đính kèm ngữ cảnh nguồn tham chiếu vào các tin nhắn model cũ để bảo toàn bộ nhớ trích dẫn cho OpenAI & Gemini.
+  - **Phân loại 10 Chủ đề Web Intel & Tích hợp Live Free APIs (`services/webSearchService.ts`, `api/search.js`):**
+    + Hàm `classifyWebIntelTopic`: phân loại chuẩn xác 10 chủ đề: `FOLLOWUP_REF`, `WEATHER`, `MARKET_FINANCE`, `NEWS_RADAR`, `TECH_DEV`, `COMPARE_BUYING`, `SPORTS_LIVE`, `EDU_POLICY`, `TRAVEL_LOCAL`, `URL_READER`.
+    + Open-Meteo Weather API: dự báo thời tiết 7 ngày, nhiệt độ, độ ẩm, mã WMO tiếng Việt cho các thành phố lớn tại Việt Nam; hỗ trợ so sánh song song 2 thành phố bằng `Promise.all`.
+    + CoinGecko & ExchangeRate-API: cung cấp giá Bitcoin, Ethereum, Solana, BNB trực tiếp kèm quy đổi VND và biến động 24h; cập nhật tỷ giá USD/VND, EUR, JPY thời gian thực mà không cần API key.
+  - **Universal Structured Output Formatter (`services/personaRouter.ts`, `services/aiService.ts`):**
+    + Hàm `detectOutputFormatIntent`: nhận diện 5 cấu trúc chuyên biệt (`TABLE`, `PROS_CONS`, `TIMELINE`, `DEEP_CITE`, `NEWS_BRIEF`).
+    + Tự động khóa `persona = 'JARVIS_LAB'`, tông giọng chuẩn mực, viết hoa đầu câu, `dynamicMaxTokens = 1800 - 2000`, `temperature <= 0.35`.
+    + Trả lời trọn vẹn trong 1 bong bóng duy nhất (`replies.length === 1`), triệt tiêu bong bóng mồi và link cụt.
+  - **Khử URL Rác Google News RSS & Tinh Gọn Link (`services/aiService.ts`, `components/RichMarkdownView.tsx`):**
+    + Hàm `sanitizeWebReplyUrls`: cắt sạch trailing `\nLink: https://...` hoặc URL > 70 ký tự khi đã có `sources` pills hiển thị bên dưới.
+    + `RichMarkdownView`: các link trần dài > 60 ký tự tự động hiển thị gọn dạng `🔗 Xem bài viết (${domain})`.
+  - **Bộ kiểm thử tự động `train_simulator.js`:**
+    + Bổ sung 5 kịch bản TEST 31-35: `Test_Day11_Web_Numbered_And_Pronoun_Ref`, `Test_Day11_MultiTopic_Classifier`, `Test_Day11_Output_Format_Detector`, `Test_Day11_Sanitize_GoogleNews_RSS_Link`, `Test_Day11_SystemPrompt_Budget`.
+    + Đạt điểm tuyệt đối 35/35 scenarios (350/350 điểm 100% hoàn hảo).
+  - Header cập nhật: **`Online • v4.7.5`**.
 
 - [ ] **Ngày 12 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.

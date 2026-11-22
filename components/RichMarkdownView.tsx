@@ -1180,18 +1180,34 @@ export function parseInlineMarkdown(text: string): InlineToken[] {
     } else if (part.startsWith('[') && part.includes('](') && part.endsWith(')')) {
       const match = part.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
       if (match) {
+        let linkTitle = match[1];
+        if (linkTitle.length > 60 && /^https?:\/\//i.test(linkTitle)) {
+          const matchHost = linkTitle.match(/^https?:\/\/([^\/?#]+)/i);
+          const domain = matchHost ? matchHost[1].replace(/^www\./i, '') : 'link';
+          linkTitle = `🔗 Xem bài viết (${domain})`;
+        }
         tokens.push({
           type: 'link',
-          text: match[1],
+          text: linkTitle,
           url: match[2],
         });
       } else {
         tokens.push({ type: 'text', text: part });
       }
     } else if (/^https?:\/\/[^\s)]+$/.test(part)) {
+      let displayText = part;
+      if (part.length > 60) {
+        try {
+          const matchHost = part.match(/^https?:\/\/([^\/?#]+)/i);
+          const domain = matchHost ? matchHost[1].replace(/^www\./i, '') : 'link';
+          displayText = `🔗 Xem bài viết (${domain})`;
+        } catch (_) {
+          displayText = '🔗 Xem bài viết';
+        }
+      }
       tokens.push({
         type: 'link',
-        text: part,
+        text: displayText,
         url: part,
       });
     } else if (

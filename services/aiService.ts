@@ -14,7 +14,15 @@ import {
   saveStructuredVault,
   DEFAULT_STRUCTURED_VAULT,
 } from './memoryVaultService';
-import { performSmartWebSearch, shouldTriggerWebSearch, resolveTemporalSearchQuery } from './webSearchService';
+import {
+  performSmartWebSearch,
+  shouldTriggerWebSearch,
+  resolveTemporalSearchQuery,
+  classifyWebIntelTopic,
+  resolveReferenceFromHistory,
+  WebIntelTopic,
+  ReferenceResolution,
+} from './webSearchService';
 import {
   KeystrokeTelemetry,
   MicroPsychProfile,
@@ -30,6 +38,9 @@ import {
   DryWitLevel,
   DOMAIN_PLAYBOOKS,
   ExpertDomain,
+  OutputFormatIntent,
+  detectOutputFormatIntent,
+  getWebFormatDirective,
 } from './personaRouter';
 
 export {
@@ -53,6 +64,13 @@ export {
   DryWitLevel,
   DOMAIN_PLAYBOOKS,
   ExpertDomain,
+  WebIntelTopic,
+  ReferenceResolution,
+  classifyWebIntelTopic,
+  resolveReferenceFromHistory,
+  OutputFormatIntent,
+  detectOutputFormatIntent,
+  getWebFormatDirective,
 };
 import { recordApiUsage, setOpenAICircuitBreakerState } from './quotaShield';
 
@@ -635,10 +653,15 @@ export function buildLocalReflexDirective(
 
   // C. WEB_INTEL
   if (isWebSearched) {
+    const webTopic = classifyWebIntelTopic(userText);
+    const outputFormat = detectOutputFormatIntent(userText, webTopic);
     const domainLine = getDomainDirectiveLine(domain);
     const domainPart = domainLine ? ` ${domainLine} |` : '';
-    const directivePrompt = `[DIRECTIVE: MODE=WEB_INTEL |${domainPart} ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Trả lời TRỰC TIẾP và CHÍNH XÁC ngay trong lượt này dựa trên dữ liệu Web đính kèm kèm URL thật. Tông giọng phù hợp với tâm lý người dùng: ${psych.psychState} (${psych.mirrorHint}). CẤM HỨA SUÔNG ("Đợi xíu", "Chờ mình chút"). Được phép sử dụng Rich Markdown (khối code \`\`\`lang, bảng biểu |...|, in đậm, danh sách, công thức) trong phần tử của mảng "replies". Khi viết code, BẮT BUỘC xuống dòng rõ ràng và thụt lề chuẩn (4 spaces Python, 2 spaces TS/JS). Lưu ý: Mỗi khối code hoặc bảng biểu phải nằm trọn vẹn trong 1 phần tử của mảng "replies", TUYỆT ĐỐI KHÔNG cắt đôi 1 khối code sang 2 phần tử khác nhau.]`;
-    const isFinance = domain === 'FINANCE_QUANT';
+    const formatDirective = getWebFormatDirective(outputFormat);
+    const formatPart = formatDirective ? `\n${formatDirective}` : '';
+
+    const directivePrompt = `[DIRECTIVE: MODE=WEB_INTEL |${domainPart} ${pronounRule} | ${chronoRule} | ${psych.directiveTag} | Trả lời TRỰC TIẾP và CHÍNH XÁC ngay trong lượt này dựa trên dữ liệu Web đính kèm. Tông giọng JARVIS_LAB: điềm tĩnh, khách quan, viết hoa đầu câu, không cợt nhả teencode. CẤM HỨA SUÔNG ("Đợi xíu", "Chờ mình chút"). Toàn bộ câu trả lời phải nằm trọn vẹn trong 1 phần tử duy nhất của mảng "replies", CẤM tách riêng câu mồi hay link thành bong bóng riêng.]${formatPart}`;
+
     const dualPersona = resolveDualPersona({
       intentMode: 'WEB_INTEL',
       expertDomain: domain,
@@ -646,15 +669,19 @@ export function buildLocalReflexDirective(
       chrono,
       hasImage: false,
       userText,
+      outputFormat,
+      webTopic,
     });
+
+    const isTableOrCompare = outputFormat === 'TABLE' || outputFormat === 'PROS_CONS';
 
     return {
       intentMode: 'WEB_INTEL',
       pronounRule,
       directivePrompt,
-      dynamicMaxTokens: 1200,
+      dynamicMaxTokens: isTableOrCompare ? 2000 : 1800,
       dynamicTimeout: 30000,
-      temperature: isFinance ? 0.35 : 0.7,
+      temperature: 0.35,
       domain,
       chrono,
       psych,
@@ -1282,12 +1309,25 @@ export function normalizeHistoryForAPI(
     return m;
   });
 
-  // 4. Chuyển đổi role theo target API
+  // 4. Chuyển đổi role theo target API và bảo toàn bộ nhớ nguồn Web
   const mapped: NormalizedChatMessage[] = pruned.map((m) => {
     const isUser = m.role === 'user' || m.sender === 'user';
+    let text = m.text || '';
+
+    // Đính kèm ngữ cảnh nguồn tham chiếu cho các tin nhắn model có tra cứu Web
+    if (!isUser && m.sources && Array.isArray(m.sources) && m.sources.length > 0) {
+      if (!text.includes('[Nguồn tham chiếu:') && !text.includes('[Nguồn:')) {
+        const srcList = m.sources
+          .slice(0, 4)
+          .map((s, idx) => `${idx + 1}. [${s.source || 'Tin tức'}] ${s.title} - ${s.url}`)
+          .join('; ');
+        text = `${text}\n\n[Nguồn tham chiếu: ${srcList}]`;
+      }
+    }
+
     return {
       role: isUser ? 'user' : (target === 'gemini' ? 'model' : 'assistant'),
-      text: m.text || '',
+      text,
       imageBase64: m.imageBase64 || (m.imageUri?.startsWith('data:') ? m.imageUri : undefined),
     };
   });
@@ -1402,6 +1442,42 @@ export function stripRoboticClosings(replies: string[]): string[] {
         for (const pattern of roboticPatterns) {
           cleaned = cleaned.replace(pattern, '');
         }
+        return cleaned.trimEnd();
+      });
+    })
+    .filter((r) => r.trim().length > 0);
+}
+
+/**
+ * 4.4. LOẠI BỎ TRIỆT ĐỂ URL RÁC GOOGLE NEWS RSS & TINH GỌN LINK (sanitizeWebReplyUrls)
+ * Khi hasSources = true (đã có pill nguồn hiển thị đẹp bên dưới bubble):
+ * Cắt bỏ các đoạn văn bản đuôi chứa link/nguồn dạng:
+ * "\nLink: https://..." hoặc "\nNguồn: https://..." hoặc URL thô dài > 70 ký tự.
+ * Khi hasSources = false:
+ * Rút gọn các link Google News RSS URL dài > 70 ký tự thành link sạch https://news.google.com.
+ */
+export function sanitizeWebReplyUrls(replies: string[], hasSources: boolean = false): string[] {
+  if (!replies || replies.length === 0) return [];
+
+  return replies
+    .map((reply) => {
+      return cleanReplyPreservingCode(reply, (text) => {
+        let cleaned = text;
+
+        if (hasSources) {
+          // Cắt bỏ dòng link/nguồn ở cuối nếu đã có sources pills
+          cleaned = cleaned
+            .replace(/\n+\s*(?:Link|Nguồn|Đường dẫn|URL|Source)\s*:\s*https?:\/\/[^\s]+/gi, '')
+            .replace(/\n+\s*https?:\/\/news\.google\.com\/[^\s]+/gi, '')
+            .replace(/\n+\s*https?:\/\/[^\s]{70,}/gi, '');
+        } else {
+          // Nếu không có sources pills, rút gọn các link RSS Google News dài
+          cleaned = cleaned.replace(
+            /https?:\/\/news\.google\.com\/rss\/articles\/[a-zA-Z0-9_\-~%+=?&]+/gi,
+            'https://news.google.com'
+          );
+        }
+
         return cleaned.trimEnd();
       });
     })
@@ -2455,6 +2531,15 @@ export function parseAIResponseJson(
 
         // 5. RÀO CHẮN KHỬ MÙI TRỢ LÝ MÁY MÓC (ANTI-ROBOTIC CLOSINGS)
         replies = stripRoboticClosings(replies);
+
+        // 6. LOẠI BỎ TRIỆT ĐỂ URL RÁC GOOGLE NEWS RSS & TINH GỌN LINK
+        const hasSourcesPills = Boolean(webSearchSources && webSearchSources.length > 0);
+        replies = sanitizeWebReplyUrls(replies, hasSourcesPills);
+
+        // Nếu là kết quả Web Intel hoặc có Sources, hợp nhất thành 1 bong bóng duy nhất (CẤM tách riêng câu mồi / link)
+        if (hasSourcesPills && replies.length > 1) {
+          replies = [replies.join('\n\n')];
+        }
 
         const rawIntent = (parsed.jarvis_intent || parsed.jarvisIntent || 'chat').trim();
         const validIntents: JarvisIntent[] = ['chat', 'work_assist', 'emotional_support', 'system_command'];

@@ -2,6 +2,29 @@
 import { Platform } from 'react-native';
 import { WebSource } from '../types/chat';
 
+export type WebIntelTopic =
+  | 'FOLLOWUP_REF'
+  | 'WEATHER'
+  | 'MARKET_FINANCE'
+  | 'NEWS_RADAR'
+  | 'TECH_DEV'
+  | 'COMPARE_BUYING'
+  | 'SPORTS_LIVE'
+  | 'EDU_POLICY'
+  | 'TRAVEL_LOCAL'
+  | 'URL_READER';
+
+export interface ReferenceResolution {
+  isRef: boolean;
+  itemIndex?: number;
+  itemIndices?: number[];
+  targetText?: string;
+  targetUrl?: string;
+  targetSource?: string;
+  rewrittenQuery?: string;
+  directiveTag?: string;
+}
+
 export interface WebSearchContext {
   searched: boolean;
   query: string;
@@ -9,6 +32,8 @@ export interface WebSearchContext {
   sources: WebSource[];
   pageContent?: string;
   targetUrl?: string;
+  topic?: WebIntelTopic;
+  refResolution?: ReferenceResolution;
 }
 
 const URL_REGEX = /(https?:\/\/[^\s]+)/i;
@@ -165,17 +190,310 @@ export function shouldTriggerWebSearch(userText: string, forceSearch: boolean = 
     return true;
   }
 
+  // 6. Dấu hiệu tham chiếu nối tiếp bài viết/tin tức trước đó (FOLLOWUP_REF)
+  if (
+    /\b(tin|bài|mục|tin tức|bài báo)\s*(\d+|đầu tiên|thứ nhất|thứ hai|thứ ba|thứ 2|thứ 3|cuối cùng)\b/i.test(lower) ||
+    /\b(trích dẫn|chi tiết|nói thêm|nói rõ)\s+(về\s+)?(tin|bài|mục|tin tức|bài báo)\b/i.test(lower) ||
+    /\b(bài đó|tin đó|tin trên|bài trên|vụ đó|link gốc|bài này|tin này)\b/i.test(lower) ||
+    /\bso sánh\s+(tin|bài)\s*\d+/i.test(lower)
+  ) {
+    return true;
+  }
+
   return false;
 }
 
 /**
- * 2. TỐI ƯU HÓA CÂU TRUY VẤN (buildOptimizedSearchQuery)
- * Tự động ghép ngữ cảnh lịch sử 4 tin nhắn gần nhất khi câu hỏi bị thiếu chủ ngữ
+ * PHÂN LOẠI 10 CHỦ ĐỀ WEB INTEL (classifyWebIntelTopic)
  */
-export function buildOptimizedSearchQuery(userText: string, recentHistory: any[] = []): { query: string; url?: string } {
+export function classifyWebIntelTopic(query: string): WebIntelTopic {
+  const text = (query || '').trim();
+  const lower = text.toLowerCase();
+
+  // 1. URL Reader nếu chứa link web
+  if (URL_REGEX.test(text)) {
+    return 'URL_READER';
+  }
+
+  // 2. Followup Ref (Tham chiếu bài viết/tin tức trước đó)
+  const refPatterns = [
+    /\b(tin|bài|mục|tin tức|bài báo)\s*(\d+|đầu tiên|thứ nhất|thứ hai|thứ ba|thứ 2|thứ 3|cuối cùng)\b/i,
+    /\b(trích dẫn|chi tiết|nói thêm|nói rõ)\s+(về\s+)?(tin|bài|mục|tin tức|bài báo)\b/i,
+    /\b(bài đó|tin đó|tin trên|bài trên|vụ đó|link gốc|bài này|tin này)\b/i,
+    /\bso sánh\s+(tin|bài)\s*\d+/i,
+  ];
+  if (refPatterns.some((rgx) => rgx.test(lower))) {
+    return 'FOLLOWUP_REF';
+  }
+
+  // 3. Thời tiết (WEATHER)
+  const weatherKeywords = [
+    'thời tiết', 'thoi tiet', 'dự báo thời tiết', 'du bao thoi tiet',
+    'nhiệt độ', 'nhiet do', 'độ ẩm', 'do am', 'có mưa không', 'co mua khong',
+    'trời nắng', 'troi nang', 'mưa rào', 'nhiệt độ hôm nay', 'thời tiết hôm nay',
+    'thời tiết ngày mai', 'weather', 'forecast', 'mưa bão'
+  ];
+  if (weatherKeywords.some((kw) => lower.includes(kw))) {
+    return 'WEATHER';
+  }
+
+  // 4. Tài chính / Crypto / Forex / Vàng / Chứng khoán (MARKET_FINANCE)
+  const financeKeywords = [
+    'giá vàng', 'gia vang', 'sjc', 'vàng nhẫn', 'vàng sjc',
+    'bitcoin', 'btc', 'crypto', 'ethereum', 'eth', 'solana', 'sol', 'bnb', 'doge', 'xrp',
+    'tỷ giá', 'ty gia', 'ngoại tệ', 'usd/vnd', 'usd', 'eur', 'yên nhật', 'jpy',
+    'chứng khoán', 'chung khoan', 'cổ phiếu', 'co phieu', 'vn-index', 'vnindex', 'hnx', 'upcom',
+    'thị trường chứng khoán', 'giá coin', 'lãi suất ngân hàng'
+  ];
+  if (financeKeywords.some((kw) => lower.includes(kw))) {
+    return 'MARKET_FINANCE';
+  }
+
+  // 5. Thể thao / Tỷ số / Lịch thi đấu (SPORTS_LIVE)
+  const sportsKeywords = [
+    'bóng đá', 'bong da', 'kết quả bóng đá', 'lịch thi đấu', 'lich thi dau',
+    'tỷ số', 'ty so', 'tỉ số', 'bảng xếp hạng bóng đá', 'bảng xếp hạng v-league',
+    'ngoại hạng anh', 'premier league', 'c1', 'champions league', 'v-league', 'vleague',
+    'world cup', 'euro', 'real madrid', 'barcelona', 'man utd', 'manchester united',
+    'man city', 'arsenal', 'chelsea', 'liverpool', 'ronaldo', 'messi', 'mbappe',
+    'vòng bảng', 'tứ kết', 'bán kết', 'chung kết'
+  ];
+  if (sportsKeywords.some((kw) => lower.includes(kw))) {
+    return 'SPORTS_LIVE';
+  }
+
+  // 6. Công nghệ / AI / Phần mềm (TECH_DEV)
+  const techKeywords = [
+    'openai', 'chatgpt', 'gpt-4', 'gpt-5', 'gemini', 'claude', 'deepseek',
+    'nvidia', 'jensen huang', 'sam altman', 'ai chip', 'bán dẫn', 'vi mạch',
+    'ra mắt chip', 'công nghệ mới', 'thuật toán ai', 'llm', 'mô hình ngôn ngữ',
+    'apple intelligence', 'snapdragon', 'intel', 'amd', 'phần mềm', 'hệ điều hành'
+  ];
+  if (techKeywords.some((kw) => lower.includes(kw))) {
+    return 'TECH_DEV';
+  }
+
+  // 7. So sánh / Mua sắm / Đánh giá (COMPARE_BUYING)
+  const compareKeywords = [
+    'so sánh', 'so sanh', 'nên mua', 'nen mua', 'đánh giá', 'danh gia',
+    'review', 'chọn cái nào', 'chon cai nao', 'có nên mua', 'co nen mua',
+    'ưu nhược điểm', 'uu nhuoc diem', 'đối chiếu', 'so kè', ' vs '
+  ];
+  if (compareKeywords.some((kw) => lower.includes(kw))) {
+    return 'COMPARE_BUYING';
+  }
+
+  // 8. Giáo dục / Quy chế / Điểm chuẩn / Thi cử (EDU_POLICY)
+  const eduKeywords = [
+    'tốt nghiệp thpt', 'thpt quốc gia', 'thi đại học', 'điểm chuẩn', 'diem chuan',
+    'học phí', 'hoc phi', 'bách khoa hà nội', 'đại học quốc gia', 'tuyển sinh',
+    'quy chế thi', 'đề minh họa', 'bộ giáo dục', 'bộ gd&đt', 'du học'
+  ];
+  if (eduKeywords.some((kw) => lower.includes(kw))) {
+    return 'EDU_POLICY';
+  }
+
+  // 9. Du lịch / Địa điểm / Ẩm thực (TRAVEL_LOCAL)
+  const travelKeywords = [
+    'du lịch', 'du lich', 'quán ăn', 'quan an', 'món ngon', 'mon ngon',
+    'đặc sản', 'dac san', 'địa điểm check-in', 'chỗ chơi', 'choi dau',
+    'đi đà lạt', 'đi sapa', 'đi đà nẵng', 'đi phú quốc', 'lịch trình du lịch',
+    'khách sạn', 'homestay', 'resort', 'ở đà lạt', 'o da lat'
+  ];
+  if (travelKeywords.some((kw) => lower.includes(kw))) {
+    return 'TRAVEL_LOCAL';
+  }
+
+  // 10. Mặc định: Tin tức thời sự tổng hợp (NEWS_RADAR)
+  return 'NEWS_RADAR';
+}
+
+/**
+ * ĐIỀU HƯỚNG THAM CHIẾU NỐI TIẾP ĐA TÌNH HUỐNG (resolveReferenceFromHistory)
+ * Xử lý tham chiếu số (tin 1, bài 2), tham chiếu nhiều đối tượng (so sánh tin 1 và 2),
+ * và tham chiếu ẩn / đại từ (bài đó, tin trên, link gốc).
+ */
+export function resolveReferenceFromHistory(
+  userText: string,
+  recentHistory: any[] = []
+): ReferenceResolution {
+  const text = (userText || '').trim();
+  const lower = text.toLowerCase();
+
+  // 1. Nhận diện chỉ số bài viết đơn lẻ
+  const singleNumMatch =
+    lower.match(/(?:trích dẫn|chi tiết|nói rõ|nói thêm|nội dung|link|về)?\s*(?:tin tức|tin|bài báo|bài|mục|nguồn|số)\s*(\d+)/i) ||
+    lower.match(/(?:tin tức|tin|bài báo|bài|mục)\s*(\d+)/i);
+
+  const ordinalWordMap: Record<string, number> = {
+    'đầu tiên': 1,
+    'thứ nhất': 1,
+    'thứ 1': 1,
+    'thứ hai': 2,
+    'thứ 2': 2,
+    'thứ ba': 3,
+    'thứ 3': 3,
+    'thứ tư': 4,
+    'thứ 4': 4,
+    'thứ năm': 5,
+    'thứ 5': 5,
+    'cuối cùng': -1,
+  };
+
+  let matchedIndex: number | undefined = undefined;
+  if (singleNumMatch && singleNumMatch[1]) {
+    matchedIndex = parseInt(singleNumMatch[1], 10);
+  } else {
+    for (const [word, idx] of Object.entries(ordinalWordMap)) {
+      if (lower.includes(word)) {
+        matchedIndex = idx;
+        break;
+      }
+    }
+  }
+
+  // Nhận diện so sánh nhiều bài viết: "so sánh tin 1 và 2", "so sánh bài 1 và bài 2"
+  const multiMatch = lower.match(
+    /(?:so sánh|đối chiếu|tổng hợp)\s+(?:tin tức|tin|bài báo|bài|mục)?\s*(\d+)\s*(?:và|với|cùng)\s*(?:tin tức|tin|bài báo|bài|mục)?\s*(\d+)/i
+  );
+  let multiIndices: number[] | undefined = undefined;
+  if (multiMatch) {
+    multiIndices = [parseInt(multiMatch[1], 10), parseInt(multiMatch[2], 10)];
+  }
+
+  // Nhận diện tham chiếu đại từ / ẩn: "bài đó", "tin trên", "bài báo đó", "link gốc"
+  const pronounMatch = /(?:bài đó|tin đó|tin trên|bài trên|bài báo đó|vụ đó|link gốc|bài này|tin này)/i.test(lower);
+
+  const isRef = Boolean(matchedIndex !== undefined || multiIndices || pronounMatch);
+
+  if (!isRef) {
+    return { isRef: false };
+  }
+
+  // 2. Quét recentHistory tìm tin nhắn model gần nhất có sources hoặc danh sách đánh số
+  let foundSources: WebSource[] = [];
+  let foundText = '';
+
+  for (let i = recentHistory.length - 1; i >= 0; i--) {
+    const msg = recentHistory[i];
+    if (!msg) continue;
+    const isUser = msg.role === 'user' || msg.sender === 'user';
+    if (isUser && (msg.text || '').trim() === text) continue;
+
+    if (!isUser) {
+      if (Array.isArray(msg.sources) && msg.sources.length > 0) {
+        foundSources = msg.sources;
+        foundText = msg.text || '';
+        break;
+      }
+      if (typeof msg.text === 'string' && (msg.text.includes('1. [') || msg.text.includes('1. '))) {
+        foundText = msg.text;
+        break;
+      }
+    }
+  }
+
+  // Bóc tách từ văn bản có đánh số nếu không có mảng sources
+  if (foundSources.length === 0 && foundText) {
+    const lines = foundText.split('\n');
+    let currentIdx = 0;
+    for (const line of lines) {
+      const lineMatch = line.match(/^\s*(\d+)\.\s*(?:\[([^\]]+)\])?\s*(.+)$/);
+      if (lineMatch) {
+        const idx = parseInt(lineMatch[1], 10);
+        const sourceName = lineMatch[2] || 'Tin tức';
+        const rawTitle = lineMatch[3].trim();
+        foundSources.push({
+          title: rawTitle,
+          url: '',
+          source: sourceName,
+          snippet: rawTitle,
+        });
+        currentIdx = idx;
+      } else if (currentIdx > 0 && line.includes('http')) {
+        const urlM = line.match(/(https?:\/\/[^\s]+)/);
+        if (urlM && foundSources[currentIdx - 1]) {
+          foundSources[currentIdx - 1].url = urlM[1];
+        }
+      }
+    }
+  }
+
+  // Xử lý index cuối cùng (-1)
+  if (matchedIndex === -1 && foundSources.length > 0) {
+    matchedIndex = foundSources.length;
+  }
+
+  // 3. Trích xuất thông tin đối tượng tham chiếu
+  if (multiIndices && multiIndices.length >= 2) {
+    const [i1, i2] = multiIndices;
+    const item1 = foundSources[i1 - 1];
+    const item2 = foundSources[i2 - 1];
+    const directiveTag = `[REF_TARGET: Item #${i1} = "${item1?.title || 'Tin ' + i1}" (${item1?.url || ''}) | Item #${i2} = "${item2?.title || 'Tin ' + i2}" (${item2?.url || ''})]`;
+    const rewrittenQuery = item1 && item2
+      ? `so sánh ${item1.title.slice(0, 40)} và ${item2.title.slice(0, 40)}`
+      : userText;
+
+    return {
+      isRef: true,
+      itemIndices: multiIndices,
+      directiveTag,
+      rewrittenQuery,
+    };
+  }
+
+  const targetIdx = matchedIndex || (pronounMatch ? 1 : undefined);
+  if (targetIdx !== undefined && targetIdx > 0) {
+    const item = foundSources[targetIdx - 1];
+    if (item) {
+      const directiveTag = `[REF_TARGET: Item #${targetIdx} = "${item.title}" | URL: ${item.url || 'N/A'} | Nguồn: ${item.source || 'Web'}]`;
+      const rewrittenQuery = item.title ? `${item.title} chi tiết` : userText;
+
+      return {
+        isRef: true,
+        itemIndex: targetIdx,
+        targetText: item.title,
+        targetUrl: item.url,
+        targetSource: item.source,
+        rewrittenQuery,
+        directiveTag,
+      };
+    }
+  }
+
+  return {
+    isRef: true,
+    itemIndex: targetIdx,
+    directiveTag: `[REF_TARGET: Người dùng đang yêu cầu tham chiếu tin tức/bài viết #${targetIdx || 'trên'} từ kết quả trước]`,
+    rewrittenQuery: userText,
+  };
+}
+
+/**
+ * 2. TỐI ƯU HÓA CÂU TRUY VẤN (buildOptimizedSearchQuery)
+ * Tự động phân giải tham chiếu nối tiếp (resolveReferenceFromHistory) hoặc ghép thực thể danh từ riêng
+ */
+export function buildOptimizedSearchQuery(
+  userText: string,
+  recentHistory: any[] = []
+): { query: string; url?: string; refResolution?: ReferenceResolution } {
   const text = userText.trim();
   const urlMatch = text.match(URL_REGEX);
-  const targetUrl = urlMatch ? urlMatch[0] : undefined;
+  let targetUrl = urlMatch ? urlMatch[0] : undefined;
+
+  // 1. Kiểm tra tham chiếu nối tiếp từ lịch sử hội thoại trước tiên
+  const refResolution = resolveReferenceFromHistory(userText, recentHistory);
+  if (refResolution.isRef) {
+    if (refResolution.targetUrl && !targetUrl) {
+      targetUrl = refResolution.targetUrl;
+    }
+    const cleanRefQuery = refResolution.rewrittenQuery || text;
+    return {
+      query: cleanRefQuery,
+      url: targetUrl,
+      refResolution,
+    };
+  }
 
   let clean = text
     .replace(URL_REGEX, '')
@@ -254,7 +572,7 @@ export function buildOptimizedSearchQuery(userText: string, recentHistory: any[]
     }
   }
 
-  return { query: clean || text, url: targetUrl };
+  return { query: clean || text, url: targetUrl, refResolution };
 }
 
 /**
@@ -316,8 +634,9 @@ export async function performSmartWebSearch(
       return fallbackEmpty;
     }
 
-    let { query, url } = buildOptimizedSearchQuery(userText, recentHistory);
+    let { query, url, refResolution } = buildOptimizedSearchQuery(userText, recentHistory);
     query = resolveTemporalSearchQuery(query, chrono);
+    const topic: WebIntelTopic = refResolution?.isRef ? 'FOLLOWUP_REF' : classifyWebIntelTopic(query);
 
     // 1. Thử gọi API endpoint /api/search (Vercel Serverless Function)
     let endpoint = '/api/search';
@@ -327,12 +646,12 @@ export async function performSmartWebSearch(
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3500); // Timeout 3.5s
+      const timeoutId = setTimeout(() => controller.abort(), 4500); // Timeout 4.5s
 
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, url }),
+        body: JSON.stringify({ query, url, topic }),
         signal: controller.signal,
       }).finally(() => clearTimeout(timeoutId));
 
@@ -347,8 +666,11 @@ export async function performSmartWebSearch(
             publishedAt: r.publishedAt,
           }));
 
-          if (sources.length > 0 || data.pageContent) {
+          if (sources.length > 0 || data.pageContent || refResolution?.isRef) {
             let formatted = `[DỮ LIỆU WEB THỜI GIAN THỰC ĐƯỢC TÌM KIẾM NGÀY ${new Date().toLocaleDateString('vi-VN')} CHO TRUY VẤN: "${query}"]\n`;
+            if (refResolution?.directiveTag) {
+              formatted += `\n${refResolution.directiveTag}\n`;
+            }
             if (data.pageContent) {
               formatted += `\n[NỘI DUNG ĐỌC TỪ LIÊN KẾT ${url || data.targetUrl}]:\n${data.pageContent}\n`;
             }
@@ -366,12 +688,14 @@ export async function performSmartWebSearch(
               sources,
               pageContent: data.pageContent,
               targetUrl: url || data.targetUrl,
+              topic,
+              refResolution,
             };
           }
         }
       }
     } catch (err: any) {
-      console.warn('[WebSearchService] Gọi /api/search thất bại hoặc timeout 3.5s, kích hoạt Client Direct Fallback:', err?.message || err);
+      console.warn('[WebSearchService] Gọi /api/search thất bại hoặc timeout 4.5s, kích hoạt Client Direct Fallback:', err?.message || err);
     }
 
     // 2. CLIENT DIRECT FALLBACK: Chạy thẳng từ trình duyệt
@@ -433,6 +757,8 @@ export async function performSmartWebSearch(
           query,
           formattedContext: fallbackText.trim(),
           sources: fallbackSources.slice(0, 4),
+          topic,
+          refResolution,
         };
       }
     } catch (clientErr) {

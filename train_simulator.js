@@ -1,8 +1,8 @@
 /**
- * TOMORROW V4.7.2 — STRUCTURED KNOWLEDGE VAULT, 50/50 SPLIT PANES & RESILIENT MARKDOWN
+ * TOMORROW V4.7.5 — UNIVERSAL WEB INTEL, LIVE FREE APIS & MULTI-TOPIC STRUCTURED OUTPUT
  * Automated Training & Verification Simulator
  * 
- * 29 Scenarios:
+ * 35 Scenarios:
  * 1. Test_Pronoun_No_Bro: Xưng "t - m", 0% "bro", max_tokens 250, thuần văn bản, lưu thần tượng Ronaldo vào Memory Vault.
  * 2. Test_Stop_Signal_Okk_Sybau: Tín hiệu dừng "okk" & "sybau" -> MODE=STOP_SIGNAL, max_tokens 250, 1 bong bóng <= 4 từ, 0 dấu "?".
  * 3. Test_Web_No_Stalling: Tra cứu Web đưa kết quả kèm URL ngay lập tức, max_tokens 1200, 0% hứa suông câu giờ.
@@ -32,6 +32,12 @@
  * 27. Test_Day11_Selective_Context_Slice: "" khi STOP_SIGNAL, ưu tiên studySubjects cho STEM_MATH, ưu tiên financeGoals cho FINANCE_QUANT, độ dài <= 480 ký tự.
  * 28. Test_Day11_SystemPrompt_Budget: SYSTEM_INSTRUCTION Ngày 11 tự động kiểm tra đạt < 450 từ.
  * 29. Test_Day11_Markdown_InlineFence_Normalizer: Bóc tách fence dính liền cuối câu, bảo toàn code và comment (#), giải thích ra ngoài.
+ * 30. Test_Day11_Followup_Code_Inheritance: Kế thừa chuyên môn CODE_CS / JARVIS_LAB cho câu hỏi nối tiếp ngắn ("ví dụ đi"), budget 2000 tokens.
+ * 31. Test_Day11_Web_Numbered_And_Pronoun_Ref: Phân giải tham chiếu số (tin 1), so sánh nhiều mục (tin 1 và 2), và tham chiếu đại từ (bài đó).
+ * 32. Test_Day11_MultiTopic_Classifier: Phân loại chính xác 10/10 chủ đề Web Intel chuyên biệt (Weather, Crypto, Sports, Edu, Travel...).
+ * 33. Test_Day11_Output_Format_Detector: Nhận diện chuẩn xác 5/5 cấu trúc đầu ra (Table, Pros/Cons, Timeline, Deep Cite, News Brief).
+ * 34. Test_Day11_Sanitize_GoogleNews_RSS_Link: Cắt bỏ sạch trailing RSS link khi có sources pills, rút gọn link dài khi không có pills.
+ * 35. Test_Day11_SystemPrompt_Budget: SYSTEM_INSTRUCTION v4.7.5 tiếp tục bảo toàn nghiêm ngặt < 450 từ.
  */
 
 const fs = require('fs');
@@ -1575,8 +1581,224 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
   });
 }
 
+// TEST 31: Test_Day11_Web_Numbered_And_Pronoun_Ref
+{
+  const testHistory = [
+    {
+      id: 'h1',
+      sender: 'user',
+      role: 'user',
+      text: 'tin tức công nghệ mới nhất hôm nay',
+      timestamp: Date.now() - 60000,
+    },
+    {
+      id: 'h2',
+      sender: 'ai',
+      role: 'model',
+      text: 'Dưới đây là các tin tức công nghệ nổi bật:\n1. [VnExpress] Jensen Huang công bố kiến trúc Blackwell Ultra mới của Nvidia\n2. [Tuổi Trẻ] OpenAI công bố lộ trình GPT-5 và tích hợp Deep Research',
+      sources: [
+        {
+          title: 'Jensen Huang công bố kiến trúc Blackwell Ultra mới của Nvidia',
+          url: 'https://vnexpress.net/jensen-huang-blackwell-ultra-123456.html',
+          source: 'VnExpress',
+          snippet: 'Nvidia giới thiệu dòng chip Blackwell Ultra hiệu năng cao',
+        },
+        {
+          title: 'OpenAI công bố lộ trình GPT-5 và tích hợp Deep Research',
+          url: 'https://tuoitre.vn/openai-lo-trinh-gpt-5-deep-research-654321.html',
+          source: 'Tuổi Trẻ',
+          snippet: 'OpenAI hé lộ năng lực nghiên cứu sâu của GPT-5',
+        },
+      ],
+      timestamp: Date.now() - 40000,
+    },
+  ];
+
+  // 1. Tham chiếu số đơn: "thử trích dẫn tin tức 1 đi"
+  const ref1 = aiService.resolveReferenceFromHistory('thử trích dẫn tin tức 1 đi', testHistory);
+  const pass1 =
+    ref1.isRef === true &&
+    ref1.itemIndex === 1 &&
+    ref1.targetText?.includes('Jensen Huang') &&
+    ref1.targetUrl === 'https://vnexpress.net/jensen-huang-blackwell-ultra-123456.html' &&
+    ref1.directiveTag?.includes('[REF_TARGET: Item #1');
+
+  // 2. So sánh nhiều tin: "so sánh tin 1 và 2"
+  const ref2 = aiService.resolveReferenceFromHistory('so sánh tin 1 và 2', testHistory);
+  const pass2 =
+    ref2.isRef === true &&
+    Array.isArray(ref2.itemIndices) &&
+    ref2.itemIndices[0] === 1 &&
+    ref2.itemIndices[1] === 2 &&
+    ref2.directiveTag?.includes('Item #1') &&
+    ref2.directiveTag?.includes('Item #2');
+
+  // 3. Tham chiếu đại từ: "bài đó nói gì"
+  const ref3 = aiService.resolveReferenceFromHistory('bài đó nói gì', testHistory);
+  const pass3 =
+    ref3.isRef === true &&
+    ref3.itemIndex === 1 &&
+    ref3.targetText?.includes('Jensen Huang') &&
+    ref3.directiveTag?.includes('[REF_TARGET:');
+
+  const passed = pass1 && pass2 && pass3;
+  const score = passed ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day11_Web_Numbered_And_Pronoun_Ref',
+    input: '"thử trích dẫn tin tức 1 đi", "so sánh tin 1 và 2", "bài đó nói gì"',
+    mode: 'FOLLOWUP_REF_RESOLUTION',
+    output: [
+      `Ref 1 (tin 1): isRef=${ref1.isRef}, itemIndex=${ref1.itemIndex}, target="${ref1.targetText?.slice(0, 35)}..."`,
+      `Ref 2 (tin 1 và 2): isRef=${ref2.isRef}, itemIndices=[${ref2.itemIndices?.join(', ')}]`,
+      `Ref 3 (bài đó): isRef=${ref3.isRef}, tag="${ref3.directiveTag?.slice(0, 50)}..."`,
+    ],
+    score,
+    passed,
+    details: passed
+      ? 'Phân giải chuẩn xác 100% tham chiếu số đơn (tin 1), so sánh 2 mục (tin 1 và 2), và tham chiếu đại từ (bài đó) từ lịch sử tin nhắn'
+      : 'Thất bại: Tham chiếu số hoặc đại từ không trích xuất đúng itemIndex hoặc targetText',
+  });
+}
+
+// TEST 32: Test_Day11_MultiTopic_Classifier
+{
+  const testCases = [
+    { text: 'dự báo thời tiết hà nội hôm nay', expected: 'WEATHER' },
+    { text: 'giá bitcoin hôm nay', expected: 'MARKET_FINANCE' },
+    { text: 'tin tức thời sự sáng nay', expected: 'NEWS_RADAR' },
+    { text: 'openai ra mắt gpt-5', expected: 'TECH_DEV' },
+    { text: 'so sánh iphone 16 và samsung s24', expected: 'COMPARE_BUYING' },
+    { text: 'kết quả bóng đá ngoại hạng anh hôm nay', expected: 'SPORTS_LIVE' },
+    { text: 'học phí bách khoa hà nội 2025', expected: 'EDU_POLICY' },
+    { text: 'quán ăn ngon ở đà lạt', expected: 'TRAVEL_LOCAL' },
+    { text: 'https://vnexpress.net/tin-tuc-123.html', expected: 'URL_READER' },
+    { text: 'tin 1 nói gì', expected: 'FOLLOWUP_REF' },
+  ];
+
+  const outcomes = testCases.map((tc) => {
+    const topic = aiService.classifyWebIntelTopic(tc.text);
+    return { text: tc.text, expected: tc.expected, actual: topic, match: topic === tc.expected };
+  });
+
+  const allMatched = outcomes.every((o) => o.match);
+  const score = allMatched ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day11_MultiTopic_Classifier',
+    input: '10 chủ đề Web Intel (Weather, Finance, News, Tech, Compare, Sports, Edu, Travel, URL, Ref)',
+    mode: 'WEB_INTEL_10_TOPICS',
+    output: outcomes.map((o) => `${o.expected}: "${o.text}" -> ${o.actual} (${o.match ? 'OK' : 'MISMATCH'})`),
+    score,
+    passed: allMatched,
+    details: allMatched
+      ? 'Phân loại chính xác 10/10 chủ đề Web Intel chuyên biệt bằng phân tích ngôn ngữ tự nhiên không tốn token LLM'
+      : 'Thất bại: Có chủ đề bị phân loại sai lệch',
+  });
+}
+
+// TEST 33: Test_Day11_Output_Format_Detector
+{
+  const formatCases = [
+    { text: 'so sánh thông số và lập bảng', topic: 'COMPARE_BUYING', expected: 'TABLE' },
+    { text: 'ưu nhược điểm khi mua xe điện', topic: 'COMPARE_BUYING', expected: 'PROS_CONS' },
+    { text: 'tóm tắt diễn biến vụ việc theo mốc thời gian', topic: 'NEWS_RADAR', expected: 'TIMELINE' },
+    { text: 'trích dẫn sâu nội dung bài báo 1', topic: 'FOLLOWUP_REF', expected: 'DEEP_CITE' },
+    { text: 'điểm tin sáng nay', topic: 'NEWS_RADAR', expected: 'NEWS_BRIEF' },
+  ];
+
+  const outcomes = formatCases.map((fc) => {
+    const detected = aiService.detectOutputFormatIntent(fc.text, fc.topic);
+    return { text: fc.text, expected: fc.expected, actual: detected, match: detected === fc.expected };
+  });
+
+  const allMatched = outcomes.every((o) => o.match);
+  const score = allMatched ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day11_Output_Format_Detector',
+    input: '5 cấu trúc đầu ra: TABLE, PROS_CONS, TIMELINE, DEEP_CITE, NEWS_BRIEF',
+    mode: 'STRUCTURED_OUTPUT_ROUTER',
+    output: outcomes.map((o) => `${o.expected}: "${o.text}" -> ${o.actual} (${o.match ? 'OK' : 'MISMATCH'})`),
+    score,
+    passed: allMatched,
+    details: allMatched
+      ? 'Nhận diện chuẩn xác 5/5 cấu trúc định dạng đầu ra (Table, Pros/Cons, Timeline, Deep Cite, News Brief) định hướng J.A.R.V.I.S trình bày chuyên nghiệp'
+      : 'Thất bại: Có định dạng cấu trúc bị nhận diện sai',
+  });
+}
+
+// TEST 34: Test_Day11_Sanitize_GoogleNews_RSS_Link
+{
+  const inputWithSources = [
+    'Theo nguồn VnExpress, Jensen Huang vẫn là CEO Nvidia điều hành bình thường.\nLink: https://news.google.com/rss/articles/CBMi4wFA1234567890abcdefghijklmnopqrstuvwxyz',
+  ];
+  const cleanedWithSources = aiService.sanitizeWebReplyUrls(inputWithSources, true);
+  const pass1 =
+    cleanedWithSources.length === 1 &&
+    cleanedWithSources[0] === 'Theo nguồn VnExpress, Jensen Huang vẫn là CEO Nvidia điều hành bình thường.' &&
+    !cleanedWithSources[0].includes('https://news.google.com');
+
+  const inputWeatherWithSources = [
+    'Dự báo thời tiết Hà Nội hôm nay nhiệt độ 24°C, trời quang đãng.\nNguồn: https://open-meteo.com/v1/forecast?latitude=21.0285&longitude=105.8542&daily=weather_code',
+  ];
+  const cleanedWeather = aiService.sanitizeWebReplyUrls(inputWeatherWithSources, true);
+  const pass2 =
+    cleanedWeather.length === 1 &&
+    cleanedWeather[0] === 'Dự báo thời tiết Hà Nội hôm nay nhiệt độ 24°C, trời quang đãng.' &&
+    !cleanedWeather[0].includes('https://open-meteo.com');
+
+  const inputWithoutSources = [
+    'Xem thêm chi tiết tại https://news.google.com/rss/articles/CBMi4wFA1234567890abcdefghijklmnopqrstuvwxyz để biết thông tin.',
+  ];
+  const cleanedWithoutSources = aiService.sanitizeWebReplyUrls(inputWithoutSources, false);
+  const pass3 =
+    cleanedWithoutSources.length === 1 &&
+    !cleanedWithoutSources[0].includes('CBMi4wFA1234567890abcdefghijklmnopqrstuvwxyz') &&
+    cleanedWithoutSources[0].includes('https://news.google.com');
+
+  const passed = pass1 && pass2 && pass3;
+  const score = passed ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day11_Sanitize_GoogleNews_RSS_Link',
+    input: 'Phản hồi chứa trailing Link: RSS dài > 70 ký tự (hasSources=true & false)',
+    mode: 'URL_SANITIZER',
+    output: [
+      `Case 1 (hasSources=true): "${cleanedWithSources[0]}"`,
+      `Case 2 (hasSources=true weather): "${cleanedWeather[0]}"`,
+      `Case 3 (hasSources=false): "${cleanedWithoutSources[0]}"`,
+    ],
+    score,
+    passed,
+    details: passed
+      ? 'Cắt sạch 100% trailing link/nguồn rác khi đã có pill sources, rút gọn link RSS dài > 70 ký tự khi chưa có sources, bảo vệ giao diện tinh gọn'
+      : 'Thất bại: Link rác Google News RSS vẫn còn sót lại trong phản hồi',
+  });
+}
+
+// TEST 35: Test_Day11_SystemPrompt_Budget
+{
+  const words = aiService.SYSTEM_INSTRUCTION.trim().split(/\s+/).filter(Boolean);
+  const count = words.length;
+  const isBudgetValid = count < 450;
+  const score = isBudgetValid ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day11_SystemPrompt_Budget',
+    input: 'Đếm từ SYSTEM_INSTRUCTION v4.7.5',
+    mode: `PROMPT_BUDGET_${count}_WORDS`,
+    output: [`Số từ: ${count} words (Giới hạn: < 450 words)`],
+    score,
+    passed: isBudgetValid,
+    details: isBudgetValid
+      ? `SYSTEM_INSTRUCTION v4.7.5 đạt chuẩn ngân sách: ${count} từ (< 450 từ), bảo vệ Attention khỏi Lost in the Middle`
+      : `Thất bại: Vượt ngân sách từ (${count} >= 450 từ)`,
+  });
+}
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 30 SCENARIOS (TOMORROW V4.7.4):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 35 SCENARIOS (TOMORROW V4.7.5):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
@@ -1590,16 +1812,16 @@ results.forEach((r, idx) => {
 const totalScore = results.reduce((acc, cur) => acc + cur.score, 0);
 const allPassed = results.every(r => r.passed);
 
-console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/300 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
+console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/350 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
 console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.7.4',
+  version: 'v4.7.5',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.7.4 — Domain Inheritance, Zero-Teaser Code Bubbles & 50/50 Split Panes',
+  architecture: 'Tomorrow v4.7.5 — Universal Web Intel, Live Weather/Forex APIs, Smart Follow-up Ref & Structured Output Formatter',
   totalScore,
-  maxScore: 300,
+  maxScore: 350,
   allPassed,
   scenarios: results,
 };
