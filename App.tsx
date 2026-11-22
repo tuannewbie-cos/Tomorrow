@@ -1007,15 +1007,18 @@ export default function App() {
           setIsSidebarOpen(false);
         }
         const firstPane = prev[0] || { id: 'pane-1', sessionId: null };
-        const otherSession = sessionsRef.current.find((s) => s.id !== firstPane.sessionId);
+        const newPaneId = `pane-${Date.now()}`;
         const newPane: ChatPane = {
-          id: `pane-${Date.now()}`,
-          sessionId: otherSession ? otherSession.id : null,
+          id: newPaneId,
+          sessionId: null, // Cửa sổ chat trống mới hoàn toàn
         };
         const next = [firstPane, newPane];
         panesRef.current = next;
-        setActivePaneId(newPane.id);
-        activePaneIdRef.current = newPane.id;
+        setActivePaneId(newPaneId);
+        activePaneIdRef.current = newPaneId;
+        setTimeout(() => {
+          inputBarRefs.current[newPaneId]?.focus?.();
+        }, 50);
         return next;
       } else {
         // Đang chia pane: Gộp lại còn 1 pane chính (pane đang active)
@@ -1036,12 +1039,15 @@ export default function App() {
         ...prev,
         {
           id: newPaneId,
-          sessionId: null,
+          sessionId: null, // Cửa sổ chat trống mới hoàn toàn
         },
       ];
       panesRef.current = next;
       setActivePaneId(newPaneId);
       activePaneIdRef.current = newPaneId;
+      setTimeout(() => {
+        inputBarRefs.current[newPaneId]?.focus?.();
+      }, 50);
       return next;
     });
   }, []);

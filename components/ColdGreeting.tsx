@@ -1,15 +1,15 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { UserMemoryProfile } from '../types/chat';
-import { Sparkles, Flame, Smile, Heart, Coffee } from 'lucide-react-native';
+import { Sparkles } from 'lucide-react-native';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
 
 interface ColdGreetingProps {
   greetingText: string;
   userMemory: UserMemoryProfile;
   hasHistory: boolean;
-  onSelectSuggestion: (text: string) => void;
+  onSelectSuggestion?: (text: string) => void;
   theme?: ThemeColors;
   compact?: boolean;
 }
@@ -18,60 +18,26 @@ export const ColdGreeting: React.FC<ColdGreetingProps> = ({
   greetingText,
   userMemory,
   hasHistory,
-  onSelectSuggestion,
   theme = DARK_THEME,
   compact = false,
 }) => {
-  // Sinh các Suggestion Chips theo ngữ cảnh
-  const getSuggestionChips = () => {
-    const problem = userMemory.currentProblem?.toLowerCase() || '';
-
-    if (problem.includes('deadline')) {
-      return [
-        { label: 'Cứu tui deadline dí sấp mặt rồi 😭', icon: Flame, color: '#EF4444' },
-        { label: 'Làm sao để bớt overthinking bây giờ?', icon: Coffee, color: '#F59E0B' },
-        { label: 'Gợi ý bài tập thở 3 phút xả stress', icon: Heart, color: '#8B5CF6' },
-        { label: 'Kể một câu chuyện tấu hài nghe coi nào', icon: Smile, color: '#10B981' },
-      ];
-    }
-
-    if (problem.includes('buồn') || problem.includes('cô đơn')) {
-      return [
-        { label: 'Tui đang thấy hơi cô đơn và trống rỗng...', icon: Heart, color: '#EC4899' },
-        { label: 'Gửi cho tui một meme chữa lành đi!', icon: Sparkles, color: '#A855F7' },
-        { label: 'Hôm nay tui lỡ làm hỏng việc rồi 😢', icon: Coffee, color: '#F59E0B' },
-        { label: 'Cần một cái ôm tinh thần thật ấm áp', icon: Heart, color: '#3B82F6' },
-      ];
-    }
-
-    // Default Gen Z chips
-    return [
-      { label: 'Hôm nay tui có tin vui muốn flex nè! 🎉', icon: Sparkles, color: '#10B981' },
-      { label: 'Tâm sự giải tỏa căng thẳng một xíu', icon: Coffee, color: '#3B82F6' },
-      { label: 'Đang bị mất động lực học tập / làm việc 🫠', icon: Flame, color: '#F59E0B' },
-      { label: 'Tâm trạng tui hôm nay 10 điểm không có nhưng ✨', icon: Smile, color: '#8B5CF6' },
-    ];
-  };
-
-  const chips = getSuggestionChips();
-
   return (
     <ScrollView
       contentContainerStyle={[
         styles.container,
-        compact && { paddingHorizontal: 12, paddingTop: 20, paddingBottom: 16 },
+        compact && { paddingHorizontal: 12, paddingVertical: 16 },
       ]}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      {/* Brand Header */}
-      <View style={[styles.brandContainer, compact && { marginBottom: 14 }]}>
+      {/* Brand Header & Minimal Empty State (macOS native style) */}
+      <View style={styles.brandContainer}>
         <View style={styles.geminiBadge}>
           <Sparkles size={16} color="#8B5CF6" />
           <Text style={styles.geminiBadgeText}>Tomorrow</Text>
         </View>
 
-        {/* Gradient Container */}
+        {/* Gradient Greeting Container */}
         <View style={styles.gradientBox}>
           <LinearGradient
             colors={['#8B5CF6', '#6366F1', '#EC4899']}
@@ -100,84 +66,25 @@ export const ColdGreeting: React.FC<ColdGreetingProps> = ({
           {greetingText}
         </Text>
       </View>
-
-      {/* Suggestion Chips */}
-      <View style={styles.chipsSection}>
-        <Text
-          style={[
-            styles.chipsSectionTitle,
-            { color: theme.textMuted },
-            compact && { fontSize: 11, marginBottom: 8 },
-          ]}
-        >
-          GỢI Ý TÂM SỰ NHANH:
-        </Text>
-        <View style={[styles.chipsGrid, compact && { gap: 8 }]}>
-          {chips.map((chip, idx) => {
-            const Icon = chip.icon;
-            return (
-              <Pressable
-                key={idx}
-                style={({ pressed }) => [
-                  styles.chip,
-                  {
-                    backgroundColor: theme.btnBg,
-                    borderColor: theme.borderSubtle,
-                  },
-                  compact && {
-                    paddingVertical: 9,
-                    paddingHorizontal: 10,
-                    borderRadius: 12,
-                    gap: 8,
-                  },
-                  pressed && { backgroundColor: theme.btnHover },
-                  Platform.OS === 'web' && { cursor: 'pointer' as any },
-                ]}
-                onPress={() => onSelectSuggestion(chip.label)}
-              >
-                <View
-                  style={[
-                    styles.chipIconBox,
-                    { backgroundColor: `${chip.color}20` },
-                    compact && { width: 24, height: 24, borderRadius: 6 },
-                  ]}
-                >
-                  <Icon size={compact ? 14 : 16} color={chip.color} />
-                </View>
-                <Text
-                  style={[
-                    styles.chipText,
-                    { color: theme.textPrimary },
-                    compact && { fontSize: 13, lineHeight: 18 },
-                  ]}
-                  numberOfLines={2}
-                >
-                  {chip.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 20,
-    paddingTop: 36,
-    paddingBottom: 24,
+    flexGrow: 1,
+    justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 32,
     width: '100%',
     minWidth: 0,
-    maxWidth: 860,
+    maxWidth: 720,
     alignSelf: 'center',
     ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
   },
   brandContainer: {
     alignItems: 'center',
-    marginBottom: 24,
     width: '100%',
     minWidth: 0,
   },
@@ -224,51 +131,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     paddingHorizontal: 12,
-  },
-  chipsSection: {
-    width: '100%',
-    minWidth: 0,
-    maxWidth: '100%',
-  },
-  chipsSectionTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingHorizontal: 2,
-  },
-  chipsGrid: {
-    gap: 10,
-    width: '100%',
-    minWidth: 0,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 10,
-    width: '100%',
-    minWidth: 0,
-    maxWidth: '100%',
-    ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
-  },
-  chipIconBox: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  chipText: {
-    fontSize: 14.5,
-    fontWeight: '500',
-    flex: 1,
-    minWidth: 0,
-    flexShrink: 1,
   },
 });
