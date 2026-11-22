@@ -46,7 +46,7 @@ const ChatBubbleBase: React.FC<ChatBubbleProps> = ({
   const normalizedText = messageText.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n');
   const hasCodeBlock = /```/.test(normalizedText);
   const hasTable = /\|.*\|/.test(normalizedText);
-  const hasRichBlock = hasCodeBlock || hasTable || /^#{1,3}\s|\$\$|\$/.test(normalizedText);
+  const hasRichBlock = hasCodeBlock || hasTable || /^#{1,6}\s|\$\$|\$/m.test(normalizedText);
 
   // 2. Tính toán Dual-Width Bubble:
   // - Khi isSplitMode === true: mở rộng AI lên 95% (98% khi có khối code/bảng) và User 85%

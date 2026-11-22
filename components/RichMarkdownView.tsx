@@ -201,22 +201,33 @@ export type MarkdownBlock =
   | { type: 'code'; language: string; code: string; lineCount: number }
   | { type: 'table'; headers: string[]; rows: string[][]; rawText: string }
   | { type: 'math'; formula: string }
-  | { type: 'heading'; level: 1 | 2 | 3; text: string }
+  | { type: 'heading'; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
   | { type: 'blockquote'; text: string }
   | { type: 'bullet_list'; items: string[] }
   | { type: 'numbered_list'; items: { num: string; text: string }[] }
   | { type: 'paragraph'; text: string };
 
 /**
- * Phân tách các ô trong hàng bảng Markdown mà không cắt nhầm dấu | bên trong công thức toán $$...$$ hoặc inline code
+ * Regex phân tách dòng kẻ bảng chuẩn xác và linh hoạt
+ */
+export const TABLE_SEPARATOR_REGEX = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/;
+
+/**
+ * Phân tách các ô trong hàng bảng Markdown mà không cắt nhầm dấu | bên trong công thức toán $$...$$ hoặc inline code `...`
+ * Bảo vệ an toàn tuyệt đối ký tự tiền tệ $ (VD: $96,500 | $96,510) và trailing empty cell
  */
 export function splitMarkdownTableRow(rowText: string): string[] {
   const trimmed = rowText.trim();
-  const stripped = trimmed.replace(/^\|/, '').replace(/\|$/, '');
+  let stripped = trimmed;
+  if (stripped.startsWith('|')) {
+    stripped = stripped.slice(1);
+  }
+  if (stripped.endsWith('|')) {
+    stripped = stripped.slice(0, -1);
+  }
   const cells: string[] = [];
   let current = '';
   let inDoubleDollar = false;
-  let inSingleDollar = false;
   let inBacktick = false;
 
   for (let i = 0; i < stripped.length; i++) {
@@ -239,12 +250,7 @@ export function splitMarkdownTableRow(rowText: string): string[] {
       i++;
       continue;
     }
-    if (!inBacktick && !inDoubleDollar && ch === '$') {
-      inSingleDollar = !inSingleDollar;
-      current += '$';
-      continue;
-    }
-    if (!inBacktick && !inDoubleDollar && !inSingleDollar && ch === '|') {
+    if (!inBacktick && !inDoubleDollar && ch === '|') {
       cells.push(current.trim());
       current = '';
       continue;
@@ -1016,41 +1022,56 @@ export function parseMarkdownBlocks(rawText: string): MarkdownBlock[] {
       }
     }
 
-    // 3. Khối Bảng Biểu: | Cột 1 | Cột 2 | kèm dòng |---|---|
+    // 3. Khối Bảng Biểu: | Cột 1 | Cột 2 | kèm dòng phân cách |---|---| (linh hoạt định dạng)
     if (
-      trimmed.startsWith('|') &&
-      trimmed.endsWith('|') &&
+      line.includes('|') &&
       i + 1 < lines.length &&
-      /^\|[-:| ]+\|$/.test(lines[i + 1].trim())
+      TABLE_SEPARATOR_REGEX.test(lines[i + 1])
     ) {
-      const headerLine = trimmed;
-      const separatorLine = lines[i + 1].trim();
+      const headerLine = line;
+      const separatorLine = lines[i + 1];
       const headers = splitMarkdownTableRow(headerLine);
-      i += 2; // Bỏ qua header và dòng gạch
+      i += 2; // Bỏ qua header và dòng separator
       const rows: string[][] = [];
       const tableRawLines = [headerLine, separatorLine];
 
-      while (i < lines.length && lines[i].trim().startsWith('|') && lines[i].trim().endsWith('|')) {
+      while (i < lines.length) {
         const rowLine = lines[i].trim();
+        if (
+          !rowLine ||
+          !rowLine.includes('|') ||
+          rowLine.startsWith('```') ||
+          rowLine.startsWith('$$') ||
+          /^(#{1,6})\s+/.test(rowLine)
+        ) {
+          break;
+        }
         tableRawLines.push(rowLine);
-        const cells = splitMarkdownTableRow(rowLine);
+        let cells = splitMarkdownTableRow(rowLine);
+        if (cells.length < headers.length) {
+          cells = [...cells, ...Array(headers.length - cells.length).fill('')];
+        } else if (cells.length > headers.length) {
+          cells = cells.slice(0, headers.length);
+        }
         rows.push(cells);
         i++;
       }
 
-      blocks.push({
-        type: 'table',
-        headers,
-        rows,
-        rawText: tableRawLines.join('\n'),
-      });
+      if (headers.length > 0) {
+        blocks.push({
+          type: 'table',
+          headers,
+          rows,
+          rawText: tableRawLines.join('\n'),
+        });
+      }
       continue;
     }
 
-    // 4. Tiêu đề: #, ##, ###
-    const headingMatch = line.match(/^(#{1,3})\s+(.*)$/);
+    // 4. Tiêu đề: # đến ######
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
     if (headingMatch) {
-      const level = headingMatch[1].length as 1 | 2 | 3;
+      const level = headingMatch[1].length as 1 | 2 | 3 | 4 | 5 | 6;
       blocks.push({
         type: 'heading',
         level,
@@ -1120,12 +1141,11 @@ export function parseMarkdownBlocks(rawText: string): MarkdownBlock[] {
       !lines[i].trim().startsWith('```') &&
       !lines[i].trim().startsWith('$$') &&
       !(
-        lines[i].trim().startsWith('|') &&
-        lines[i].trim().endsWith('|') &&
+        lines[i].includes('|') &&
         i + 1 < lines.length &&
-        /^\|[-:| ]+\|$/.test(lines[i + 1].trim())
+        TABLE_SEPARATOR_REGEX.test(lines[i + 1])
       ) &&
-      !/^(#{1,3})\s+/.test(lines[i]) &&
+      !/^(#{1,6})\s+/.test(lines[i]) &&
       !lines[i].trim().startsWith('>') &&
       !/^[-*•]\s+/.test(lines[i].trim()) &&
       !/^\d+\.\s+/.test(lines[i].trim())
@@ -1378,9 +1398,10 @@ interface TableViewProps {
   rows: string[][];
   theme: ThemeColors;
   renderInline?: (text: string) => React.ReactNode;
+  compact?: boolean;
 }
 
-const TableView: React.FC<TableViewProps> = ({ headers, rows, theme, renderInline }) => {
+const TableView: React.FC<TableViewProps> = ({ headers, rows, theme, renderInline, compact = false }) => {
   const [copied, setCopied] = useState(false);
 
   const handleCopyTable = async () => {
@@ -1429,9 +1450,22 @@ const TableView: React.FC<TableViewProps> = ({ headers, rows, theme, renderInlin
           {/* Header row */}
           <View style={[styles.tableRow, { backgroundColor: headerBg }]}>
             {headers.map((header, hIdx) => (
-              <View key={`th-${hIdx}`} style={[styles.tableHeaderCell, { borderRightColor: tableBorderColor }]}>
-                <Text style={[styles.tableHeaderText, { color: headerTextColor }]}>
-                  {renderInline ? renderInline(header) : header}
+              <View
+                key={`th-${hIdx}`}
+                style={[
+                  styles.tableHeaderCell,
+                  compact && { minWidth: 88, maxWidth: 150, paddingHorizontal: 8, paddingVertical: 6 },
+                  { borderRightColor: tableBorderColor },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.tableHeaderText,
+                    compact && { fontSize: 12.5 },
+                    { color: headerTextColor, flexShrink: 1, flexWrap: 'wrap' },
+                  ]}
+                >
+                  {renderInline ? renderInline(header.trim() || '—') : (header.trim() || '—')}
                 </Text>
               </View>
             ))}
@@ -1446,9 +1480,22 @@ const TableView: React.FC<TableViewProps> = ({ headers, rows, theme, renderInlin
             return (
               <View key={`tr-${rIdx}`} style={[styles.tableRow, { backgroundColor: rowBg, borderTopColor: tableBorderColor }]}>
                 {row.map((cell, cIdx) => (
-                  <View key={`td-${rIdx}-${cIdx}`} style={[styles.tableCell, { borderRightColor: tableBorderColor }]}>
-                    <Text style={[styles.tableCellText, { color: cellTextColor }]}>
-                      {renderInline ? renderInline(cell) : cell}
+                  <View
+                    key={`td-${rIdx}-${cIdx}`}
+                    style={[
+                      styles.tableCell,
+                      compact && { minWidth: 88, maxWidth: 150, paddingHorizontal: 8, paddingVertical: 6 },
+                      { borderRightColor: tableBorderColor },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.tableCellText,
+                        compact && { fontSize: 12.5, lineHeight: 18 },
+                        { color: cellTextColor, flexShrink: 1, flexWrap: 'wrap' },
+                      ]}
+                    >
+                      {renderInline ? renderInline(cell.trim() || '—') : (cell.trim() || '—')}
                     </Text>
                   </View>
                 ))}
@@ -1623,6 +1670,7 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
               rows={block.rows}
               theme={theme}
               renderInline={renderInline}
+              compact={compact}
             />
           );
         }
@@ -1643,6 +1691,7 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
             block.level === 1 && (compact ? { fontSize: 17, lineHeight: 24, marginVertical: 4 } : styles.h1),
             block.level === 2 && (compact ? { fontSize: 15.5, lineHeight: 22, marginVertical: 3 } : styles.h2),
             block.level === 3 && (compact ? { fontSize: 14.5, lineHeight: 21, marginVertical: 2 } : styles.h3),
+            block.level >= 4 && (compact ? { fontSize: 14, lineHeight: 20, marginTop: 6, marginBottom: 2, fontWeight: '700' as const } : { fontSize: 14.5, lineHeight: 21, marginTop: 8, marginBottom: 4, fontWeight: '700' as const }),
             { color: textColor },
           ];
           return (

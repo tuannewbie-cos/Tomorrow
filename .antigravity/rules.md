@@ -1,4 +1,4 @@
-# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.7.5)
+# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.7.6)
 
 ## 1. MÔI TRƯỜNG, NỀN TẢNG CỐT LÕI & CÁC KHÓA LƯU TRỮ
 - **Hệ điều hành phát triển & vận hành:** macOS (Ứng dụng đích chạy tại `/Applications/Tomorrow.app` kết nối Vercel Production). Mọi script/shell dùng chuẩn Unix/macOS, không dùng cú pháp Windows.
@@ -24,7 +24,8 @@
   + `Cmd + K`: Mở `CommandPalette` có dòng trạng thái Quota footer và tùy chọn `"Reset cờ OpenAI (Thử kết nối lại)"`.
   + `Cmd + B`: Đóng / mở Sidebar mượt mà.
   + `Cmd + N`: Mở phiên trò chuyện mới tức thì, giữ phiên cũ chạy ngầm không gián đoạn (`typingSessionIds`).
-  + `Cmd + ArrowUp`: Chia đa khung chat song song (Split Panes) kiểu VS Code (tối đa 3 panes).
+  + `Cmd + ArrowUp`: Luôn mở thêm cửa sổ chat mới (Split Panes kiểu VS Code, tối đa 4 panes), không bao giờ gộp lại.
+  + `Cmd + ArrowDown`: Bật chế độ chọn tab cần đóng tương tác bằng phím mũi tên `←` / `→` và bấm `Enter` để đóng (`Esc` để hủy).
   + `Enter`: Gửi tin nhắn ngay; `Shift + Enter`: Xuống dòng.
   + `Cmd + V` & Kéo-thả (Drag & Drop): Dán ảnh trực tiếp từ clipboard hoặc kéo thả file ảnh vào ô chat kèm viền sáng thông minh.
 - **Bong bóng đợi chat (`TypingIndicator`):** Bật tức thì (`0ms delay`) ngay khi bấm Gửi (`setIsTomorrowTyping(true)`), hiển thị trạng thái động và tách mảng `replies` thành từng bong bóng rời nhau `300ms - 450ms` (`Math.min(Math.max(replyText.length * 8, 300), 450)`).

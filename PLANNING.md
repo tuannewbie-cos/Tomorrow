@@ -281,6 +281,30 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
     + Đạt điểm tuyệt đối 35/35 scenarios (350/350 điểm 100% hoàn hảo).
   - Header cập nhật: **`Online • v4.7.5`**.
 
+- [x] **Ngày 11+++++ (`feat/multi-pane-markdown-v4.7.6` — Phiên bản `Online • v4.7.6`): Nâng Cấp Phím Tắt Quản Lý Đa Tab Split Screen & Resilient Markdown Table/H4 Parser**
+  - **Phím tắt Multi-Pane Additive `Cmd + ArrowUp` (macOS):**
+    + Bấm `Cmd + ArrowUp` luôn luôn mở thêm tab trống mới (`{ id: paneId, sessionId: null }`), hỗ trợ tối đa 4 tab song song, không bao giờ tự thu gọn về 1 tab.
+    + Tự động thu gọn Sidebar nếu `windowWidth < 1280` để tối đa hóa không gian đọc và tự động focus ô nhập liệu của tab mới.
+    + Khi có từ 3 đến 4 pane: `panesContainer` kích hoạt `overflowX: 'auto'` trên Web và mỗi pane duy trì `minWidth: 320px`, chống co rút xén mép.
+  - **Phím tắt Interactive Pane Close Picker `Cmd + ArrowDown` (macOS):**
+    + Bấm `Cmd + ArrowDown` bật chế độ điều hướng trực quan chọn tab cần đóng.
+    + Bấm `←` / `→` để di chuyển vùng chọn giữa các tab (hiệu ứng viền đỏ `2px solid #EF4444`, nền đỏ nhạt `rgba(239, 68, 68, 0.06)`, các tab khác làm mờ `opacity: 0.72`, pill header `✕ Enter để đóng`).
+    + Bấm `Enter` để xác nhận đóng tab đã chọn; bấm `Esc` để hủy chế độ đóng tab.
+    + Tự động blur `TextInput` trên Web khi kích hoạt để mũi tên và phím Enter không bị nhập vào ô chat.
+    + Floating instruction banner cố định phía trên: `"Đóng tab: Dùng ← / → chọn cửa sổ • Enter để đóng • Esc để hủy"`.
+  - **Resilient Markdown Table & Cell Wrapping (`RichMarkdownView.tsx`, `ChatBubble.tsx`):**
+    + Tối ưu regex phân cách bảng `TABLE_SEPARATOR_REGEX` linh hoạt chấp nhận dòng separator có hoặc không có dấu gạch đứng biên (`|`), bảo toàn bảng biểu ngay cả khi thiếu dòng trống phía trước.
+    + Bảo vệ an toàn tuyệt đối ký tự tiền tệ `$` (e.g. `$96,500.5 | $96,510.0`), ký tự đặc biệt (`≈`, `%`, `+`, `,`), và trailing empty cell (`| |`), chống nhầm lẫn với inline LaTeX math.
+    + Tự động chuẩn hóa độ dài hàng theo `headers.length` (pad `""` hoặc trim dư thừa), hiển thị `—` cho ô trống.
+    + Truyền prop `compact={compact}` xuống `TableView`: ở chế độ 2-3 cột, cell áp dụng `minWidth: 88, maxWidth: 150, paddingHorizontal: 8, paddingVertical: 6, fontSize: 12.5` kèm `flexShrink: 1, flexWrap: 'wrap'`, chống cắt chữ mép phải.
+  - **Hỗ trợ Tiêu đề H1–H6 Không Sót Dấu `#` (`RichMarkdownView.tsx`, `ChatBubble.tsx`):**
+    + Nâng cấp regex tiêu đề lên `/^(#{1,6})\s+(.+)$/`, hỗ trợ đầy đủ H4–H6 với kiểu chữ đậm `fontSize: 14.5, fontWeight: '700'`, triệt tiêu hoàn toàn lỗi hiển thị thô `#### Ngày 2:...`.
+    + Cập nhật `hasRichBlock` trong `ChatBubble.tsx` nhận diện multiline `^#{1,6}\s`.
+  - **Bộ kiểm thử tự động `train_simulator.js`:**
+    + Bổ sung kịch bản TEST 36: `Test_Day11_Markdown_Table_And_H4_Parser`.
+    + Đạt điểm tuyệt đối 36/36 scenarios (360/360 điểm 100% hoàn hảo).
+  - Header cập nhật: **`Online • v4.7.6`**.
+
 - [ ] **Ngày 12 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
   - Tìm kiếm toàn văn (Full-text search) trên danh sách phiên trò chuyện trong Sidebar.

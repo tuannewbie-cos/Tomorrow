@@ -1,8 +1,8 @@
 /**
- * TOMORROW V4.7.5 — UNIVERSAL WEB INTEL, LIVE FREE APIS & MULTI-TOPIC STRUCTURED OUTPUT
+ * TOMORROW V4.7.6 — ADDITIVE MULTI-PANE SPLIT SCREEN, INTERACTIVE PANE CLOSE PICKER & RESILIENT MARKDOWN TABLE/H4 PARSER
  * Automated Training & Verification Simulator
  * 
- * 35 Scenarios:
+ * 36 Scenarios:
  * 1. Test_Pronoun_No_Bro: Xưng "t - m", 0% "bro", max_tokens 250, thuần văn bản, lưu thần tượng Ronaldo vào Memory Vault.
  * 2. Test_Stop_Signal_Okk_Sybau: Tín hiệu dừng "okk" & "sybau" -> MODE=STOP_SIGNAL, max_tokens 250, 1 bong bóng <= 4 từ, 0 dấu "?".
  * 3. Test_Web_No_Stalling: Tra cứu Web đưa kết quả kèm URL ngay lập tức, max_tokens 1200, 0% hứa suông câu giờ.
@@ -38,6 +38,7 @@
  * 33. Test_Day11_Output_Format_Detector: Nhận diện chuẩn xác 5/5 cấu trúc đầu ra (Table, Pros/Cons, Timeline, Deep Cite, News Brief).
  * 34. Test_Day11_Sanitize_GoogleNews_RSS_Link: Cắt bỏ sạch trailing RSS link khi có sources pills, rút gọn link dài khi không có pills.
  * 35. Test_Day11_SystemPrompt_Budget: SYSTEM_INSTRUCTION v4.7.5 tiếp tục bảo toàn nghiêm ngặt < 450 từ.
+ * 36. Test_Day11_Markdown_Table_And_H4_Parser: Phân tích bảng biểu chứa ký tự tiền tệ ($), trailing empty cell và tiêu đề H4 không sót dấu #.
  */
 
 const fs = require('fs');
@@ -51,12 +52,19 @@ function loadTsModule(filePath) {
       module: ts.ModuleKind.CommonJS,
       target: ts.ScriptTarget.ES2020,
       esModuleInterop: true,
+      jsx: ts.JsxEmit.React,
     },
   });
   const m = { exports: {} };
   const fn = new Function('require', 'module', 'exports', '__dirname', '__filename', res.outputText);
   fn(
     (mod) => {
+      if (mod === 'react') {
+        return {
+          createElement: () => null,
+          useState: (init) => [init, () => {}],
+        };
+      }
       if (mod === '@react-native-async-storage/async-storage') {
         return {
           getItem: async () => null,
@@ -68,6 +76,12 @@ function loadTsModule(filePath) {
       if (mod === 'react-native') {
         return {
           Platform: { OS: 'web' },
+          StyleSheet: { create: (s) => s },
+          View: () => null,
+          Text: () => null,
+          ScrollView: () => null,
+          Pressable: () => null,
+          Linking: { openURL: async () => {} },
         };
       }
       if (mod.startsWith('.')) {
@@ -90,6 +104,7 @@ function loadTsModule(filePath) {
 const aiService = loadTsModule(path.resolve(__dirname, 'services/aiService.ts'));
 const profiler = loadTsModule(path.resolve(__dirname, 'services/microPsychProfiler.ts'));
 const memoryVault = loadTsModule(path.resolve(__dirname, 'services/memoryVaultService.ts'));
+const richMarkdownView = loadTsModule(path.resolve(__dirname, 'components/RichMarkdownView.tsx'));
 
 // 1. BỘ LỌC TIÊU ĐỀ RÁC (Đồng bộ storage/chatStorage.ts)
 function isPlaceholderOrNoiseTitle(title) {
@@ -1786,19 +1801,77 @@ let currentVault = { ...DEFAULT_USER_MEMORY_VAULT };
 
   results.push({
     name: 'Test_Day11_SystemPrompt_Budget',
-    input: 'Đếm từ SYSTEM_INSTRUCTION v4.7.5',
+    input: 'Đếm từ SYSTEM_INSTRUCTION v4.7.6',
     mode: `PROMPT_BUDGET_${count}_WORDS`,
     output: [`Số từ: ${count} words (Giới hạn: < 450 words)`],
     score,
     passed: isBudgetValid,
     details: isBudgetValid
-      ? `SYSTEM_INSTRUCTION v4.7.5 đạt chuẩn ngân sách: ${count} từ (< 450 từ), bảo vệ Attention khỏi Lost in the Middle`
+      ? `SYSTEM_INSTRUCTION v4.7.6 đạt chuẩn ngân sách: ${count} từ (< 450 từ), bảo vệ Attention khỏi Lost in the Middle`
       : `Thất bại: Vượt ngân sách từ (${count} >= 450 từ)`,
   });
 }
 
+// TEST 36: Test_Day11_Markdown_Table_And_H4_Parser
+{
+  const sampleTableText = [
+    '| Cặp tiền | Tỷ giá mua | Tỷ giá bán | Biến động | Ghi chú |',
+    '|---|---|---|---|---|',
+    '| USD/VND | 25,400₫ | 25,800₫ | +0.12% | Thị trường ổn định |',
+    '| BTC/USDT | $96,500.5 | $96,510.0 | ≈ +2.4% | |',
+  ].join('\n');
+
+  const sampleHeadingText = '#### Ngày 2: Khám Phá Thiên Nhiên';
+
+  const tableBlocks = richMarkdownView.parseMarkdownBlocks(sampleTableText);
+  const headingBlocks = richMarkdownView.parseMarkdownBlocks(sampleHeadingText);
+
+  // 1. Kiểm tra Table Block:
+  const isTableValid =
+    tableBlocks.length === 1 &&
+    tableBlocks[0].type === 'table' &&
+    tableBlocks[0].headers.length === 5 &&
+    tableBlocks[0].rows.length === 2 &&
+    tableBlocks[0].rows[1].length === 5 &&
+    tableBlocks[0].rows[1][1] === '$96,500.5' &&
+    tableBlocks[0].rows[1][2] === '$96,510.0' &&
+    tableBlocks[0].rows[1][3] === '≈ +2.4%' &&
+    tableBlocks[0].rows[1][4] === '';
+
+  // 2. Kiểm tra Heading H4 Block:
+  const isHeadingValid =
+    headingBlocks.length === 1 &&
+    headingBlocks[0].type === 'heading' &&
+    headingBlocks[0].level === 4 &&
+    headingBlocks[0].text === 'Ngày 2: Khám Phá Thiên Nhiên' &&
+    !headingBlocks[0].text.includes('#');
+
+  // 3. Kiểm tra System Instruction Budget:
+  const words = aiService.SYSTEM_INSTRUCTION.trim().split(/\s+/).filter(Boolean);
+  const isBudgetValid = words.length < 450;
+
+  const passed = isTableValid && isHeadingValid && isBudgetValid;
+  const score = passed ? 10 : 0;
+
+  results.push({
+    name: 'Test_Day11_Markdown_Table_And_H4_Parser',
+    input: 'Bảng biểu crypto/forex có ký tự $, trailing empty cell và tiêu đề ####',
+    mode: 'MARKDOWN_TABLE_AND_H4_PARSER',
+    output: [
+      `Table parsed: ${isTableValid ? 'OK (5 columns, 2 rows, $96,500.5, $96,510.0, empty cell)' : 'FAIL'}`,
+      `Heading parsed: ${isHeadingValid ? 'OK (level: 4, text: "Ngày 2: Khám Phá Thiên Nhiên", no #)' : 'FAIL'}`,
+      `System Prompt budget: ${isBudgetValid ? `${words.length} words (< 450)` : 'FAIL'}`,
+    ],
+    score,
+    passed,
+    details: passed
+      ? 'Phân tích bảng dữ liệu chứa ký tự $ và trailing empty cell chuẩn xác 100%, render H4 không sót ký tự #, bảo toàn ngân sách prompt < 450 từ'
+      : 'Thất bại: Parser bảng biểu hoặc tiêu đề H4 bị lỗi',
+  });
+}
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 35 SCENARIOS (TOMORROW V4.7.5):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 36 SCENARIOS (TOMORROW V4.7.6):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
@@ -1812,16 +1885,16 @@ results.forEach((r, idx) => {
 const totalScore = results.reduce((acc, cur) => acc + cur.score, 0);
 const allPassed = results.every(r => r.passed);
 
-console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/350 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
+console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/360 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
 console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.7.5',
+  version: 'v4.7.6',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.7.5 — Universal Web Intel, Live Weather/Forex APIs, Smart Follow-up Ref & Structured Output Formatter',
+  architecture: 'Tomorrow v4.7.6 — Additive Multi-Pane Split Screen, Interactive Pane Close Picker & Resilient Markdown Table/H4 Parser',
   totalScore,
-  maxScore: 350,
+  maxScore: 360,
   allPassed,
   scenarios: results,
 };

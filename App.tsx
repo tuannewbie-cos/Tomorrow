@@ -97,6 +97,9 @@ interface ChatPaneViewProps {
   userMemory: UserMemoryProfile;
   theme: any;
   isDesktop: boolean;
+  isCloseMode?: boolean;
+  isCloseTarget?: boolean;
+  onConfirmClose?: () => void;
   onSelectPane: (paneId: string) => void;
   onToggleDropdown: (paneId: string) => void;
   onNewChatInPane: (paneId: string) => void;
@@ -124,6 +127,9 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
   totalPanes,
   isActive,
   isSplitMode,
+  isCloseMode,
+  isCloseTarget,
+  onConfirmClose,
   sessions,
   paneSession,
   paneMessages,
@@ -160,15 +166,27 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
       key={pane.id}
       style={[
         styles.singlePaneWrapper,
+        totalPanes >= 3 && { minWidth: 320 },
         totalPanes > 1 && {
           borderLeftWidth: paneIndex > 0 ? 1 : 0,
           borderLeftColor: theme.borderSubtle,
         },
-        totalPanes > 1 && isActive && {
+        totalPanes > 1 && isActive && !isCloseMode && {
           borderColor: theme.mode === 'dark' ? 'rgba(139, 92, 246, 0.4)' : 'rgba(99, 102, 241, 0.4)',
+        },
+        isCloseMode && !isCloseTarget && {
+          opacity: 0.72,
+        },
+        isCloseMode && isCloseTarget && {
+          borderColor: '#EF4444',
+          borderWidth: 2,
+          backgroundColor: theme.mode === 'dark' ? 'rgba(239, 68, 68, 0.08)' : 'rgba(239, 68, 68, 0.04)',
         },
       ]}
       onStartShouldSetResponder={() => {
+        if (isCloseMode) {
+          return false;
+        }
         if (!isActive) {
           onSelectPane(pane.id);
         }
@@ -228,47 +246,63 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
 
           {/* Cụm nút hành động góc phải của pane */}
           <View style={styles.paneActionsRight}>
-            {/* Nút Tạo chat mới trong pane này */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.paneIconBtn,
-                pressed && { backgroundColor: theme.btnHover },
-                Platform.OS === 'web' && { cursor: 'pointer' as any },
-              ]}
-              onPress={() => onNewChatInPane(pane.id)}
-              hitSlop={6}
-            >
-              <SquarePen size={14} color={theme.textSecondary} />
-            </Pressable>
-
-            {/* Nút Thêm pane (+ tối đa 3) */}
-            {totalPanes < 3 && (
+            {isCloseMode && isCloseTarget ? (
               <Pressable
                 style={({ pressed }) => [
-                  styles.paneIconBtn,
-                  pressed && { backgroundColor: theme.btnHover },
-                  Platform.OS === 'web' && { cursor: 'pointer' as any },
+                  styles.closeTargetPill,
+                  pressed && { opacity: 0.8 },
+                  Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
                 ]}
-                onPress={handleAddPane}
+                onPress={onConfirmClose}
                 hitSlop={6}
               >
-                <Plus size={15} color={theme.textSecondary} />
+                <Text style={styles.closeTargetPillText}>✕ Enter để đóng</Text>
               </Pressable>
-            )}
+            ) : (
+              <>
+                {/* Nút Tạo chat mới trong pane này */}
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.paneIconBtn,
+                    pressed && { backgroundColor: theme.btnHover },
+                    Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+                  ]}
+                  onPress={() => onNewChatInPane(pane.id)}
+                  hitSlop={6}
+                >
+                  <SquarePen size={14} color={theme.textSecondary} />
+                </Pressable>
 
-            {/* Nút Đóng pane (×) */}
-            {totalPanes > 1 && (
-              <Pressable
-                style={({ pressed }) => [
-                  styles.paneIconBtn,
-                  pressed && { backgroundColor: theme.btnHover },
-                  Platform.OS === 'web' && { cursor: 'pointer' as any },
-                ]}
-                onPress={() => handleClosePane(pane.id)}
-                hitSlop={6}
-              >
-                <X size={15} color={theme.textSecondary} />
-              </Pressable>
+                {/* Nút Thêm pane (+ tối đa 4) */}
+                {totalPanes < 4 && (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.paneIconBtn,
+                      pressed && { backgroundColor: theme.btnHover },
+                      Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+                    ]}
+                    onPress={handleAddPane}
+                    hitSlop={6}
+                  >
+                    <Plus size={15} color={theme.textSecondary} />
+                  </Pressable>
+                )}
+
+                {/* Nút Đóng pane (×) */}
+                {totalPanes > 1 && (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.paneIconBtn,
+                      pressed && { backgroundColor: theme.btnHover },
+                      Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+                    ]}
+                    onPress={() => handleClosePane(pane.id)}
+                    hitSlop={6}
+                  >
+                    <X size={15} color={theme.textSecondary} />
+                  </Pressable>
+                )}
+              </>
             )}
           </View>
         </View>
@@ -442,10 +476,14 @@ export default function App() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
   const [isMemoryVaultOpen, setIsMemoryVaultOpen] = useState<boolean>(false);
 
-  // HẠNG MỤC 2: Quản lý Split Chat Panes kiểu VS Code (mặc định 1 pane, Cmd+↑ mở 2 pane, tối đa 3 pane)
+  // HẠNG MỤC 2: Quản lý Split Chat Panes kiểu VS Code (mặc định 1 pane, Cmd+↑ mở thêm, tối đa 4 pane)
   const [panes, setPanes] = useState<ChatPane[]>([{ id: 'pane-1', sessionId: null }]);
   const [activePaneId, setActivePaneId] = useState<string>('pane-1');
   const [openDropdownPaneId, setOpenDropdownPaneId] = useState<string | null>(null);
+
+  // Chế độ chọn đóng tab tương tác bằng mũi tên và Enter (Cmd + ArrowDown)
+  const [isPaneCloseMode, setIsPaneCloseMode] = useState<boolean>(false);
+  const [closeTargetPaneIndex, setCloseTargetPaneIndex] = useState<number>(0);
 
   // HẠNG MỤC 1: Cô lập trạng thái typing / status / search theo từng sessionId
   const [typingSessionIds, setTypingSessionIds] = useState<Record<string, boolean>>({});
@@ -480,6 +518,10 @@ export default function App() {
   panesRef.current = panes;
   const activePaneIdRef = useRef<string>(activePaneId);
   activePaneIdRef.current = activePaneId;
+  const isPaneCloseModeRef = useRef<boolean>(isPaneCloseMode);
+  isPaneCloseModeRef.current = isPaneCloseMode;
+  const closeTargetPaneIndexRef = useRef<number>(closeTargetPaneIndex);
+  closeTargetPaneIndexRef.current = closeTargetPaneIndex;
   const sessionsRef = useRef<ChatSession[]>(sessions);
   sessionsRef.current = sessions;
   const userMemoryRef = useRef<UserMemoryProfile>(userMemory);
@@ -998,50 +1040,23 @@ export default function App() {
   const handleCreateNewSession = handleNewChat;
 
   // HẠNG MỤC 2: CÁC THAO TÁC SPLIT PANES (CHIA ĐÔI, THÊM PANE, ĐÓNG PANE, ĐỔI PHIÊN)
-  const handleToggleSplitPanes = useCallback(() => {
+  // Cmd+ArrowUp: Luôn mở thêm pane trống mới (tối đa 4), không bao giờ gộp lại
+  const handleAddNewSplitPane = useCallback(() => {
+    // Thoát chế độ đóng pane nếu đang bật
+    if (isPaneCloseModeRef.current) {
+      setIsPaneCloseMode(false);
+    }
     setPanes((prev) => {
-      if (prev.length <= 1) {
-        // Đang 1 pane: Mở chia đôi 2 pane 50/50 kiểu VS Code
-        // Tự động thu gọn Sidebar nếu màn hình < 1280 để nhường toàn bộ không gian cho 2 cột chat
-        if (width < 1280) {
-          setIsSidebarOpen(false);
-        }
-        const firstPane = prev[0] || { id: 'pane-1', sessionId: null };
-        const newPaneId = `pane-${Date.now()}`;
-        const newPane: ChatPane = {
-          id: newPaneId,
-          sessionId: null, // Cửa sổ chat trống mới hoàn toàn
-        };
-        const next = [firstPane, newPane];
-        panesRef.current = next;
-        setActivePaneId(newPaneId);
-        activePaneIdRef.current = newPaneId;
-        setTimeout(() => {
-          inputBarRefs.current[newPaneId]?.focus?.();
-        }, 50);
-        return next;
-      } else {
-        // Đang chia pane: Gộp lại còn 1 pane chính (pane đang active)
-        const currentActive =
-          prev.find((p) => p.id === activePaneIdRef.current) || prev[0];
-        const next = [currentActive];
-        panesRef.current = next;
-        return next;
+      if (prev.length >= 4) return prev; // Tối đa 4 cửa sổ song song
+      if (width < 1280) {
+        setIsSidebarOpen(false);
       }
-    });
-  }, [width]);
-
-  const handleAddPane = useCallback(() => {
-    setPanes((prev) => {
-      if (prev.length >= 3) return prev; // Hỗ trợ tối đa 3 cửa sổ
       const newPaneId = `pane-${Date.now()}`;
-      const next = [
-        ...prev,
-        {
-          id: newPaneId,
-          sessionId: null, // Cửa sổ chat trống mới hoàn toàn
-        },
-      ];
+      const newPane: ChatPane = {
+        id: newPaneId,
+        sessionId: null, // Cửa sổ chat trống mới hoàn toàn
+      };
+      const next = [...prev, newPane];
       panesRef.current = next;
       setActivePaneId(newPaneId);
       activePaneIdRef.current = newPaneId;
@@ -1050,13 +1065,48 @@ export default function App() {
       }, 50);
       return next;
     });
+  }, [width]);
+
+  const handleToggleSplitPanes = handleAddNewSplitPane;
+  const handleAddPane = handleAddNewSplitPane;
+
+  // Cmd+ArrowDown: Bật chế độ chọn tab cần đóng bằng phím mũi tên ← / → và Enter
+  const handleEnterPaneCloseMode = useCallback(() => {
+    if (panesRef.current.length <= 1) return; // Không đóng khi chỉ có 1 pane
+
+    if (isPaneCloseModeRef.current) {
+      // Nếu đã trong close mode, chuyển tiếp target sang pane tiếp theo (vòng tròn)
+      setCloseTargetPaneIndex((prev) => (prev + 1) % panesRef.current.length);
+      return;
+    }
+
+    setIsPaneCloseMode(true);
+    const curIdx = panesRef.current.findIndex((p) => p.id === activePaneIdRef.current);
+    const targetIdx = curIdx >= 0 ? curIdx : panesRef.current.length - 1;
+    setCloseTargetPaneIndex(targetIdx);
+
+    // Blur ô nhập liệu trên Web để mũi tên/Enter không gõ vào chat
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      const activeEl = document.activeElement;
+      if (activeEl && typeof (activeEl as HTMLElement).blur === 'function') {
+        (activeEl as HTMLElement).blur();
+      }
+    }
   }, []);
 
   const handleClosePane = useCallback((paneId: string) => {
     setPanes((prev) => {
-      if (prev.length <= 1) return prev; // Giữ ít nhất 1 pane
+      if (prev.length <= 1) {
+        setIsPaneCloseMode(false);
+        return prev;
+      }
       const remaining = prev.filter((p) => p.id !== paneId);
       panesRef.current = remaining;
+      if (remaining.length <= 1) {
+        setIsPaneCloseMode(false);
+      } else {
+        setCloseTargetPaneIndex((cur) => Math.min(cur, remaining.length - 1));
+      }
       if (activePaneIdRef.current === paneId) {
         const nextActive = remaining[0];
         setActivePaneId(nextActive.id);
@@ -1088,8 +1138,14 @@ export default function App() {
     }, 40);
   }, []);
 
+  const handleAddNewSplitPaneRef = useRef(handleAddNewSplitPane);
+  handleAddNewSplitPaneRef.current = handleAddNewSplitPane;
   const handleToggleSplitPanesRef = useRef(handleToggleSplitPanes);
   handleToggleSplitPanesRef.current = handleToggleSplitPanes;
+  const handleEnterPaneCloseModeRef = useRef(handleEnterPaneCloseMode);
+  handleEnterPaneCloseModeRef.current = handleEnterPaneCloseMode;
+  const handleClosePaneRef = useRef(handleClosePane);
+  handleClosePaneRef.current = handleClosePane;
 
   // 4. CHỌN 1 PHIÊN TRÒ CHUYỆN CŨ TỪ SIDEBAR HOẶC COMMAND PALETTE (mở trong active pane)
   const handleSelectSession = useCallback((sessionId: string) => {
@@ -1168,7 +1224,7 @@ export default function App() {
         return;
       }
 
-      // HẠNG MỤC 2: Cmd/Ctrl + ArrowUp: Bật / Tắt chia đôi cửa sổ chat (Split Panes) kiểu VS Code
+      // HẠNG MỤC 2: Cmd/Ctrl + ArrowUp: Luôn mở thêm cửa sổ chat mới (tối đa 4), không bao giờ gộp lại
       if (
         isCmdOrCtrl &&
         !e.altKey &&
@@ -1177,8 +1233,53 @@ export default function App() {
       ) {
         e.preventDefault();
         e.stopPropagation();
-        handleToggleSplitPanesRef.current();
+        handleAddNewSplitPaneRef.current();
         return;
+      }
+
+      // HẠNG MỤC 2: Cmd/Ctrl + ArrowDown: Bật chế độ chọn tab cần đóng bằng mũi tên ← / → và Enter để đóng
+      if (
+        isCmdOrCtrl &&
+        !e.altKey &&
+        !e.shiftKey &&
+        (key === 'arrowdown' || code === 'ArrowDown')
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleEnterPaneCloseModeRef.current();
+        return;
+      }
+
+      // Khi đang trong chế độ chọn đóng tab (isPaneCloseMode === true)
+      if (isPaneCloseModeRef.current) {
+        if (key === 'arrowleft' || code === 'ArrowLeft') {
+          e.preventDefault();
+          e.stopPropagation();
+          setCloseTargetPaneIndex((prev) => (prev - 1 + panesRef.current.length) % panesRef.current.length);
+          return;
+        }
+        if (key === 'arrowright' || code === 'ArrowRight') {
+          e.preventDefault();
+          e.stopPropagation();
+          setCloseTargetPaneIndex((prev) => (prev + 1) % panesRef.current.length);
+          return;
+        }
+        if (key === 'enter' || code === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          const target = panesRef.current[closeTargetPaneIndexRef.current];
+          if (target) {
+            handleClosePaneRef.current(target.id);
+          }
+          setIsPaneCloseMode(false);
+          return;
+        }
+        if (key === 'escape' || code === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          setIsPaneCloseMode(false);
+          return;
+        }
       }
 
       // Cmd/Ctrl + K: Bật/tắt bảng lệnh nhanh Command Palette
@@ -1360,13 +1461,13 @@ export default function App() {
 
           {/* Tiêu đề "Tomorrow" ở giữa */}
           <View style={styles.headerCenter}>
-            <View style={styles.titleRow}>
-              <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
-              <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
-                <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7.5</Text>
+              <View style={[styles.titleRow, { gap: 6, alignItems: 'center' }]}>
+                <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
+                <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
+                  <Dot size={18} color={theme.liveBadgeText} />
+                  <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7.6</Text>
+                </View>
               </View>
-            </View>
           </View>
 
           {/* Cụm nút góc phải: Nút Command Palette ⌘K (trên Desktop) + Nút Split Panes (⌘↑) + Nút Theme Sáng/Tối + Nút Tạo Cuộc Trò Chuyện Mới */}
@@ -1509,6 +1610,7 @@ export default function App() {
             <View
               style={[
                 styles.panesContainer,
+                panes.length >= 3 && Platform.OS === 'web' && ({ overflowX: 'auto' } as any),
                 isDraggingImage && {
                   borderColor: '#3B82F6',
                   borderWidth: 2,
@@ -1520,6 +1622,30 @@ export default function App() {
                 },
               ]}
             >
+              {isPaneCloseMode && (
+                <View style={styles.paneCloseFloatingBar} pointerEvents="box-none">
+                  <View
+                    style={[
+                      styles.paneCloseFloatingPill,
+                      {
+                        backgroundColor: theme.mode === 'dark' ? '#1E2430' : '#FFFFFF',
+                        borderColor: '#EF4444',
+                        shadowColor: '#000',
+                        shadowOpacity: theme.mode === 'dark' ? 0.45 : 0.15,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.paneCloseFloatingText,
+                        { color: theme.mode === 'dark' ? '#F87171' : '#DC2626' },
+                      ]}
+                    >
+                      Đóng tab: Dùng <Text style={{ fontWeight: '700' }}>←</Text> / <Text style={{ fontWeight: '700' }}>→</Text> chọn cửa sổ • <Text style={{ fontWeight: '700' }}>Enter</Text> để đóng • <Text style={{ fontWeight: '700' }}>Esc</Text> để hủy
+                    </Text>
+                  </View>
+                </View>
+              )}
               {isDraggingImage && (
                 <View style={styles.dragDropBadgeContainer} pointerEvents="none">
                   <View style={[styles.dragDropBadge, { backgroundColor: '#2563EB' }]}>
@@ -1538,6 +1664,7 @@ export default function App() {
                 const isTyping = !!(pane.sessionId && typingSessionIds[pane.sessionId]);
                 const isSearching = !!(pane.sessionId && searchingWebBySession[pane.sessionId]);
                 const statusText = pane.sessionId ? typingStatusBySession[pane.sessionId] : undefined;
+                const isCloseTarget = isPaneCloseMode && paneIndex === closeTargetPaneIndex;
 
                 return (
                   <ChatPaneView
@@ -1547,6 +1674,12 @@ export default function App() {
                     totalPanes={panes.length}
                     isActive={isActive}
                     isSplitMode={panes.length > 1}
+                    isCloseMode={isPaneCloseMode}
+                    isCloseTarget={isCloseTarget}
+                    onConfirmClose={() => {
+                      handleClosePane(pane.id);
+                      setIsPaneCloseMode(false);
+                    }}
                     sessions={sessions}
                     paneSession={paneSession}
                     paneMessages={paneMessages}
@@ -1559,12 +1692,17 @@ export default function App() {
                     theme={theme}
                     isDesktop={isDesktop}
                     onSelectPane={(paneId) => {
+                      if (isPaneCloseMode) {
+                        setCloseTargetPaneIndex(paneIndex);
+                        return;
+                      }
                       if (activePaneId !== paneId) {
                         setActivePaneId(paneId);
                         activePaneIdRef.current = paneId;
                       }
                     }}
                     onToggleDropdown={(paneId) => {
+                      if (isPaneCloseMode) return;
                       setOpenDropdownPaneId((prev) => (prev === paneId ? null : paneId));
                     }}
                     onNewChatInPane={handleNewChatInPane}
@@ -1823,6 +1961,51 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  closeTargetPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EF4444',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  closeTargetPillText: {
+    color: '#FFFFFF',
+    fontSize: 11.5,
+    fontWeight: '700',
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
+        : undefined,
+  },
+  paneCloseFloatingBar: {
+    position: 'absolute',
+    top: 10,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 100,
+  },
+  paneCloseFloatingPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    elevation: 8,
+    shadowOffset: { width: 0, height: 3 },
+    shadowRadius: 8,
+  },
+  paneCloseFloatingText: {
+    fontSize: 12.5,
+    fontWeight: '500',
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
+        : undefined,
   },
   paneDropdownPopover: {
     position: 'absolute',
