@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.8.1` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.8.2` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -408,6 +408,20 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
     + Bổ sung kịch bản TEST 44: `Test_v481_MultiPane_4Tabs_Concurrency_And_RateLimit`.
     + Đạt điểm tuyệt đối 44/44 scenarios (440/440 điểm 100% hoàn hảo).
   - Header cập nhật: **`Online • v4.8.1`**.
+
+#### ✅ Đã hoàn thành (Bản tinh chỉnh Chia 4 Cột 25% Khít Mép & Khởi tạo 1 Pane Mặc định — v4.8.2):
+- [x] **Phiên bản `Online • v4.8.2`: Chia Đều Khít 25% Không Tràn Mép Phải & Khởi Động 1 Cửa Sổ Trống Mặc Định**
+  - **Khắc phục triệt để lỗi tràn ngang/xén mép phải khi mở 4 Split Panes (`Cmd + ArrowUp`):**
+    + Xóa bỏ `minWidth: 320` trên `singlePaneWrapper` và `overflowX: 'auto'` trên `panesContainer`, khóa chặt `flex: 1, flexBasis: 0, minWidth: 0, maxWidth: '100%', overflow: 'hidden'` giúp 4 cột luôn tự động chia đều khít 25% mỗi cột trên mọi kích thước màn hình.
+    + Tối ưu hiển thị mật độ cao (`isQuadOrDenseSplit = totalPanes >= 3`):
+      * Thanh tiêu đề pane: `paddingHorizontal: 8`, nút chọn phiên `flex: 1, minWidth: 0, marginRight: 4, maxWidth: '68%'`, text `numberOfLines={1}, ellipsizeMode="tail", fontSize: 11.5`.
+      * Màn hình mở đầu Claude: Hàng icon + lời chào co giãn mượt mà, `TomorrowGlyph` size 20 (4 panes) / 22 (3 panes), text `numberOfLines={1}, adjustsFontSizeToFit, fontSize: 17 (4 panes) / 20 (3 panes)` không bao giờ bị cắt xén một ký tự nào của chữ `"Chào buổi sáng"`.
+      * Thanh nhập liệu `FloatingInputBar`: chế độ `isDenseSplit` với `paddingHorizontal: 6`, pill container `paddingHorizontal: 8, gap: 4, minHeight: 40`, nút `+` và gửi co về `28x28`, `TextInput` `fontSize: 13, paddingHorizontal: 2`, `placeholder="Nhắn tin..."` nằm gọn 1 dòng.
+  - **Khởi tạo Cold Start / Reload chuẩn 1 cửa sổ trò chuyện trống mặc định (`App.tsx`):**
+    + Khi mở lại app hoặc reload trình duyệt, ứng dụng luôn bắt đầu bằng **DUY NHẤT 1 cửa sổ trò chuyện trống** (`1 pane`, `sessionId: null`) theo chuẩn giao diện mở đầu Claude.
+    + Không tự động mở lại các pane cũ hay phiên chat cũ trên màn hình chính, toàn bộ lịch sử hội thoại nằm gọn gàng trong Sidebar theo từng Sổ ghi chú.
+    + Trong phiên làm việc, người dùng bấm `Cmd + ArrowUp` vẫn mở thêm các tab mới (`2 -> 3 -> 4`) linh hoạt như bình thường.
+  - Header cập nhật: **`Online • v4.8.2`**.
 
 - [ ] **Ngày 12 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.

@@ -1,4 +1,4 @@
-# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.8.1)
+# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.8.2)
 
 ## 1. MÔI TRƯỜNG, NỀN TẢNG CỐT LÕI & CÁC KHÓA LƯU TRỮ
 - **Hệ điều hành phát triển & vận hành:** macOS (Ứng dụng đích chạy tại `/Applications/Tomorrow.app` kết nối Vercel Production). Mọi script/shell dùng chuẩn Unix/macOS, không dùng cú pháp Windows.
@@ -43,7 +43,11 @@
   + Công thức Toán học LaTeX Unicode (`$$...$$` hộp căn giữa viền Indigo `#6366F1`, `$...$` nội dòng).
   + Nút Quick Copy phản hồi ở góc dưới bên phải cho tin nhắn >120 ký tự hoặc có rich block.
 - **Thanh Nhập Liệu Co Giãn Đa Dòng (`FloatingInputBar.tsx`):** Co giãn từ `44px` đến `160px` theo nội dung; thu về `44px` sau khi gửi; đo đạc nhịp gõ ẩn `KeystrokeTelemetry` bằng `useRef` (zero re-render).
-- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.8.1`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.8.2`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Quy chuẩn Chia đều 4 Cột 25% & Khởi động 1 Pane Mặc định (`v4.8.2`):**
+  + Cấm gán `minWidth` cứng (như `minWidth: 320`) trên `singlePaneWrapper` và `overflowX: 'auto'` trên `panesContainer`. Mọi pane luôn tuân thủ `flex: 1, flexBasis: 0, minWidth: 0, maxWidth: '100%', overflow: 'hidden'` để 4 cột chia đều 25% khít mép không tràn ngang.
+  + Chế độ hiển thị mật độ cao (`totalPanes >= 3`): header padding 8px, text co giãn mượt, lời chào fontSize 17–20 không xén chữ "Chào buổi sáng", input pill padding 6–8px và placeholder "Nhắn tin..." gọn gàng.
+  + Cold Start / Reload: Luôn mở duy nhất 1 pane trò chuyện trống mặc định (sessionId: null), giữ lịch sử an toàn trong Sidebar.
 - **Quy chuẩn Cô lập Split Panes & Điều phối Đồng thời Concurrency Gate (`v4.8.1`):**
   + Tuyệt đối cô lập trạng thái theo `sessionId`: `inFlightSessionsRef` (Set<string>) chặn gửi đúp trên cùng một phiên, cho phép các tab khác gửi song song độc lập.
   + Dọn timer theo `sessionId`: `timersBySessionRef` chỉ xóa timer của chính phiên đó, không xóa timer của 3 tab còn lại.

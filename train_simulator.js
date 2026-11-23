@@ -2440,9 +2440,9 @@ console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.8.1',
+  version: 'v4.8.2',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.8.1 — Multi-Pane 4-Tab Concurrency Gate, 429 Burst Isolation, Serialized Storage Saver & In-Flight State Isolation',
+  architecture: 'Tomorrow v4.8.2 — Quad Split 25% Equal Columns, No-Overflow Dense Layout & 1-Pane Default Cold Start',
   totalScore,
   maxScore: 440,
   allPassed,

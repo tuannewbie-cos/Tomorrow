@@ -168,6 +168,7 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
 }) => {
   const hasPaneHistory = paneMessages.length > 0;
   const paneGreeting = getColdGreetingText(userMemory, hasPaneHistory);
+  const isQuadOrDenseSplit = totalPanes >= 3;
 
   const rawTitle = paneSession?.title;
   const displayTitle = isPlaceholderOrNoiseTitle(rawTitle)
@@ -179,7 +180,6 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
       key={pane.id}
       style={[
         styles.singlePaneWrapper,
-        totalPanes >= 3 && { minWidth: 320 },
         totalPanes > 1 && {
           borderLeftWidth: paneIndex > 0 ? 1 : 0,
           borderLeftColor: theme.borderSubtle,
@@ -214,6 +214,7 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
         <View
           style={[
             styles.paneHeaderBar,
+            isQuadOrDenseSplit && { paddingHorizontal: 8 },
             {
               backgroundColor: isActive
                 ? (theme.mode === 'dark' ? '#1C1C1E' : '#F7F7F8')
@@ -229,6 +230,7 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
           <Pressable
             style={({ pressed }) => [
               styles.paneDropdownBtn,
+              isQuadOrDenseSplit && { flex: 1, minWidth: 0, marginRight: 4, maxWidth: '68%' },
               {
                 backgroundColor: isActive
                   ? (theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)')
@@ -250,8 +252,10 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
             />
             <Text
               numberOfLines={1}
+              ellipsizeMode="tail"
               style={[
                 styles.paneDropdownText,
+                isQuadOrDenseSplit && { fontSize: 11.5, flexShrink: 1 },
                 { color: isActive ? theme.textPrimary : theme.textSecondary },
               ]}
             >
@@ -261,7 +265,7 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
           </Pressable>
 
           {/* Cụm nút hành động góc phải của pane */}
-          <View style={styles.paneActionsRight}>
+          <View style={[styles.paneActionsRight, isQuadOrDenseSplit && { gap: 4, flexShrink: 0 }]}>
             {isCloseMode && isCloseTarget ? (
               <Pressable
                 style={({ pressed }) => [
@@ -413,20 +417,47 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
       {/* Khu vực Tin nhắn của Pane */}
       <View style={styles.chatAreaWrapper}>
         {paneMessages.length === 0 ? (
-          <View style={styles.claudeWelcomeCenterContainer}>
-            <View style={styles.claudeWelcomeBox}>
+          <View
+            style={[
+              styles.claudeWelcomeCenterContainer,
+              isQuadOrDenseSplit && { paddingHorizontal: 6 },
+            ]}
+          >
+            <View
+              style={[
+                styles.claudeWelcomeBox,
+                isQuadOrDenseSplit && { maxWidth: '100%', minWidth: 0, paddingHorizontal: 4 },
+              ]}
+            >
               {/* Hàng chào ngang: Icon lõi Tomorrow + Dòng chào ngắn theo khung giờ thực tế */}
-              <View style={styles.claudeGreetingRow}>
+              <View
+                style={[
+                  styles.claudeGreetingRow,
+                  isQuadOrDenseSplit && {
+                    gap: 8,
+                    marginBottom: 16,
+                    maxWidth: '100%',
+                    minWidth: 0,
+                    paddingHorizontal: 4,
+                    justifyContent: 'center',
+                  },
+                ]}
+              >
                 <TomorrowGlyph
-                  size={isSplitMode ? 26 : 32}
+                  size={isQuadOrDenseSplit ? (totalPanes === 4 ? 20 : 22) : (isSplitMode ? 26 : 32)}
                   themeMode={theme.mode}
                 />
                 <Text
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                  adjustsFontSizeToFit
                   style={[
                     styles.claudeGreetingText,
                     {
-                      fontSize: isSplitMode ? 24 : 32,
+                      fontSize: totalPanes === 4 ? 17 : totalPanes === 3 ? 20 : (isSplitMode ? 24 : 32),
                       color: theme.mode === 'dark' ? '#ECECEC' : '#1A1A1A',
+                      flexShrink: 1,
+                      minWidth: 0,
                     },
                   ]}
                 >
@@ -444,9 +475,10 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
                 isTomorrowTyping={isTyping}
                 theme={theme}
                 isSplitMode={isSplitMode}
+                isDenseSplit={isQuadOrDenseSplit}
                 isCentered={true}
-                maxWidth={680}
-                placeholder="Hôm nay tôi có thể giúp gì cho bạn?"
+                maxWidth={isQuadOrDenseSplit ? undefined : 680}
+                placeholder={isQuadOrDenseSplit ? 'Nhắn tin...' : 'Hôm nay tôi có thể giúp gì cho bạn?'}
               />
             </View>
           </View>
@@ -469,7 +501,7 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
               style={styles.flatListStyle}
               contentContainerStyle={[
                 styles.chatListContent,
-                { paddingHorizontal: isSplitMode ? 12 : (isDesktop ? 28 : 16) },
+                { paddingHorizontal: isQuadOrDenseSplit ? 8 : (isSplitMode ? 12 : (isDesktop ? 28 : 16)) },
               ]}
               showsVerticalScrollIndicator={false}
               onScroll={onScroll}
@@ -516,8 +548,9 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
               isTomorrowTyping={isTyping}
               theme={theme}
               isSplitMode={isSplitMode}
+              isDenseSplit={isQuadOrDenseSplit}
               isCentered={false}
-              placeholder="Nhắn cho Tomorrow..."
+              placeholder={isQuadOrDenseSplit ? 'Nhắn tin...' : 'Nhắn cho Tomorrow...'}
             />
           </>
         )}
@@ -726,7 +759,7 @@ export default function App() {
           setThemeMode(savedTheme);
         }
 
-        // Khôi phục notebooks và workspace tab của notebook đang active
+        // Khôi phục notebooks
         if (savedNotebooks && savedNotebooks.length > 0) {
           setNotebooks(savedNotebooks);
           notebooksRef.current = savedNotebooks;
@@ -734,27 +767,17 @@ export default function App() {
           const initialNbId = defaultNb ? defaultNb.id : DEFAULT_NOTEBOOK_ID;
           setActiveNotebookId(initialNbId);
           activeNotebookIdRef.current = initialNbId;
-
-          if (defaultNb && defaultNb.savedPanes && defaultNb.savedPanes.length > 0) {
-            setPanes(defaultNb.savedPanes);
-            panesRef.current = defaultNb.savedPanes;
-            const restoredActive = defaultNb.activePaneId || defaultNb.savedPanes[0].id;
-            setActivePaneId(restoredActive);
-            activePaneIdRef.current = restoredActive;
-          } else {
-            const initialPanes: ChatPane[] = [{ id: 'pane-1', sessionId: null }];
-            panesRef.current = initialPanes;
-            setPanes(initialPanes);
-            setActivePaneId('pane-1');
-            activePaneIdRef.current = 'pane-1';
-          }
-        } else {
-          const initialPanes: ChatPane[] = [{ id: 'pane-1', sessionId: null }];
-          panesRef.current = initialPanes;
-          setPanes(initialPanes);
-          setActivePaneId('pane-1');
-          activePaneIdRef.current = 'pane-1';
         }
+
+        // HẠNG MỤC 2 (v4.8.2): Mỗi lần mở lại ứng dụng (Cold Start / Reload) luôn bắt đầu với
+        // DUY NHẤT 1 cửa sổ trò chuyện trống mặc định (1 pane, sessionId: null) chuẩn màn hình mở đầu Claude,
+        // toàn bộ lịch sử cũ nằm gọn trong Sidebar theo từng Sổ ghi chú.
+        const initialDefaultPane: ChatPane = { id: `pane-${Date.now()}`, sessionId: null };
+        setPanes([initialDefaultPane]);
+        panesRef.current = [initialDefaultPane];
+        setActivePaneId(initialDefaultPane.id);
+        activePaneIdRef.current = initialDefaultPane.id;
+        setCurrentSessionId(null);
       } catch (err) {
         console.error('[Bootstrap] Lỗi khi nạp dữ liệu:', err);
       } finally {
@@ -1782,7 +1805,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.8.1</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.8.2</Text>
               </View>
             </View>
           </View>
@@ -1886,7 +1909,6 @@ export default function App() {
             <View
               style={[
                 styles.panesContainer,
-                panes.length >= 3 && Platform.OS === 'web' && ({ overflowX: 'auto' } as any),
                 isDraggingImage && {
                   borderColor: '#3B82F6',
                   borderWidth: 2,

@@ -43,6 +43,7 @@ export interface FloatingInputBarProps {
   isTomorrowTyping?: boolean;
   theme?: ThemeColors;
   isSplitMode?: boolean;
+  isDenseSplit?: boolean;
   placeholder?: string;
   isCentered?: boolean;
   maxWidth?: number;
@@ -63,6 +64,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
   isTomorrowTyping = false,
   theme = DARK_THEME,
   isSplitMode = false,
+  isDenseSplit = false,
   placeholder = 'Nhắn cho Tomorrow...',
   isCentered = false,
   maxWidth,
@@ -449,7 +451,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
     inputText.trim().length > 0 || Boolean(selectedImage) || Boolean(attachedFile);
 
   return (
-    <View style={[styles.wrapper, isCentered && { paddingBottom: 0, paddingTop: 0, paddingHorizontal: 0 }]}>
+    <View style={[styles.wrapper, isCentered ? { paddingBottom: 0, paddingTop: 0, paddingHorizontal: 0 } : (isDenseSplit ? { paddingHorizontal: 6, paddingBottom: 8 } : {})]}>
       {/* Hidden Web File Input */}
       {Platform.OS === 'web' && (
         <input
@@ -526,12 +528,19 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
             backgroundColor: theme.inputBg,
             borderColor: theme.inputBorder,
           },
+          isDenseSplit && {
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            gap: 4,
+            minHeight: 40,
+            maxWidth: '100%',
+          },
           isCentered && {
-            maxWidth: maxWidth || 680,
+            maxWidth: isDenseSplit ? '100%' : (maxWidth || 680),
             borderRadius: 20,
-            minHeight: 52,
-            paddingHorizontal: 12,
-            paddingVertical: 7,
+            minHeight: isDenseSplit ? 44 : 52,
+            paddingHorizontal: isDenseSplit ? 8 : 12,
+            paddingVertical: isDenseSplit ? 5 : 7,
             shadowOpacity: theme.mode === 'dark' ? 0.35 : 0.08,
             shadowRadius: 14,
           },
@@ -578,6 +587,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
           <Pressable
             style={({ pressed }) => [
               styles.plusButton,
+              isDenseSplit && { width: 28, height: 28, borderRadius: 14 },
               showAttachMenu
                 ? {
                     backgroundColor:
@@ -602,9 +612,9 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
             hitSlop={6}
           >
             {showAttachMenu ? (
-              <X size={18} color={theme.textPrimary} />
+              <X size={isDenseSplit ? 16 : 18} color={theme.textPrimary} />
             ) : (
-              <Plus size={19} color={theme.textSecondary} />
+              <Plus size={isDenseSplit ? 16 : 19} color={theme.textSecondary} />
             )}
           </Pressable>
         </View>
@@ -617,8 +627,12 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
             styles.input,
             {
               color: theme.inputText,
-              fontSize: isSplitMode ? 14 : 15,
+              fontSize: isDenseSplit ? 13 : (isSplitMode ? 14 : 15),
               ...(Platform.OS !== 'web' ? { height: Math.min(110, Math.max(24, inputHeight)) } : {}),
+            },
+            isDenseSplit && {
+              paddingHorizontal: 2,
+              lineHeight: 18,
             },
             Platform.OS === 'web' &&
               ({
@@ -642,6 +656,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
         <Pressable
           style={({ pressed }) => [
             styles.sendButton,
+            isDenseSplit && { width: 28, height: 28, borderRadius: 14 },
             { backgroundColor: theme.btnBg },
             hasContentToSend &&
               !isLoading &&
@@ -659,7 +674,7 @@ export const FloatingInputBar = forwardRef<FloatingInputBarRef, FloatingInputBar
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
             <Send
-              size={16}
+              size={isDenseSplit ? 14 : 16}
               color={hasContentToSend ? '#FFFFFF' : theme.textMuted}
             />
           )}
