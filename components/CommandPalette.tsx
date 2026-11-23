@@ -25,10 +25,11 @@ import {
   Brain,
   FolderPlus,
 } from 'lucide-react-native';
-import { ChatSession } from '../types/chat';
+import { ChatSession, UserMemoryProfile } from '../types/chat';
 import { ThemeColors, ThemeMode } from '../constants/theme';
 import { isPlaceholderOrNoiseTitle } from '../storage/chatStorage';
-import { Notebook } from '../storage/notebookStorage';
+import { Notebook, formatRelativeTime } from '../storage/notebookStorage';
+import { searchLocalSemanticRecall } from '../services/semanticRecallService';
 import { getQuotaSummarySync, resetOpenAICircuitBreaker } from '../services/quotaShield';
 import { resetOpenAICircuitBreaker as resetAiBreaker } from '../services/aiService';
 
@@ -37,7 +38,9 @@ export interface CommandPaletteProps {
   onClose: () => void;
   sessions: ChatSession[];
   notebooks?: Notebook[];
-  onSelectSession: (sessionId: string) => void;
+  activeNotebookId?: string;
+  userMemory?: UserMemoryProfile;
+  onSelectSession: (sessionId: string, targetNotebookId?: string) => void;
   onCreateNewSession: () => void;
   onNewChat?: () => void;
   onCreateNewNotebook?: () => void;
@@ -50,7 +53,7 @@ export interface CommandPaletteProps {
   themeMode: ThemeMode;
 }
 
-export type PaletteItemType = 'action' | 'session';
+export type PaletteItemType = 'action' | 'session' | 'recall';
 
 export interface PaletteItem {
   id: string;
@@ -59,6 +62,7 @@ export interface PaletteItem {
   subtitle?: string;
   snippet?: string;
   badge?: string;
+  subBadge?: string;
   notebookName?: string;
   iconType:
     | 'new_chat'
@@ -68,10 +72,12 @@ export interface PaletteItem {
     | 'split_panes'
     | 'reset_circuit_breaker'
     | 'memory_vault'
-    | 'new_notebook';
+    | 'new_notebook'
+    | 'recall_turn';
   sessionId?: string;
+  notebookId?: string;
   action?: () => void;
-  group: 'actions' | 'recent' | 'search';
+  group: 'actions' | 'recent' | 'search' | 'recall';
 }
 
 function formatSessionTitle(rawTitle?: string): string {
@@ -132,6 +138,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onClose,
   sessions,
   notebooks,
+  activeNotebookId,
+  userMemory,
   onSelectSession,
   onCreateNewSession,
   onNewChat,
@@ -145,6 +153,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   themeMode,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [quotaSummary, setQuotaSummary] = useState(getQuotaSummarySync());
   const inputRef = useRef<TextInputInstance>(null);
@@ -153,6 +162,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   useEffect(() => {
     if (visible) {
       setSearchQuery('');
+      setDebouncedSearchQuery('');
       setSelectedIndex(0);
       setQuotaSummary(getQuotaSummarySync());
       const timer = setTimeout(() => {
@@ -161,6 +171,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       return () => clearTimeout(timer);
     }
   }, [visible]);
+
+  // Debounce tìm kiếm ngữ nghĩa 80ms trên RAM
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim());
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Hành động tạo cuộc trò chuyện mới: gọi onNewChat / onCreateNewSession và đóng bảng lệnh ngay
   const handleTriggerNewChat = useCallback(() => {
@@ -430,13 +448,57 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     return [...matchedActions, ...matchedSessions].slice(0, 8);
   }, [searchQuery, sessions, notebooks, quickActions, onSelectSession, onClose]);
 
+  // Nhóm Kết Quả Truy Hồi Ngữ Nghĩa Cục Bộ (BM25 + Concept Graph, debounce 80ms)
+  const recallItems: PaletteItem[] = useMemo(() => {
+    if (debouncedSearchQuery.length < 2) return [];
+
+    const recallResults = searchLocalSemanticRecall(debouncedSearchQuery, {
+      sessions,
+      memoryVault: userMemory?.vault || userMemory,
+      notebooks,
+      activeNotebookId,
+      limit: 5,
+    });
+
+    return recallResults.map((r) => {
+      const c = r.chunk;
+      const isVault = c.sourceType === 'memory_vault';
+      const relTime = formatRelativeTime(c.timestamp);
+      const subBadge = isVault
+        ? '🧠 Memory Vault'
+        : `${c.notebookName || 'Ghi chú chung'} • ${relTime}`;
+
+      return {
+        id: `recall-${c.id}`,
+        type: 'recall' as PaletteItemType,
+        title: c.sessionTitle,
+        subtitle: c.snippet,
+        snippet: c.snippet,
+        subBadge,
+        notebookName: c.notebookName,
+        iconType: (isVault ? 'memory_vault' : 'recall_turn') as PaletteItem['iconType'],
+        sessionId: c.sessionId,
+        notebookId: c.notebookId,
+        group: 'recall' as const,
+        action: () => {
+          onClose();
+          if (isVault) {
+            onOpenMemoryVault?.();
+          } else if (c.sessionId) {
+            onSelectSession(c.sessionId, c.notebookId);
+          }
+        },
+      };
+    });
+  }, [debouncedSearchQuery, sessions, userMemory, notebooks, activeNotebookId, onSelectSession, onOpenMemoryVault, onClose]);
+
   // Danh sách hiển thị theo trạng thái tìm kiếm
   const displayList: PaletteItem[] = useMemo(() => {
     if (searchQuery.trim() === '') {
       return [...quickActions, ...recentItems];
     }
-    return searchResults;
-  }, [searchQuery, quickActions, recentItems, searchResults]);
+    return [...searchResults, ...recallItems];
+  }, [searchQuery, quickActions, recentItems, searchResults, recallItems]);
 
   // Reset lựa chọn khi thay đổi truy vấn tìm kiếm
   useEffect(() => {
@@ -503,6 +565,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         return <Brain size={16} color={isSelected ? activeColor : '#A855F7'} />;
       case 'new_notebook':
         return <FolderPlus size={16} color={isSelected ? activeColor : '#F59E0B'} />;
+      case 'recall_turn':
+        return <Clock size={15} color={isSelected ? activeColor : theme.textSecondary} />;
       case 'session':
       default:
         return (
@@ -634,7 +698,9 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     ? 'THAO TÁC NHANH'
                     : item.group === 'recent'
                     ? 'GẦN ĐÂY'
-                    : `KẾT QUẢ TÌM KIẾM (${displayList.length})`;
+                    : item.group === 'recall'
+                    ? 'TRÍ NHỚ & NỘI DUNG CŨ'
+                    : `KẾT QUẢ TÌM KIẾM (${searchResults.length})`;
 
                 return (
                   <React.Fragment key={item.id}>
@@ -707,7 +773,30 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                           >
                             {item.title}
                           </Text>
-                          {item.notebookName ? (
+                          {item.subBadge ? (
+                            <View
+                              style={{
+                                paddingHorizontal: 6,
+                                paddingVertical: 1.5,
+                                borderRadius: 4,
+                                backgroundColor:
+                                  theme.mode === 'dark'
+                                    ? 'rgba(255, 255, 255, 0.08)'
+                                    : 'rgba(0, 0, 0, 0.05)',
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: 10,
+                                  color: theme.textMuted,
+                                  fontWeight: '500',
+                                }}
+                                numberOfLines={1}
+                              >
+                                {item.subBadge}
+                              </Text>
+                            </View>
+                          ) : item.notebookName ? (
                             <View
                               style={{
                                 paddingHorizontal: 5,

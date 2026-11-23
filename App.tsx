@@ -936,7 +936,11 @@ export default function App() {
           }));
         },
         undefined,
-        telemetry
+        telemetry,
+        targetSessionId,
+        activeNotebookIdRef.current,
+        sessionsRef.current,
+        notebooksRef.current
       );
 
       // HẠNG MỤC 1: Timeout Watchdog linh hoạt: 35s cho tác vụ Vision/STEM/Chuyên sâu/Web search, 15s cho chat nhanh
@@ -1716,7 +1720,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.7.9</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.8</Text>
               </View>
             </View>
           </View>
@@ -1951,6 +1955,8 @@ export default function App() {
           onClose={() => setIsCommandPaletteOpen(false)}
           sessions={sessions}
           notebooks={notebooks}
+          activeNotebookId={activeNotebookId}
+          userMemory={userMemory}
           onSelectSession={handleSelectSession}
           onCreateNewSession={handleNewChat}
           onNewChat={handleNewChat}

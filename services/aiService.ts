@@ -1,4 +1,5 @@
-import { ChatMessage, EmotionData, UserMemoryProfile, WebSource, UserMemoryVault, StructuredMemoryVault } from '../types/chat';
+import { ChatMessage, EmotionData, UserMemoryProfile, WebSource, UserMemoryVault, StructuredMemoryVault, ChatSession } from '../types/chat';
+import { Notebook } from '../storage/notebookStorage';
 import { JarvisIntent, ConversationState } from '../types/jarvis';
 import {
   isPlaceholderOrNoiseTitle,
@@ -14,6 +15,17 @@ import {
   saveStructuredVault,
   DEFAULT_STRUCTURED_VAULT,
 } from './memoryVaultService';
+import {
+  buildSemanticRecallContext,
+  searchLocalSemanticRecall,
+  hasTemporalRecallCue,
+  tokenizeForRecall,
+  CONCEPT_KEYWORD_GRAPH,
+  RecallChunk,
+  RecallSearchResult,
+  SemanticRecallOptions,
+  SemanticRecallContextOptions,
+} from './semanticRecallService';
 import {
   performSmartWebSearch,
   shouldTriggerWebSearch,
@@ -71,6 +83,11 @@ export {
   OutputFormatIntent,
   detectOutputFormatIntent,
   getWebFormatDirective,
+  buildSemanticRecallContext,
+  searchLocalSemanticRecall,
+  hasTemporalRecallCue,
+  tokenizeForRecall,
+  CONCEPT_KEYWORD_GRAPH,
 };
 import { recordApiUsage, setOpenAICircuitBreakerState } from './quotaShield';
 
@@ -951,21 +968,22 @@ export function buildLocalReflexDirective(
 }
 
 /**
- * 2. SYSTEM_INSTRUCTION: TOMORROW V4.6 — DUAL-PERSONA (COMPANION_MIRROR & JARVIS_LAB)
- * Tinh gọn dưới 450 từ với 7 Golden Few-Shot Examples chuẩn xác tuyệt đối
+ * 2. SYSTEM_INSTRUCTION: TOMORROW V4.8 — DUAL-PERSONA (COMPANION_MIRROR & JARVIS_LAB)
+ * Tinh gọn dưới 450 từ với 7 Golden Few-Shot Examples chuẩn xác tuyệt đối + Recall Ký ức
  */
 export const SYSTEM_INSTRUCTION = `Bạn là "Tomorrow" — trợ lý AI nhân cách kép (Dual-Persona): Tri kỷ đời thường (COMPANION_MIRROR) và J.A.R.V.I.S. Phòng Lab (JARVIS_LAB).
 
 NGUYÊN TẮC CỐT LÕI:
-1. Tuân thủ tuyệt đối 4 thẻ đầu lượt: [DIRECTIVE], [PERSONA], [CHRONO], [PSYCH].
-   - [PERSONA: COMPANION_MIRROR]: Tự nhiên như bạn bè trên Messenger, sao chép DNA ngôn ngữ (chữ thường, teencode, xưng hô), 1-2 bong bóng ngắn, không giảng đạo lý.
-   - [PERSONA: JARVIS_LAB]: Điềm tĩnh, sắc bén, chuẩn xác, đi thẳng vào bản chất ngay dòng đầu theo đúng Playbook chuyên môn. Dùng Markdown/Code/LaTeX sạch đẹp.
-2. CẤM RẬP KHUÔN MÁY MÓC: TUYỆT ĐỐI CẤM các câu kết vô nghĩa ("Hy vọng giúp ích...", "Nếu cần gì cứ hỏi nhé...", "Chúc bạn học tốt..."). CẤM "dạ/vâng/ạ". CẤM tự ý gọi "bro".
-3. KHÓA ĐẠI TỪ: Bắt đúng cặp xưng hô từ [DIRECTIVE] (t - m, mình - bạn, anh/chị - em). Khi giải toán/code: đi thẳng vào vấn đề hoặc tỉnh lược chủ ngữ.
-4. MODE=STOP_SIGNAL: Đáp 1 bong bóng cực ngắn (1-4 chữ), CẤM hỏi ngược lại.
-5. MODE=WEB_INTEL: Cung cấp ngay dữ liệu thực tế kèm URL thật, CẤM hứa suông câu giờ.
-6. CODE & BẢNG: Xuống dòng rõ ràng, thụt lề chuẩn. Trả lời gộp liền mạch kèm code, CẤM tách câu dẫn mồi sang bong bóng riêng.
-7. MEMORY VAULT: Đọc thẻ [MEMORY_VAULT] để cá nhân hóa lời giảng/phân tích. Ghi ngắn vào "memory_note" khi user nêu môn học hoặc mục tiêu tài chính.
+1. Tuân thủ 4 thẻ: [DIRECTIVE], [PERSONA], [CHRONO], [PSYCH].
+   - [PERSONA: COMPANION_MIRROR]: Bạn bè Messenger, sao chép DNA ngôn ngữ (chữ thường, teencode, xưng hô), 1-2 bong bóng ngắn, không giảng giải.
+   - [PERSONA: JARVIS_LAB]: Điềm tĩnh, chuẩn xác, đi thẳng bản chất theo Playbook chuyên môn. Dùng Markdown/Code/LaTeX sạch đẹp.
+2. CẤM RẬP KHUÔN: CẤM câu kết vô nghĩa ("Hy vọng giúp ích...", "Chúc bạn..."). CẤM "dạ/vâng/ạ". CẤM tự ý gọi "bro".
+3. KHÓA ĐẠI TỪ: Bắt đúng cặp xưng hô từ [DIRECTIVE] (t - m, mình - bạn, anh/chị - em). Giải toán/code: đi thẳng vấn đề hoặc lược bỏ chủ ngữ.
+4. MODE=STOP_SIGNAL: Đáp 1 bong bóng cực ngắn (1-4 chữ), CẤM hỏi ngược.
+5. MODE=WEB_INTEL: Cung cấp ngay dữ liệu thật kèm URL, CẤM hứa suông câu giờ.
+6. CODE & BẢNG: Thụt lề chuẩn, trả lời gộp kèm code, CẤM tách câu dẫn mồi sang bong bóng riêng.
+7. MEMORY VAULT: Đọc [MEMORY_VAULT] để cá nhân hóa. Ghi ngắn vào "memory_note" khi user nêu môn học hoặc mục tiêu tài chính.
+8. RECALL: Nếu có [RECALL_MEMORY], dùng tự nhiên để nối mạch bài học/code/chuyện cũ như trí nhớ thật (không nói "theo dữ liệu hệ thống"); nếu là NONE_FOUND, thành thật nói chưa thấy trong lịch sử đã lưu thay vì bịa.
 
 7 VÍ DỤ MẪU (GOLDEN FEW-SHOT BANK):
 - M1 [PING]: User: "yo" -> {"conversation_state":"ping","replies":["yo","nay có vụ gì mới thế"],"session_title":"","should_update_title":false,"memory_note":""}
@@ -1126,7 +1144,8 @@ function buildSystemPrompt(
   previousSessionMessages?: ChatMessage[],
   userStyleHint?: string,
   chrono?: ChronoContext,
-  memorySlice?: string
+  memorySlice?: string,
+  semanticRecallTag?: string
 ): string {
   const currentChrono = chrono || buildChronoContext();
   const recentContext = recentChats
@@ -1146,6 +1165,11 @@ function buildSystemPrompt(
     if (slice) {
       prompt += `\n\n${slice}`;
     }
+  }
+
+  // Đính kèm thẻ [RECALL_MEMORY] từ động cơ tìm kiếm ngữ nghĩa cục bộ
+  if (semanticRecallTag && semanticRecallTag.trim()) {
+    prompt += `\n\n${semanticRecallTag.trim()}`;
   }
 
   if (userStyleHint) {
@@ -3444,7 +3468,11 @@ export async function sendMessageToTomorrow(
   forceWebSearch: boolean = false,
   onSearchStatusChange?: (isSearching: boolean) => void,
   customNow?: Date,
-  telemetry?: Partial<KeystrokeTelemetry>
+  telemetry?: Partial<KeystrokeTelemetry>,
+  currentSessionId?: string,
+  activeNotebookId?: string,
+  sessions?: ChatSession[],
+  notebooks?: Notebook[]
 ): Promise<AIResponsePayload> {
   try {
     const lastMsg = recentChats && recentChats.length > 0 ? recentChats[recentChats.length - 1] : undefined;
@@ -3506,13 +3534,30 @@ export async function sendMessageToTomorrow(
       userText,
     });
 
+    // TRUY HỒI NGỮ NGHĨA CỤC BỘ (Semantic Recall Context)
+    const semanticRecallTag = buildSemanticRecallContext({
+      userText,
+      intentMode: directive.intentMode,
+      expertDomain: directive.domain,
+      currentSessionId,
+      activeNotebookId,
+      sessions,
+      notebooks,
+      memoryVault: currentVault,
+    });
+
+    if (semanticRecallTag && semanticRecallTag.trim()) {
+      finalUserMessage += `\n\n${semanticRecallTag.trim()}`;
+    }
+
     const systemPrompt = buildSystemPrompt(
       userMemory,
       recentChats,
       previousSessionMessages,
       userStyle.styleHint,
       chrono,
-      memorySlice
+      memorySlice,
+      semanticRecallTag
     );
 
     const attachPsychStateMemory = (targetPayload: AIResponsePayload) => {

@@ -1,14 +1,16 @@
-# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.7.7)
+# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.8)
 
 ## 1. MÔI TRƯỜNG, NỀN TẢNG CỐT LÕI & CÁC KHÓA LƯU TRỮ
 - **Hệ điều hành phát triển & vận hành:** macOS (Ứng dụng đích chạy tại `/Applications/Tomorrow.app` kết nối Vercel Production). Mọi script/shell dùng chuẩn Unix/macOS, không dùng cú pháp Windows.
 - **Tech Stack:** React Native (Expo, TypeScript strict mode), lưu trữ cục bộ `AsyncStorage`, Backend Serverless Proxy tại `/api/search.js` trên Vercel.
-- **Đầy đủ 4 khóa `AsyncStorage` cố định (CẤM ĐỔI TÊN làm mất dữ liệu người dùng):**
+- **Đầy đủ 5 khóa `AsyncStorage` cố định (CẤM ĐỔI TÊN làm mất dữ liệu người dùng):**
   1. `CHAT_SESSIONS_V2`: Danh sách lịch sử các phiên trò chuyện (kèm cơ chế tự động migrate từ `CHAT_HISTORY_V1`).
   2. `USER_MEMORY_PROFILE_V1`: Hồ sơ trí nhớ đa chiều (`StructuredMemoryVault` schema v2 - studySubjects, financeGoals, moodHistory, favorites, activeProjects, habits, recentContext).
   3. `TOMORROW_THEME_MODE`: Trạng thái giao diện Sáng / Tối (`dark` | `light`).
   4. `TOMORROW_QUOTA_STATS_V1`: Thống kê hạn mức và lưu lượng gọi API theo ngày của OpenAI và Gemini (`services/quotaShield.ts`).
+  5. `TOMORROW_NOTEBOOKS_V1`: Quản lý danh sách Sổ ghi chú và bộ 1..4 panes Split Screen theo từng sổ (`storage/notebookStorage.ts`).
 - **Các module nền tảng của Master Plan 90 Ngày:**
+  - `services/semanticRecallService.ts`: Động cơ tìm kiếm ngữ nghĩa cục bộ 100% trên RAM (< 5ms, 0 API cost): BM25 Okapi (k1=1.5, b=0.75) + Concept Keyword Graph (trọng số 0.45x) + Bộ tách từ song ngữ Việt-Anh accent-folding + Thẻ `[RECALL_MEMORY]` <= 520 ký tự + Tích hợp Cmd+K "TRÍ NHỚ & NỘI DUNG CŨ".
   - `services/memoryVaultService.ts`: Lõi quản lý tập trung Hồ sơ Tri thức Đa chiều (`StructuredMemoryVault` schema v2), nâng cấp ngược an toàn (`migrateAndNormalizeVault`), phân loại gộp trùng cục bộ (< 1ms `mergeMemoryIntoVault`), và bơm chọn lọc ngữ cảnh (`buildMemoryContextSlice` <= 480 ký tự).
   - `components/MemoryVaultModal.tsx`: Giao diện quản lý Vault 4 tab gọn gàng chuẩn macOS, tích hợp vào `Cmd + K` (`CommandPalette`).
   - `services/personaRouter.ts`: Bộ điều phối nhân cách kép cục bộ (< 1ms): `COMPANION_MIRROR` (tri kỷ đời thường) vs `JARVIS_LAB` (J.A.R.V.I.S. phòng lab), bộ điều tiết độ hóm hỉnh `dryWitLevel` ('OFF' | 'SUBTLE' | 'SHARP'), và kho chiến thuật `DOMAIN_PLAYBOOKS`.
@@ -41,7 +43,7 @@
   + Công thức Toán học LaTeX Unicode (`$$...$$` hộp căn giữa viền Indigo `#6366F1`, `$...$` nội dòng).
   + Nút Quick Copy phản hồi ở góc dưới bên phải cho tin nhắn >120 ký tự hoặc có rich block.
 - **Thanh Nhập Liệu Co Giãn Đa Dòng (`FloatingInputBar.tsx`):** Co giãn từ `44px` đến `160px` theo nội dung; thu về `44px` sau khi gửi; đo đạc nhịp gõ ẩn `KeystrokeTelemetry` bằng `useRef` (zero re-render).
-- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.7.6`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.8`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
 - **Quy chuẩn Kế thừa Ngữ cảnh Chuyên môn & Bong bóng Code Nới Rộng (`v4.7.4`):**
   + Tự động kế thừa chuyên môn `CODE_CS` / `JARVIS_LAB` cho câu hỏi/yêu cầu nối tiếp ngắn (<= 8 từ hoặc các cụm "ví dụ", "đâu", "chi tiết", "giải thích", "tại sao", "code", "innit", "constructor") khi lịch sử gần nhất có code hoặc chuyên môn STEM/Finance/Code. Cấp phát `dynamicMaxTokens = 2000`, `temperature <= 0.35`.
   + Triệt tiêu câu mồi rỗng (`isEmptyTeaserReply`): Tự động gộp câu dẫn mồi ngắn ở phần tử 1 với phần tử 2 trong `sanitizeAndMergeBrokenBlocks`, trả lời 1 bong bóng duy nhất. Tự động retry 1 lần nếu câu trả lời không có code/nội dung.
@@ -97,5 +99,5 @@
 - Mọi bản cập nhật phải vượt qua:
   1. `npm run typecheck`
   2. `npx expo export -p web` (đảm bảo 0 lỗi biên dịch web)
-  3. `node train_simulator.js` (đảm bảo 28/28 kịch bản PASS tuyệt đối 280/280 điểm)
+  3. `node train_simulator.js` (đảm bảo 43/43 kịch bản PASS tuyệt đối 430/430 điểm)
 - Chỉ chạy `npx vercel --prod --yes` sau khi đã kiểm tra đầy đủ và được người dùng phê duyệt.

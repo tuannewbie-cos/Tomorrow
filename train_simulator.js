@@ -1,8 +1,8 @@
 /**
- * TOMORROW V4.7.6 — ADDITIVE MULTI-PANE SPLIT SCREEN, INTERACTIVE PANE CLOSE PICKER & RESILIENT MARKDOWN TABLE/H4 PARSER
+ * TOMORROW V4.8 — LOCAL SEMANTIC RECALL ENGINE (BM25 + CONCEPT KEYWORD GRAPH & COMMAND PALETTE RECALL)
  * Automated Training & Verification Simulator
  * 
- * 36 Scenarios:
+ * 43 Scenarios:
  * 1. Test_Pronoun_No_Bro: Xưng "t - m", 0% "bro", max_tokens 250, thuần văn bản, lưu thần tượng Ronaldo vào Memory Vault.
  * 2. Test_Stop_Signal_Okk_Sybau: Tín hiệu dừng "okk" & "sybau" -> MODE=STOP_SIGNAL, max_tokens 250, 1 bong bóng <= 4 từ, 0 dấu "?".
  * 3. Test_Web_No_Stalling: Tra cứu Web đưa kết quả kèm URL ngay lập tức, max_tokens 1200, 0% hứa suông câu giờ.
@@ -39,6 +39,13 @@
  * 34. Test_Day11_Sanitize_GoogleNews_RSS_Link: Cắt bỏ sạch trailing RSS link khi có sources pills, rút gọn link dài khi không có pills.
  * 35. Test_Day11_SystemPrompt_Budget: SYSTEM_INSTRUCTION v4.7.5 tiếp tục bảo toàn nghiêm ngặt < 450 từ.
  * 36. Test_Day11_Markdown_Table_And_H4_Parser: Phân tích bảng biểu chứa ký tự tiền tệ ($), trailing empty cell và tiêu đề H4 không sót dấu #.
+ * 37. Test_Day11_Notebook_Workspace_4Panes: Quản lý 1-4 panes theo sổ, xóa sổ di chuyển an toàn về default-notebook.
+ * 38. Test_Day11_Relative_Time_And_PromptBudget: Mốc thời gian tương đối Antigravity (now/15m/3h/1d/8d) & Prompt < 450 từ.
+ * 39. Test_v477_Idle_Wake_Retry_And_PromptBudget: fetchWithWakeRetry tự động hồi phục êm sau stale socket lần 1, không khóa oan OpenAI khi timeout.
+ * 40. Test_Day12_BM25_AccentFold_And_Code_Recall: Quét sessions cũ với BM25 song ngữ Việt-Anh + accent fold + bảo toàn code/tech div(a,b), lọc nhiễu yo/okk/lỗi mạng.
+ * 41. Test_Day12_ConceptGraph_Semantic_Expansion: Đồ thị liên tưởng từ khóa cục bộ 0.45x: "giải tích" -> tích phân/chuỗi số, "để dành" -> quỹ dự phòng 10tr.
+ * 42. Test_Day12_Guardrails_Budget_And_PromptLimit: Rào chắn STOP/PING 0ms, trung thực báo [RECALL_MEMORY: NONE_FOUND], khóa ngân sách <= 520 ký tự, prompt < 450 từ.
+ * 43. Test_Day12_Notebook_Priority_And_CrossRecall: Ưu tiên 1.20x cho cùng activeNotebookId, tự động cross-recall sổ khác khi điểm khớp vượt trội.
  */
 
 const fs = require('fs');
@@ -108,6 +115,7 @@ const profiler = loadTsModule(path.resolve(__dirname, 'services/microPsychProfil
 const memoryVault = loadTsModule(path.resolve(__dirname, 'services/memoryVaultService.ts'));
 const richMarkdownView = loadTsModule(path.resolve(__dirname, 'components/RichMarkdownView.tsx'));
 const notebookStorage = loadTsModule(path.resolve(__dirname, 'storage/notebookStorage.ts'));
+const semanticRecall = loadTsModule(path.resolve(__dirname, 'services/semanticRecallService.ts'));
 
 // 1. BỘ LỌC TIÊU ĐỀ RÁC (Đồng bộ storage/chatStorage.ts)
 function isPlaceholderOrNoiseTitle(title) {
@@ -2068,8 +2076,275 @@ async function runAllTests() {
   });
 }
 
+  // =========================================================================
+  // SCENARIO 40: TEST_DAY12_BM25_ACCENTFOLD_AND_CODE_RECALL
+  // =========================================================================
+  {
+    const mockSessions = [
+      {
+        id: 'sess-cpp-div',
+        title: 'Giải thuật C++ Đệ quy',
+        updatedAt: Date.now() - 20 * 86400 * 1000,
+        notebookId: 'nb-code',
+        messages: [
+          { role: 'user', text: 'Viết cho tôi hàm đệ quy con trỏ div(a,b) trong C++' },
+          { role: 'model', text: 'Đây là hàm đệ quy dùng con trỏ pointer:\n```cpp\nint div(int* a, int* b) {\n  if (*b == 0) return 0;\n  return *a / *b;\n}\n```' }
+        ]
+      },
+      {
+        id: 'sess-calc-integral',
+        title: 'Giải tích 2',
+        updatedAt: Date.now() - 25 * 86400 * 1000,
+        notebookId: 'nb-math',
+        messages: [
+          { role: 'user', text: 'Tính tích phân bội hai lớp' },
+          { role: 'model', text: 'Tích phân bội hai lớp và khảo sát chuỗi số hội tụ dùng tiêu chuẩn D\'Alembert.' }
+        ]
+      },
+      {
+        id: 'sess-noise-yo',
+        title: 'yo',
+        updatedAt: Date.now() - 10 * 86400 * 1000,
+        messages: [{ role: 'user', text: 'yo' }, { role: 'model', text: 'yo' }]
+      },
+      {
+        id: 'sess-noise-okk',
+        title: 'okk',
+        updatedAt: Date.now() - 10 * 86400 * 1000,
+        messages: [{ role: 'user', text: 'okk' }, { role: 'model', text: 'okii' }]
+      },
+      {
+        id: 'sess-error-bubble',
+        title: 'Lỗi mạng',
+        updatedAt: Date.now() - 5 * 86400 * 1000,
+        messages: [{ role: 'user', text: 'hi' }, { role: 'model', text: 'Offline/Timeout: Network request failed' }]
+      }
+    ];
+
+    const recallResults = semanticRecall.searchLocalSemanticRecall('xem lai bai con tro de quy div hom truoc', {
+      sessions: mockSessions,
+      isJarvisLab: true
+    });
+
+    const topMatch = recallResults[0];
+    const isTopCpp = topMatch && topMatch.chunk.sessionId === 'sess-cpp-div';
+    const noNoise = !recallResults.some(r => ['sess-noise-yo', 'sess-noise-okk', 'sess-error-bubble'].includes(r.chunk.sessionId));
+    const noErrorBubble = !recallResults.some(r => r.chunk.text.includes('Offline/Timeout'));
+
+    const passed = Boolean(isTopCpp && noNoise && noErrorBubble);
+    results.push({
+      name: 'Test_Day12_BM25_AccentFold_And_Code_Recall',
+      input: 'xem lai bai con tro de quy div hom truoc (quét sessions cũ + lọc nhiễu yo/okk/Offline/Timeout)',
+      mode: 'LOCAL_BM25_ACCENT_FOLD',
+      output: [
+        `Top 1: "${topMatch?.chunk?.sessionTitle}" (sessionId: ${topMatch?.chunk?.sessionId}, score: ${topMatch?.score?.toFixed(2)})`,
+        `Filtered noise sessions: ${noNoise ? 'OK' : 'FAIL'}`,
+        `Filtered error bubble: ${noErrorBubble ? 'OK' : 'FAIL'}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? `Khớp chuẩn xác phiên C++ con trỏ đệ quy div(a,b) đứng Top 1 (${topMatch?.score?.toFixed(2)} pts), lọc sạch 100% phiên nhiễu và bong bóng lỗi Offline/Timeout`
+        : 'Thất bại: Không xếp C++ đứng đầu hoặc sót nhiễu',
+    });
+  }
+
+  // =========================================================================
+  // SCENARIO 41: TEST_DAY12_CONCEPTGRAPH_SEMANTIC_EXPANSION
+  // =========================================================================
+  {
+    const mockSessions = [
+      {
+        id: 'sess-calculus',
+        title: 'Ôn tập Giải tích',
+        updatedAt: Date.now() - 15 * 86400 * 1000,
+        notebookId: 'nb-math',
+        messages: [
+          { role: 'user', text: 'Bài tập tuần trước' },
+          { role: 'model', text: 'Tính tích phân bội hai lớp và khảo sát chuỗi số hội tụ.' }
+        ]
+      }
+    ];
+
+    const mockVault = {
+      updatedAt: Date.now(),
+      studySubjects: [],
+      financeGoals: [{ id: 'f1', goal: 'quỹ dự phòng 10tr', targetAmount: '10tr' }],
+      activeProjects: [],
+      favorites: [],
+      habits: []
+    };
+
+    // Query 1: "bài tập giải tích tuần trước" -> matches session with "tích phân bội" & "chuỗi số"
+    const res1 = semanticRecall.searchLocalSemanticRecall('bài tập giải tích tuần trước', {
+      sessions: mockSessions,
+      memoryVault: mockVault
+    });
+    const match1 = res1.find(r => r.chunk.sessionId === 'sess-calculus');
+
+    // Query 2: "kế hoạch để dành tiền" -> matches vault goal "quỹ dự phòng 10tr"
+    const res2 = semanticRecall.searchLocalSemanticRecall('kế hoạch để dành tiền', {
+      sessions: mockSessions,
+      memoryVault: mockVault
+    });
+    const match2 = res2.find(r => r.chunk.sourceType === 'memory_vault' && r.chunk.text.includes('quỹ dự phòng 10tr'));
+
+    const passed = Boolean(match1 && match2);
+    results.push({
+      name: 'Test_Day12_ConceptGraph_Semantic_Expansion',
+      input: '"bài tập giải tích tuần trước" & "kế hoạch để dành tiền"',
+      mode: 'CONCEPT_KEYWORD_GRAPH',
+      output: [
+        `Query "giải tích" -> Khớp: "${match1?.chunk?.sessionTitle}" (${match1?.chunk?.snippet?.slice(0, 50)}...)`,
+        `Query "để dành" -> Khớp Vault: "${match2?.chunk?.text}"`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Đồ thị liên tưởng Concept Keyword Graph mở rộng chuẩn xác: "giải tích" -> tích phân bội / chuỗi số, "để dành" -> quỹ dự phòng 10tr'
+        : 'Thất bại: Không kích hoạt được liên tưởng từ khóa',
+    });
+  }
+
+  // =========================================================================
+  // SCENARIO 42: TEST_DAY12_GUARDRAILS_BUDGET_AND_PROMPTLIMIT
+  // =========================================================================
+  {
+    // 1. Trả về "" khi STOP_SIGNAL hoặc PING
+    const stopRecall = semanticRecall.buildSemanticRecallContext({
+      userText: 'sybau',
+      intentMode: 'STOP_SIGNAL',
+    });
+    const pingRecall = semanticRecall.buildSemanticRecallContext({
+      userText: 'yo',
+      intentMode: 'PING',
+    });
+
+    // 2. Trả về [RECALL_MEMORY: NONE_FOUND] khi có temporal cue nhưng không thấy dữ liệu
+    const notFoundRecall = semanticRecall.buildSemanticRecallContext({
+      userText: 'nhớ đoạn code hôm trước không?',
+      sessions: [],
+    });
+
+    // 3. Khóa cứng ngân sách thẻ <= 520 ký tự
+    const mockLongSessions = [
+      {
+        id: 'sess-long',
+        title: 'Phiên học rất dài về lập trình hệ điều hành và kiến trúc máy tính',
+        updatedAt: Date.now(),
+        messages: [
+          { role: 'user', text: 'nhớ lại đoạn thảo luận về kiến trúc bộ nhớ ảo phân trang' },
+          { role: 'model', text: 'Bộ nhớ ảo Virtual Memory sử dụng bảng trang Page Table kết hợp TLB Translation Lookaside Buffer để ánh xạ địa chỉ logic sang địa chỉ vật lý RAM với chi phí O(1) và kiểm soát phân mảnh bộ nhớ ngoài một cách tối ưu.' }
+        ]
+      }
+    ];
+    const longRecall = semanticRecall.buildSemanticRecallContext({
+      userText: 'đoạn thảo luận hôm trước về kiến trúc bộ nhớ ảo phân trang',
+      sessions: mockLongSessions,
+    });
+    const isBudgetOk = longRecall.length <= 520 && longRecall.startsWith('[RECALL_MEMORY:');
+
+    // 4. Kiểm tra SYSTEM_INSTRUCTION vẫn < 450 từ
+    const words = aiService.SYSTEM_INSTRUCTION.trim().split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+    const isPromptBudgetOk = wordCount < 450;
+
+    const passed =
+      stopRecall === '' &&
+      pingRecall === '' &&
+      notFoundRecall === '[RECALL_MEMORY: NONE_FOUND]' &&
+      isBudgetOk &&
+      isPromptBudgetOk;
+
+    results.push({
+      name: 'Test_Day12_Guardrails_Budget_And_PromptLimit',
+      input: 'STOP/PING bail-out, NONE_FOUND cue, budget <= 520 chars, SYSTEM_INSTRUCTION < 450 words',
+      mode: `RECALL_GUARDRAILS_BUDGET_${wordCount}_WORDS`,
+      output: [
+        `STOP/PING bail-out: stop="${stopRecall}", ping="${pingRecall}" -> ${stopRecall === '' && pingRecall === '' ? 'OK' : 'FAIL'}`,
+        `NONE_FOUND tag: "${notFoundRecall}" -> ${notFoundRecall === '[RECALL_MEMORY: NONE_FOUND]' ? 'OK' : 'FAIL'}`,
+        `Card length <= 520 chars: ${longRecall.length} chars -> ${isBudgetOk ? 'OK' : 'FAIL'}`,
+        `SYSTEM_INSTRUCTION: ${wordCount} words (< 450) -> ${isPromptBudgetOk ? 'OK' : 'FAIL'}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? `Rào chắn tốc độ 0ms cho STOP/PING, trung thực báo [RECALL_MEMORY: NONE_FOUND], khóa ngân sách thẻ <= 520 ký tự và SYSTEM_INSTRUCTION v4.8 đạt ${wordCount} từ (< 450 từ)`
+        : 'Thất bại: Vi phạm ngân sách thẻ hoặc prompt hoặc sai rào chắn',
+    });
+  }
+
+  // =========================================================================
+  // SCENARIO 43: TEST_DAY12_NOTEBOOK_PRIORITY_AND_CROSSRECALL
+  // =========================================================================
+  {
+    const sessLocal = {
+      id: 'sess-react-local',
+      title: 'React Native Expo Hook',
+      updatedAt: 1000,
+      notebookId: 'nb-active',
+      messages: [
+        { role: 'user', text: 'Cài đặt hook useState và useEffect trong React Native Expo' },
+        { role: 'model', text: 'Hook useState quản lý state cục bộ trong Expo app.' }
+      ]
+    };
+
+    const sessOther = {
+      id: 'sess-react-other',
+      title: 'React Native Bare Hook',
+      updatedAt: 1000,
+      notebookId: 'nb-other',
+      messages: [
+        { role: 'user', text: 'Cài đặt hook useState và useEffect trong React Native Bare' },
+        { role: 'model', text: 'Hook useState quản lý state cục bộ trong bare React Native.' }
+      ]
+    };
+
+    const sessMathFar = {
+      id: 'sess-math-far',
+      title: 'Đạo hàm và Tích phân Bội',
+      updatedAt: 1000,
+      notebookId: 'nb-math',
+      messages: [
+        { role: 'user', text: 'Tính tích phân bội hai lớp miền D' },
+        { role: 'model', text: 'Tích phân bội hai lớp tính bằng cách chia miền tích phân.' }
+      ]
+    };
+
+    // 1. Kiểm tra ưu tiên cùng activeNotebookId (1.20x bonus)
+    const prioResults = semanticRecall.searchLocalSemanticRecall('hook usestate react native', {
+      sessions: [sessLocal, sessOther],
+      activeNotebookId: 'nb-active'
+    });
+    const isSameNotebookTop = prioResults[0]?.chunk?.sessionId === 'sess-react-local';
+    const isBonusApplied = prioResults[0]?.score > prioResults[1]?.score;
+
+    // 2. Kiểm tra cross-recall từ sổ khác khi nội dung khớp vượt trội
+    const crossResults = semanticRecall.searchLocalSemanticRecall('tích phân bội hai lớp', {
+      sessions: [sessLocal, sessMathFar],
+      activeNotebookId: 'nb-active'
+    });
+    const isCrossRecallTop = crossResults[0]?.chunk?.sessionId === 'sess-math-far';
+
+    const passed = Boolean(isSameNotebookTop && isBonusApplied && isCrossRecallTop);
+    results.push({
+      name: 'Test_Day12_Notebook_Priority_And_CrossRecall',
+      input: 'Ưu tiên Sổ hiện tại (1.20x bonus) & Lục chéo Sổ khác khi điểm khớp vượt trội',
+      mode: 'NOTEBOOK_PRIORITY_AND_CROSS_RECALL',
+      output: [
+        `Local Notebook Priority: top="${prioResults[0]?.chunk?.sessionId}" (nb: ${prioResults[0]?.chunk?.notebookId}, score: ${prioResults[0]?.score?.toFixed(2)} vs ${prioResults[1]?.score?.toFixed(2)}) -> ${isSameNotebookTop ? 'OK' : 'FAIL'}`,
+        `Cross-Notebook Recall: top="${crossResults[0]?.chunk?.sessionId}" (nb: ${crossResults[0]?.chunk?.notebookId}, score: ${crossResults[0]?.score?.toFixed(2)}) -> ${isCrossRecallTop ? 'OK' : 'FAIL'}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Ưu tiên chuẩn xác 1.20x cho Sổ hiện tại khi điểm tương đương, và tự động lục chéo sổ khác khi nội dung khớp mạnh nhất'
+        : 'Thất bại: Không ưu tiên đúng sổ hoặc không lục chéo được',
+    });
+  }
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 39 SCENARIOS (TOMORROW V4.7.7):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 43 SCENARIOS (TOMORROW V4.8 — DAY 12):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
@@ -2083,16 +2358,16 @@ results.forEach((r, idx) => {
 const totalScore = results.reduce((acc, cur) => acc + cur.score, 0);
 const allPassed = results.every(r => r.passed);
 
-console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/390 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
+console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/430 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
 console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.7.7',
+  version: 'v4.8',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.7.7 — DESIGN.md Single Source of Truth, Center Minimal Header, T.M.R macOS Welcome Screen, Gemini + File Upload, Cmd+R Theme Toggle, Native macOS Animations & Idle Wake Retry Engine',
+  architecture: 'Tomorrow v4.8 — Day 12 Local Semantic Recall Engine (BM25 + Concept Keyword Graph), Dual-Persona Brain Context Injection & CommandPalette Semantic Search',
   totalScore,
-  maxScore: 390,
+  maxScore: 430,
   allPassed,
   scenarios: results,
 };

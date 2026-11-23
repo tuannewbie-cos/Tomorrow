@@ -363,6 +363,30 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
 - [x] **Cập nhật quy chuẩn `DESIGN.md`:** Thêm mục 6 (Active Split-Pane Indicator) khóa cứng luật cấm line tím, bắt buộc Trắng/Đen đơn sắc.
 - [x] **Header cập nhật:** **`Online • v4.7.9`**. Bộ kiểm thử 39/39 scenarios đạt 390/390 điểm 100% hoàn hảo.
 
+#### ✅ Đã hoàn thành (Bản nâng cấp Ngày 12 — v4.8):
+- [x] **Ngày 12 (`memory/local-semantic-recall` — Phiên bản `Online • v4.8`): Động cơ Tìm kiếm Ngữ nghĩa Cục bộ (On-Device BM25 & Concept Keyword Graph)**
+  - **Động cơ tìm kiếm ngữ nghĩa cục bộ 100% trên RAM (`services/semanticRecallService.ts`):**
+    + Chuẩn hóa & tách từ song ngữ Việt-Anh (`tokenizeForRecall`), giữ song song dạng có dấu + không dấu (accent-folding) và bigrams ghép (`tich_phan`, `con_tro`, `de_quy`...).
+    + Bảo toàn từ khóa kỹ thuật/code/tài chính (`c++`, `c#`, `o(n)`, `o(n^2)`, `p/e`, `p/b`, `roe`, `dca`, `led`, `div(a,b)`, tách `camelCase`/`snake_case`), loại bỏ stop-words để tránh loãng điểm BM25.
+    + Đồ thị liên tưởng từ khóa cục bộ (`CONCEPT_KEYWORD_GRAPH`): 35-50 cụm khái niệm cốt lõi cho sinh viên STEM, Code, Tài chính và dự án Tomorrow (trọng số mở rộng 0.45x để từ khớp trực tiếp luôn xếp trên).
+    + Lập chỉ mục theo cặp hội thoại (`RecallChunk`): Lọc sạch nhiễu < 12 ký tự (`yo`, `okk`), lọc 100% bong bóng lỗi mạng (`Offline/Timeout`, `[object Object]`), loại trừ 6 tin gần nhất của phiên đang mở. Bổ sung chỉ mục từ `USER_MEMORY_PROFILE_V1` (môn học, tài chính, dự án, sở thích, thói quen).
+    + Cache chỉ mục trong RAM theo chữ ký (`signature`) tăng tốc truy vấn < 1ms.
+    + Thuật toán chấm điểm Okapi BM25 ($k_1 = 1.5, b = 0.75$) kết hợp hệ số cộng hưởng: cùng Sổ ghi chú (x1.20), định dạng STEM/Code (x1.15), độ tươi nhẹ trong 14 ngày (tối đa x1.08).
+    + Bộ nhận diện tín hiệu gợi nhắc thời gian (`hasTemporalRecallCue`): hạ ngưỡng điểm để chủ động truy hồi sâu hơn khi có câu hỏi về quá khứ ("hôm trước", "tuần trước", "nhớ không"...).
+  - **Tích hợp truy hồi ngữ nghĩa vào Bộ não AI (`services/aiService.ts`):**
+    + Hàm đóng gói thẻ trí nhớ siêu gọn `buildSemanticRecallContext`: Rào chắn 0ms cho STOP/PING, lấy tối đa 3 kết quả, khóa cứng ngân sách thẻ `<= 520` ký tự (`[RECALL_MEMORY: ...]`). Trung thực xuất `[RECALL_MEMORY: NONE_FOUND]` khi có tín hiệu thời gian nhưng không có dữ liệu cũ khớp.
+    + Gắn thẻ `[RECALL_MEMORY]` đồng bộ cho cả OpenAI (`gpt-4o-mini`) và chuỗi xoay vòng Gemini miễn phí 3 tầng.
+    + Bổ sung 1 dòng ngắn vào `SYSTEM_INSTRUCTION` (bảo toàn ngân sách nghiêm ngặt **< 450 từ** — thực tế 440 từ).
+  - **Nâng cấp tìm kiếm ngữ nghĩa trong `Cmd + K` (`components/CommandPalette.tsx`, `App.tsx`):**
+    + Chạy `searchLocalSemanticRecall` (debounce 80ms trên RAM) khi gõ từ 2 ký tự trở lên để hiển thị thêm nhóm kết quả **`TRÍ NHỚ & NỘI DUNG CŨ`** (tối đa 5 mục).
+    + Dòng 1: Tiêu đề phiên + nhãn phụ mảnh `Tên Sổ • thời gian tương đối (VD 3d)`. Dòng 2: 1 dòng trích đoạn (`snippet`) cắt gọn.
+    + Nhấn Enter hoặc click: Đóng palette mượt mà, tự động chuyển sang đúng Sổ ghi chú và mở phiên chat vào pane đang active (hoặc mở Memory Vault nếu thuộc vault).
+    + Tuyệt đối tuân thủ `DESIGN.md` (v4.7.9): KHÔNG thêm lại thanh Footer của `CommandPalette`.
+  - **Bộ kiểm thử tự động `train_simulator.js`:**
+    + Bổ sung 4 kịch bản TEST 40-43: `Test_Day12_BM25_AccentFold_And_Code_Recall`, `Test_Day12_ConceptGraph_Semantic_Expansion`, `Test_Day12_Guardrails_Budget_And_PromptLimit`, `Test_Day12_Notebook_Priority_And_CrossRecall`.
+    + Đạt điểm tuyệt đối 43/43 scenarios (430/430 điểm 100% hoàn hảo).
+  - Header cập nhật: **`Online • v4.8`**.
+
 - [ ] **Ngày 12 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
   - Tìm kiếm toàn văn (Full-text search) trên danh sách phiên trò chuyện trong Sidebar.
