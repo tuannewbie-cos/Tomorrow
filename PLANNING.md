@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.7.9` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.8.1` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -386,6 +386,28 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
     + Bổ sung 4 kịch bản TEST 40-43: `Test_Day12_BM25_AccentFold_And_Code_Recall`, `Test_Day12_ConceptGraph_Semantic_Expansion`, `Test_Day12_Guardrails_Budget_And_PromptLimit`, `Test_Day12_Notebook_Priority_And_CrossRecall`.
     + Đạt điểm tuyệt đối 43/43 scenarios (430/430 điểm 100% hoàn hảo).
   - Header cập nhật: **`Online • v4.8`**.
+
+#### ✅ Đã hoàn thành (Bản nâng cấp Vá Concurrency & Cập nhật Khóa API 30 ngày — v4.8.1):
+- [x] **Phiên bản `Online • v4.8.1`: Vá Triệt để Lỗi Không Phản Hồi khi Split 4 Tab & Đồng bộ Khóa API 30 Ngày mới**
+  - **Đồng bộ & Chuẩn hóa Khóa API 30 ngày mới lên Vercel Production:**
+    + Chuẩn hóa `.env` an toàn (bảo mật tuyệt đối, không lộ key), hỗ trợ OpenAI `sk-...` và Vertex Express `AQ.Ab8...`.
+    + Đồng bộ thành công `EXPO_PUBLIC_OPENAI_API_KEY` và `EXPO_PUBLIC_GEMINI_API_KEY` lên Vercel Production dưới dạng `Config` qua stdin pipe.
+  - **Cô lập 100% Trạng thái Phiên & Timer theo Session ID (`App.tsx`):**
+    + Thêm `inFlightSessionsRef` (Set<string>) chặn gửi đúp trên cùng 1 phiên đang chờ, cho phép 3 tab còn lại gửi song song độc lập.
+    + Thêm `timersBySessionRef` chỉ xóa và dọn timer của chính phiên đó, không làm ảnh hưởng các tab bên cạnh.
+    + Khóa cố định `targetPaneId` và `targetSessionId` tại đầu luồng `handleSendMessageInPane`, cập nhật `panes` và `sessions` bằng functional updater (`setPanes(prev => ...)`, `setSessions(prev => ...)`).
+    + Luôn có bong bóng fallback thân thiện nếu mạng hoặc API cloud gặp sự cố, đảm bảo không tab nào bị rơi vào im lặng hay treo indicator.
+  - **Chuỗi Hàng đợi Lưu trữ Tuần tự Hóa (`storage/chatStorage.ts`):**
+    + Triển khai `saveSessionsQueue` (Promise chain) tuần tự hóa các lệnh ghi `AsyncStorage.setItem('CHAT_SESSIONS_V2', ...)`, loại trừ hoàn toàn race condition khi 4 tab hoàn thành cùng lúc.
+  - **Cổng Điều phối Đồng thời (Concurrency Gate) & Xử lý 429 Burst (`services/aiService.ts`):**
+    + Triển khai Concurrency Gate với `MAX_CONCURRENT_AI_REQUESTS = 2`, tự động xếp hàng đợi các request thứ 3, thứ 4 kèm độ trễ jitter 150-300ms.
+    + Phân biệt giữa Hard Quota Exhaustion (401, 402, 403, 429 quota) và Rate Limit Burst (429 RPM/TPM): 429 Burst không kích hoạt sập Circuit Breaker mà tự động retry sau 900ms + jitter và fallback êm sang Gemini cho riêng lượt đó.
+    + Bổ sung cơ chế giãn cách 400ms + jitter khi Gemini gặp 429.
+    + `SYSTEM_INSTRUCTION` bảo toàn nghiêm ngặt 440 từ (< 450 từ).
+  - **Bộ kiểm thử tự động `train_simulator.js`:**
+    + Bổ sung kịch bản TEST 44: `Test_v481_MultiPane_4Tabs_Concurrency_And_RateLimit`.
+    + Đạt điểm tuyệt đối 44/44 scenarios (440/440 điểm 100% hoàn hảo).
+  - Header cập nhật: **`Online • v4.8.1`**.
 
 - [ ] **Ngày 12 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.

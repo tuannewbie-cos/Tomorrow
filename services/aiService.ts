@@ -98,6 +98,45 @@ let isOpenAIUnavailable = false;
 let lastOpenAI429At: number | null = null;
 const OPENAI_429_COOLDOWN_MS = 10 * 60 * 1000; // 10 phút tự động reset 429 rate limit
 
+// CỔNG ĐIỀU PHỐI ĐỒNG THỜI (CONCURRENCY GATE): Tối đa 2 request AI song song
+// Tránh 4 tab Split Screen bắn cùng lúc làm quá tải RPM/TPM của OpenAI/Gemini
+export const MAX_CONCURRENT_AI_REQUESTS = 2;
+let activeAIRequestsCount = 0;
+const aiRequestQueue: Array<() => void> = [];
+
+export async function acquireAISlot(): Promise<void> {
+  if (activeAIRequestsCount < MAX_CONCURRENT_AI_REQUESTS) {
+    activeAIRequestsCount++;
+    return;
+  }
+  return new Promise<void>((resolve) => {
+    aiRequestQueue.push(resolve);
+  });
+}
+
+export function releaseAISlot(): void {
+  activeAIRequestsCount = Math.max(0, activeAIRequestsCount - 1);
+  if (aiRequestQueue.length > 0 && activeAIRequestsCount < MAX_CONCURRENT_AI_REQUESTS) {
+    activeAIRequestsCount++;
+    const nextResolve = aiRequestQueue.shift();
+    if (nextResolve) {
+      // Jitter 150ms - 300ms chống chọi burst thundering herd
+      const jitterMs = 150 + Math.floor(Math.random() * 150);
+      setTimeout(() => {
+        nextResolve();
+      }, jitterMs);
+    }
+  }
+}
+
+export function getActiveAIRequestsCount(): number {
+  return activeAIRequestsCount;
+}
+
+export function getAIQueueLength(): number {
+  return aiRequestQueue.length;
+}
+
 // Trạng thái theo dõi chu kỳ nghỉ/thức (Wake / Idle tracking)
 let lastActivityAt: number = Date.now();
 let needsFreshConnection: boolean = false;
@@ -1741,22 +1780,70 @@ async function callOpenAI(
 
     if (!res.ok) {
       const status = res.status;
-      if (status === 429) {
-        isOpenAIUnavailable = true;
-        lastOpenAI429At = Date.now();
-        setOpenAICircuitBreakerState(true).catch(() => {});
-        console.warn(`[AI Router Failover]: OpenAI HTTP 429 (Rate limit), kích hoạt Circuit Breaker với cooldown 10 phút.`);
-      } else if ([401, 402, 403].includes(status)) {
+      const errText = await res.text().catch(() => '');
+      const parsedErrorMsg = extractApiErrorMessage(errText);
+      const lowerErr = (errText + ' ' + parsedErrorMsg).toLowerCase();
+
+      // Kiểm tra có phải lỗi xác thực hoặc hết ngạch tài khoản cứng (hard quota exhaustion) không
+      const isHardQuotaError =
+        status === 401 ||
+        status === 402 ||
+        status === 403 ||
+        (status === 429 && (
+          lowerErr.includes('insufficient_quota') ||
+          lowerErr.includes('billing_hard_limit') ||
+          lowerErr.includes('account_deactivated') ||
+          lowerErr.includes('quota')
+        ));
+
+      if (isHardQuotaError) {
         isOpenAIUnavailable = true;
         lastOpenAI429At = null;
         setOpenAICircuitBreakerState(true).catch(() => {});
-        console.warn(`[AI Router Failover]: OpenAI HTTP ${status} (Xác thực/Hết hạn mức cứng), kích hoạt Circuit Breaker sang Gemini chain.`);
-      } else {
-        console.warn(`[AI Router Failover]: OpenAI HTTP ${status}, trượt sang Gemini chain cho lượt này.`);
+        console.warn(`[AI Router Failover]: OpenAI HTTP ${status} (Hết hạn mức cứng/Xác thực), kích hoạt Circuit Breaker sang Gemini chain.`);
+        recordApiUsage('openai', 'gpt-4o-mini', userMessageWithHint.length, 0, true).catch(() => {});
+        throw new Error(`OpenAI HTTP ${status}: ${parsedErrorMsg}`);
       }
+
+      // Nếu là 429 do burst rate limit (TPM/RPM), KHÔNG đánh sập cờ Circuit Breaker! Thử lại 1 lần với jitter:
+      if (status === 429) {
+        console.warn(`[AI Router]: OpenAI gặp 429 rate limit burst, chờ retry 900ms + jitter...`);
+        const jitter = Math.floor(Math.random() * 200);
+        await new Promise((r) => setTimeout(r, 900 + jitter));
+
+        // Retry 1 lần:
+        try {
+          const retryRes = await fetchWithWakeRetry(
+            'https://api.openai.com/v1/chat/completions',
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${OPENAI_API_KEY}`,
+              },
+              body: JSON.stringify(payload),
+            },
+            effectiveTimeout
+          );
+
+          if (retryRes.ok) {
+            const retryData: any = await retryRes.json();
+            const retryText = retryData?.choices?.[0]?.message?.content || '';
+            if (retryText) {
+              recordApiUsage('openai', 'gpt-4o-mini', userMessageWithHint.length, retryText.length, false).catch(() => {});
+              return retryText;
+            }
+          }
+        } catch (_) {}
+
+        // Nếu vẫn 429 sau retry: trượt sang Gemini cho RIÊNG lượt này, KHÔNG sập Circuit Breaker!
+        console.warn(`[AI Router Failover]: OpenAI vẫn 429 sau retry, trượt sang Gemini chain cho riêng lượt này (không sập Circuit Breaker).`);
+        recordApiUsage('openai', 'gpt-4o-mini', userMessageWithHint.length, 0, true).catch(() => {});
+        throw new Error(`OpenAI HTTP 429 RateLimitBurst: ${parsedErrorMsg}`);
+      }
+
+      console.warn(`[AI Router Failover]: OpenAI HTTP ${status}, trượt sang Gemini chain cho lượt này.`);
       recordApiUsage('openai', 'gpt-4o-mini', userMessageWithHint.length, 0, true).catch(() => {});
-      const errText = await res.text().catch(() => '');
-      const parsedErrorMsg = extractApiErrorMessage(errText);
       throw new Error(`OpenAI HTTP ${status}: ${parsedErrorMsg}`);
     }
 
@@ -1966,6 +2053,10 @@ async function callModelFallbackChain(
       } catch (err: any) {
         lastError = err;
         const msg = err?.message || String(err);
+        if (msg.includes('429')) {
+          // Gemini burst 429: nghỉ 400ms + jitter trước khi thử tiếp endpoint/model khác
+          await new Promise((r) => setTimeout(r, 400 + Math.floor(Math.random() * 200)));
+        }
         if (failoverTrace) {
           failoverTrace.push(`Gemini(${model}):${msg.replace(/[\r\n\t]+/g, ' ').slice(0, 70)}`);
         }
@@ -3459,7 +3550,7 @@ export function localResilientFallback(
  * - Ưu tiên 2: Chuỗi 3 tầng Gemini xoay vòng miễn phí.
  * - Ưu tiên 3: Local Resilient Fallback Engine chạy offline.
  */
-export async function sendMessageToTomorrow(
+async function doSendMessageToTomorrow(
   userText: string,
   userMemory: UserMemoryProfile,
   recentChats: ChatMessage[] = [],
@@ -3814,6 +3905,43 @@ export async function sendMessageToTomorrow(
       memory_note: '',
       jarvis_intent: 'chat',
     };
+  }
+}
+
+export async function sendMessageToTomorrow(
+  userText: string,
+  userMemory: UserMemoryProfile,
+  recentChats: ChatMessage[] = [],
+  imageBase64?: string,
+  previousSessionMessages?: ChatMessage[],
+  forceWebSearch: boolean = false,
+  onSearchStatusChange?: (isSearching: boolean) => void,
+  customNow?: Date,
+  telemetry?: Partial<KeystrokeTelemetry>,
+  currentSessionId?: string,
+  activeNotebookId?: string,
+  sessions?: ChatSession[],
+  notebooks?: Notebook[]
+): Promise<AIResponsePayload> {
+  await acquireAISlot();
+  try {
+    return await doSendMessageToTomorrow(
+      userText,
+      userMemory,
+      recentChats,
+      imageBase64,
+      previousSessionMessages,
+      forceWebSearch,
+      onSearchStatusChange,
+      customNow,
+      telemetry,
+      currentSessionId,
+      activeNotebookId,
+      sessions,
+      notebooks
+    );
+  } finally {
+    releaseAISlot();
   }
 }
 

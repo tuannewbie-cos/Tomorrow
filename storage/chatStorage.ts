@@ -520,26 +520,34 @@ export function sanitizeSessionsForStorage(sessions: ChatSession[]): ChatSession
 /**
  * 2. Lưu toàn bộ danh sách phiên trò chuyện vào CHAT_SESSIONS_V2
  * Tự động phòng vệ QuotaExceededError trên Web/AsyncStorage
+ * Chuỗi hàng đợi tuần tự hóa (Serialized Storage Queue) chống xung đột ghi đè giữa các Split Panes
  */
+let saveSessionsQueue: Promise<void> = Promise.resolve();
+
 export async function saveSessions(sessions: ChatSession[]): Promise<void> {
-  try {
-    const jsonStr = JSON.stringify(sessions);
-    // Nếu kích thước vượt quá ~3.5MB (gần ngưỡng 5MB của localStorage), chủ động dọn ảnh cũ trước
-    if (jsonStr.length > 3.5 * 1024 * 1024) {
-      const sanitized = sanitizeSessionsForStorage(sessions);
-      await AsyncStorage.setItem(STORAGE_KEYS.CHAT_SESSIONS, JSON.stringify(sanitized));
-      return;
-    }
-    await AsyncStorage.setItem(STORAGE_KEYS.CHAT_SESSIONS, jsonStr);
-  } catch (error) {
-    console.warn('[Storage] Lỗi hoặc QuotaExceeded khi lưu CHAT_SESSIONS_V2, dọn dẹp ảnh cũ...', error);
+  const currentTask = saveSessionsQueue.then(async () => {
     try {
-      const sanitized = sanitizeSessionsForStorage(sessions);
-      await AsyncStorage.setItem(STORAGE_KEYS.CHAT_SESSIONS, JSON.stringify(sanitized));
-    } catch (innerError) {
-      console.error('[Storage] Không thể lưu sau khi dọn dẹp ảnh cũ:', innerError);
+      const jsonStr = JSON.stringify(sessions);
+      // Nếu kích thước vượt quá ~3.5MB (gần ngưỡng 5MB của localStorage), chủ động dọn ảnh cũ trước
+      if (jsonStr.length > 3.5 * 1024 * 1024) {
+        const sanitized = sanitizeSessionsForStorage(sessions);
+        await AsyncStorage.setItem(STORAGE_KEYS.CHAT_SESSIONS, JSON.stringify(sanitized));
+        return;
+      }
+      await AsyncStorage.setItem(STORAGE_KEYS.CHAT_SESSIONS, jsonStr);
+    } catch (error) {
+      console.warn('[Storage] Lỗi hoặc QuotaExceeded khi lưu CHAT_SESSIONS_V2, dọn dẹp ảnh cũ...', error);
+      try {
+        const sanitized = sanitizeSessionsForStorage(sessions);
+        await AsyncStorage.setItem(STORAGE_KEYS.CHAT_SESSIONS, JSON.stringify(sanitized));
+      } catch (innerError) {
+        console.error('[Storage] Không thể lưu sau khi dọn dẹp ảnh cũ:', innerError);
+      }
     }
-  }
+  });
+
+  saveSessionsQueue = currentTask.catch(() => {});
+  return currentTask;
 }
 
 /**

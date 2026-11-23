@@ -1,4 +1,4 @@
-# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.8)
+# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.8.1)
 
 ## 1. MÔI TRƯỜNG, NỀN TẢNG CỐT LÕI & CÁC KHÓA LƯU TRỮ
 - **Hệ điều hành phát triển & vận hành:** macOS (Ứng dụng đích chạy tại `/Applications/Tomorrow.app` kết nối Vercel Production). Mọi script/shell dùng chuẩn Unix/macOS, không dùng cú pháp Windows.
@@ -43,7 +43,13 @@
   + Công thức Toán học LaTeX Unicode (`$$...$$` hộp căn giữa viền Indigo `#6366F1`, `$...$` nội dòng).
   + Nút Quick Copy phản hồi ở góc dưới bên phải cho tin nhắn >120 ký tự hoặc có rich block.
 - **Thanh Nhập Liệu Co Giãn Đa Dòng (`FloatingInputBar.tsx`):** Co giãn từ `44px` đến `160px` theo nội dung; thu về `44px` sau khi gửi; đo đạc nhịp gõ ẩn `KeystrokeTelemetry` bằng `useRef` (zero re-render).
-- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.8`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.8.1`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Quy chuẩn Cô lập Split Panes & Điều phối Đồng thời Concurrency Gate (`v4.8.1`):**
+  + Tuyệt đối cô lập trạng thái theo `sessionId`: `inFlightSessionsRef` (Set<string>) chặn gửi đúp trên cùng một phiên, cho phép các tab khác gửi song song độc lập.
+  + Dọn timer theo `sessionId`: `timersBySessionRef` chỉ xóa timer của chính phiên đó, không xóa timer của 3 tab còn lại.
+  + Chuỗi lưu trữ tuần tự hóa (`saveSessionsQueue`): Mọi thao tác ghi `CHAT_SESSIONS_V2` phải qua hàng đợi tuần tự Promise chain, ngăn ngừa race condition ghi đè.
+  + Cổng Concurrency Gate (`MAX_CONCURRENT_AI_REQUESTS = 2`): Xếp hàng đợi request thứ 3 và thứ 4 với jitter 150-300ms để chống burst 429 trên OpenAI và Gemini.
+  + Phân biệt 429 Burst (RPM/TPM) vs Hard Quota (401, 402, 403, 429 quota): 429 Burst tự động retry sau 900ms + jitter và fallback sang Gemini cho riêng lượt đó, KHÔNG được đánh sập Circuit Breaker toàn cục.
 - **Quy chuẩn Kế thừa Ngữ cảnh Chuyên môn & Bong bóng Code Nới Rộng (`v4.7.4`):**
   + Tự động kế thừa chuyên môn `CODE_CS` / `JARVIS_LAB` cho câu hỏi/yêu cầu nối tiếp ngắn (<= 8 từ hoặc các cụm "ví dụ", "đâu", "chi tiết", "giải thích", "tại sao", "code", "innit", "constructor") khi lịch sử gần nhất có code hoặc chuyên môn STEM/Finance/Code. Cấp phát `dynamicMaxTokens = 2000`, `temperature <= 0.35`.
   + Triệt tiêu câu mồi rỗng (`isEmptyTeaserReply`): Tự động gộp câu dẫn mồi ngắn ở phần tử 1 với phần tử 2 trong `sanitizeAndMergeBrokenBlocks`, trả lời 1 bong bóng duy nhất. Tự động retry 1 lần nếu câu trả lời không có code/nội dung.

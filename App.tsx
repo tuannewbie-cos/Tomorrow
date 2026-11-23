@@ -562,6 +562,25 @@ export default function App() {
   const [searchingWebBySession, setSearchingWebBySession] = useState<Record<string, boolean>>({});
   const [scrollDownByPane, setScrollDownByPane] = useState<Record<string, boolean>>({});
 
+  // Concurrency & Session in-flight + Timers isolation across split panes
+  const inFlightSessionsRef = useRef<Set<string>>(new Set());
+  const timersBySessionRef = useRef<Record<string, Array<ReturnType<typeof setTimeout>>>>({});
+
+  const clearSessionTimers = useCallback((sessId: string) => {
+    const list = timersBySessionRef.current[sessId];
+    if (list && list.length > 0) {
+      list.forEach((t) => clearTimeout(t));
+      timersBySessionRef.current[sessId] = [];
+    }
+  }, []);
+
+  const addSessionTimer = useCallback((sessId: string, timer: ReturnType<typeof setTimeout>) => {
+    if (!timersBySessionRef.current[sessId]) {
+      timersBySessionRef.current[sessId] = [];
+    }
+    timersBySessionRef.current[sessId].push(timer);
+  }, []);
+
   // Single Source of Truth: currentSessionId & messages cho pane đang active từ sessions & panes
   const activePane = panes.find((p) => p.id === activePaneId) || panes[0] || { id: 'pane-1', sessionId: null };
   const currentSessionId = activePane.sessionId;
@@ -803,7 +822,8 @@ export default function App() {
     forceWebSearch?: boolean,
     telemetry?: KeystrokeTelemetry
   ) => {
-    const pane = panesRef.current.find((p) => p.id === paneId) || panesRef.current[0];
+    const targetPaneId = paneId;
+    const pane = panesRef.current.find((p) => p.id === targetPaneId) || panesRef.current[0];
     let targetSessionId = pane?.sessionId;
 
     const resolvedBase64 = imageBase64 || (imageUri?.startsWith('data:image') ? cleanBase64(imageUri) : undefined);
@@ -812,7 +832,7 @@ export default function App() {
       : (resolvedBase64 ? `data:image/jpeg;base64,${resolvedBase64}` : imageUri);
 
     const userMsg: ChatMessage = {
-      id: `usr-${Date.now()}`,
+      id: `usr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       role: 'user',
       sender: 'user',
       text,
@@ -821,18 +841,23 @@ export default function App() {
       imageBase64: resolvedBase64,
     };
 
-    let currentSess = targetSessionId
-      ? sessionsRef.current.find((s) => s.id === targetSessionId)
-      : null;
+    if (!targetSessionId) {
+      targetSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    }
+
+    // Chặn gửi đúp trên chính phiên này nếu đang đợi phản hồi
+    if (inFlightSessionsRef.current.has(targetSessionId)) {
+      console.warn('[Tomorrow] Phiên đang trong luồng xử lý AI, tránh gửi trùng lặp:', targetSessionId);
+      return;
+    }
+    inFlightSessionsRef.current.add(targetSessionId);
+
+    const currentSess = sessionsRef.current.find((s) => s.id === targetSessionId);
     const existingMessages = currentSess ? currentSess.messages || [] : [];
     const updatedMessages = [...existingMessages, userMsg];
 
     let sessionTitle = currentSess?.title || 'Cuộc trò chuyện mới';
-
-    if (!targetSessionId) {
-      // HẠNG MỤC 1: Tạo ngay sessionId mới cho phiên này để luồng async ghi đúng vào sessionId gốc của chính nó
-      targetSessionId = `session-${Date.now()}`;
-
+    if (!currentSess || isPlaceholderOrNoiseTitle(sessionTitle)) {
       const trimmedText = text.trim();
       if (!isPlaceholderOrNoiseTitle(trimmedText) && trimmedText.length > 6) {
         const words = trimmedText.split(/\s+/).filter(Boolean);
@@ -843,43 +868,47 @@ export default function App() {
       } else if ((imageUri || imageBase64) && (!trimmedText || trimmedText === 'Hãy phân tích nội dung trong ảnh này giúp mình')) {
         sessionTitle = 'Hình ảnh gửi kèm';
       }
-
-      const newSession: ChatSession = {
-        id: targetSessionId,
-        title: sessionTitle,
-        updatedAt: Date.now(),
-        messages: updatedMessages,
-        notebookId: activeNotebookIdRef.current || DEFAULT_NOTEBOOK_ID,
-      };
-
-      // Cập nhật pane này gắn với targetSessionId
-      const nextPanes = panesRef.current.map((p) =>
-        p.id === paneId ? { ...p, sessionId: targetSessionId } : p
-      );
-      panesRef.current = nextPanes;
-      setPanes(nextPanes);
-      saveNotebookWorkspace(activeNotebookIdRef.current, nextPanes, paneId);
-
-      const nextSessions = [newSession, ...sessionsRef.current];
-      sessionsRef.current = nextSessions;
-      setSessions(nextSessions);
-      await saveSessions(nextSessions);
-    } else {
-      const updatedSession: ChatSession = {
-        id: targetSessionId,
-        title: sessionTitle,
-        updatedAt: Date.now(),
-        messages: updatedMessages,
-        notebookId: currentSess?.notebookId || activeNotebookIdRef.current || DEFAULT_NOTEBOOK_ID,
-      };
-      const remaining = sessionsRef.current.filter((s) => s.id !== targetSessionId);
-      const nextSessions = [updatedSession, ...remaining];
-      sessionsRef.current = nextSessions;
-      setSessions(nextSessions);
-      await saveSessions(nextSessions);
     }
 
-    // HẠNG MỤC 4: Phản hồi trạng thái chuyên môn tinh tế trên UI theo Dual-Persona Router
+    // Cập nhật pane này gắn với targetSessionId qua functional update
+    setPanes((prevPanes) => {
+      const nextPanes = prevPanes.map((p) =>
+        p.id === targetPaneId ? { ...p, sessionId: targetSessionId } : p
+      );
+      panesRef.current = nextPanes;
+      saveNotebookWorkspace(activeNotebookIdRef.current, nextPanes, targetPaneId);
+      return nextPanes;
+    });
+
+    // Cập nhật sessions dùng functional state update và đồng bộ tức thì sessionsRef.current
+    setSessions((prevSessions) => {
+      const sessIndex = prevSessions.findIndex((s) => s.id === targetSessionId);
+      let nextSessions: ChatSession[];
+      if (sessIndex !== -1) {
+        const updatedSess: ChatSession = {
+          ...prevSessions[sessIndex],
+          title: sessionTitle,
+          updatedAt: Date.now(),
+          messages: updatedMessages,
+          notebookId: prevSessions[sessIndex].notebookId || activeNotebookIdRef.current || DEFAULT_NOTEBOOK_ID,
+        };
+        nextSessions = [updatedSess, ...prevSessions.filter((s) => s.id !== targetSessionId)];
+      } else {
+        const newSession: ChatSession = {
+          id: targetSessionId,
+          title: sessionTitle,
+          updatedAt: Date.now(),
+          messages: updatedMessages,
+          notebookId: activeNotebookIdRef.current || DEFAULT_NOTEBOOK_ID,
+        };
+        nextSessions = [newSession, ...prevSessions];
+      }
+      sessionsRef.current = nextSessions;
+      saveSessions(nextSessions);
+      return nextSessions;
+    });
+
+    // Phản hồi trạng thái chuyên môn tinh tế trên UI theo Dual-Persona Router
     const effectiveImg = resolvedBase64 || resolvedUri;
     const preDomain = detectExpertDomain(text, Boolean(effectiveImg));
     const preDirective = buildLocalReflexDirective(
@@ -901,21 +930,20 @@ export default function App() {
 
     // Đặt trạng thái đang gõ/xử lý theo targetSessionId
     setTypingSessionIds((prev) => ({ ...prev, [targetSessionId]: true }));
-    // COMPANION_MIRROR: chỉ hiện 3 chấm • • • (undefined). JARVIS_LAB: hiển thị statusHint tinh tế
     const initialStatus = prePersona.persona === 'JARVIS_LAB' ? prePersona.statusHint : undefined;
     setTypingStatusBySession((prev) => ({ ...prev, [targetSessionId]: initialStatus }));
     setSearchingWebBySession((prev) => ({ ...prev, [targetSessionId]: false }));
     setIsLoading(true);
 
-    setTimeout(() => {
-      flatListRefs.current[paneId]?.scrollToEnd({ animated: true });
+    const scrollTimer = setTimeout(() => {
+      flatListRefs.current[targetPaneId]?.scrollToEnd({ animated: true });
     }, 20);
+    addSessionTimer(targetSessionId, scrollTimer);
 
     try {
       const previousSession = sessionsRef.current.find((s) => s.id !== targetSessionId);
       const previousSessionMessages = previousSession?.messages?.slice(-3);
 
-      // HẠNG MỤC 2: Kiểm tra carry-over ảnh từ các tin nhắn gần nhất nếu câu hỏi mang tính tham chiếu hoặc lượt trước lỗi
       const carriedOverImg = resolveCarriedOverVisionImage(text, updatedMessages, resolvedBase64 || resolvedUri);
       const effectiveImage = resolvedBase64 || carriedOverImg;
 
@@ -943,12 +971,13 @@ export default function App() {
         notebooksRef.current
       );
 
-      // HẠNG MỤC 1: Timeout Watchdog linh hoạt: 35s cho tác vụ Vision/STEM/Chuyên sâu/Web search, 15s cho chat nhanh
       const isDeepOrVision = Boolean(effectiveImage || text.length > 80 || forceWebSearch);
       const watchdogMs = isDeepOrVision ? 35000 : 15000;
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('WATCHDOG_TIMEOUT')), watchdogMs)
-      );
+      let watchdogTimeoutId: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        watchdogTimeoutId = setTimeout(() => reject(new Error('WATCHDOG_TIMEOUT')), watchdogMs);
+        addSessionTimer(targetSessionId, watchdogTimeoutId);
+      });
 
       let aiResponse: any;
       try {
@@ -970,6 +999,7 @@ export default function App() {
           };
         }
       } finally {
+        if (watchdogTimeoutId) clearTimeout(watchdogTimeoutId);
         setTypingStatusBySession((prev) => ({ ...prev, [targetSessionId]: undefined }));
         setSearchingWebBySession((prev) => ({ ...prev, [targetSessionId]: false }));
       }
@@ -999,7 +1029,6 @@ export default function App() {
 
       let currentHistory = [...updatedMessages];
 
-      // HẠNG MỤC 1 & 2: TÁCH BONG BÓNG VÀ LƯU VÀO targetSessionId KHÔNG BỊ HỦY BỞI Cmd+N
       for (const [index, replyText] of replies.entries()) {
         const isLastReply = index === replies.length - 1;
         const cleanReplyText = typeof replyText === 'string' && replyText !== '[object Object]'
@@ -1019,7 +1048,6 @@ export default function App() {
 
         currentHistory = [...currentHistory, aiMsg];
 
-        // Tự động cập nhật messages và updatedAt của đúng targetSessionId trong sessions và CHAT_SESSIONS_V2
         setSessions((prevSessions) => {
           const sessIndex = prevSessions.findIndex((s) => s.id === targetSessionId);
           if (sessIndex === -1) return prevSessions;
@@ -1031,13 +1059,15 @@ export default function App() {
             messages: currentHistory,
             lastIntent: aiResponse.jarvis_intent,
           };
+          sessionsRef.current = copy;
           saveSessions(copy);
           return copy;
         });
 
-        setTimeout(() => {
-          flatListRefs.current[paneId]?.scrollToEnd({ animated: true });
+        const bubbleScrollTimer = setTimeout(() => {
+          flatListRefs.current[targetPaneId]?.scrollToEnd({ animated: true });
         }, 50);
+        addSessionTimer(targetSessionId, bubbleScrollTimer);
 
         if (!isLastReply) {
           setTypingSessionIds((prev) => ({ ...prev, [targetSessionId]: true }));
@@ -1074,9 +1104,41 @@ export default function App() {
         setUserMemory(newMemory);
         await saveUserMemoryProfile(newMemory);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[App] Lỗi trò chuyện trong phiên:', targetSessionId, error);
+      const isTM = userMemoryRef.current.nickname === 'm' || /^(t|m|tao|mày)\b/i.test(text);
+      const fallbackText = isTM
+        ? 'Mạng hơi chập chờn một chút nên phản hồi chưa tới — m gửi lại câu vừa rồi nhé!'
+        : 'Kết nối mạng tạm thời gián đoạn nên phản hồi chưa tới — bạn gửi lại câu vừa rồi nhé!';
+
+      const fallbackMsg: ChatMessage = {
+        id: `ai-${Date.now()}-err`,
+        role: 'model',
+        sender: 'ai',
+        text: fallbackText,
+        timestamp: Date.now(),
+      };
+
+      setSessions((prevSessions) => {
+        const sessIndex = prevSessions.findIndex((s) => s.id === targetSessionId);
+        if (sessIndex === -1) return prevSessions;
+        const copy = [...prevSessions];
+        const existingMsgs = copy[sessIndex].messages || [];
+        const lastMsg = existingMsgs[existingMsgs.length - 1];
+        if (!lastMsg || lastMsg.role === 'user' || (lastMsg as any).sender === 'user') {
+          copy[sessIndex] = {
+            ...copy[sessIndex],
+            updatedAt: Date.now(),
+            messages: [...existingMsgs, fallbackMsg],
+          };
+          sessionsRef.current = copy;
+          saveSessions(copy);
+        }
+        return copy;
+      });
     } finally {
+      clearSessionTimers(targetSessionId);
+      inFlightSessionsRef.current.delete(targetSessionId);
       setTypingSessionIds((prev) => {
         const copy = { ...prev };
         delete copy[targetSessionId];
@@ -1720,7 +1782,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.8</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.8.1</Text>
               </View>
             </View>
           </View>
