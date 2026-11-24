@@ -3101,9 +3101,9 @@ console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.9.1',
+  version: 'v4.9.2',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.9.1 — Lucian #452 Prompt Box & Multi-Domain Subagent Suite (< 520 chars, System Prompt < 450 words)',
+  architecture: 'Tomorrow v4.9.2 — Lucian #471 3D Mechanical Cmd+K Button & Multi-Domain Subagent Suite (< 520 chars, System Prompt < 450 words)',
   totalScore,
   maxScore: 560,
   allPassed,

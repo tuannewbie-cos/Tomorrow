@@ -43,7 +43,11 @@
   + Công thức Toán học LaTeX Unicode (`$$...$$` hộp căn giữa viền Indigo `#6366F1`, `$...$` nội dòng).
   + Nút Quick Copy phản hồi ở góc dưới bên phải cho tin nhắn >120 ký tự hoặc có rich block.
 - **Thanh Nhập Liệu Prompt Box Lucian #452 (`components/PromptBox.tsx`):** Thiết kế 2 tầng bo góc `24px`, textarea tự giãn từ `24px` đến `96px` (tối đa 4 dòng); hiệu ứng chữ bay mờ `flyTextAnimation` khi gửi; viền `conic-gradient` xoay sáng khi đang sinh phản hồi; thanh công cụ dưới chỉ gồm nút tròn `+` mở duy nhất `📎 Tệp` bên trái và nút tròn Gửi / Dừng biến hình bên phải; đo đạc nhịp gõ ẩn `KeystrokeTelemetry` bằng `useRef` (zero re-render); TUYỆT ĐỐI CẤM nút chọn model, emote, icon quả cầu.
-- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.9.1`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.9.2`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Quy chuẩn Nút Tìm Kiếm ⌘K Phím Cơ 3D Lucian #471 (`v4.9.2`):**
+  + Tái thiết kế nút `Tìm kiếm ⌘K` trên Header theo mẫu Lucian #471 (`components/CommandTriggerButton.tsx`).
+  + Cụm 2 phím cơ 3D nổi gồm đế phím và nắp phím (`⌘`/`Ctrl` + `K`): lún `2.5px` (`.is-down`), nhún nhẹ gợi ý (`.is-ask`) khi giữ modifier, và phát sóng gợn `tmr-kbtn-rp` từ tâm phím lan tỏa ra thân nút khi kích hoạt.
+  + Đồng bộ phím tắt `Cmd/Ctrl + K` toàn cục, bảo vệ 100% các phím tắt hệ thống khác không bị chặn hoặc kẹt phím.
 - **Quy chuẩn Prompt Box Lucian #452 & Nút Dừng Thật AbortController (`v4.9.1`):**
   + Tái thiết kế toàn diện Prompt Box theo mẫu Lucian #452 hoàn toàn không có nút chọn model, emote hay quả cầu web.
   + Viền phát sáng xoay Conic Glow Spin qua CSS Web `@property --tmr-glow-a` và `@keyframes tmr-glow-spin` khi `isGenerating === true` của riêng pane đó.

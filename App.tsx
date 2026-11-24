@@ -46,6 +46,7 @@ import { PromptBox, PromptBoxRef } from './components/PromptBox';
 import { SidebarDrawer } from './components/SidebarDrawer';
 import { TypingIndicator } from './components/TypingIndicator';
 import { CommandPalette } from './components/CommandPalette';
+import { CommandTriggerButton, CommandTriggerButtonRef } from './components/CommandTriggerButton';
 import { MemoryVaultModal } from './components/MemoryVaultModal';
 import { StructuredMemoryVault } from './types/chat';
 import {
@@ -649,6 +650,7 @@ export default function App() {
   generatingPanesRef.current = generatingPanes;
   const abortControllersByPaneRef = useRef<Record<string, AbortController | null>>({});
   const cancelSequenceRef = useRef<Record<string, boolean>>({});
+  const commandTriggerRef = useRef<CommandTriggerButtonRef>(null);
 
   const prevIsDesktopRef = useRef<boolean>(isDesktop);
   const isCommandPaletteOpenRef = useRef<boolean>(false);
@@ -1584,6 +1586,16 @@ export default function App() {
       const key = (e.key || '').toLowerCase();
       const code = e.code || '';
 
+      // Khi nhấn giữ riêng phím modifier (Meta hoặc Control) mà chưa nhấn phím khác:
+      if ((e.key === 'Meta' || e.key === 'Control') && !isCommandPaletteOpenRef.current) {
+        commandTriggerRef.current?.setModifierDown(true);
+      }
+
+      // Nếu người dùng đang giữ Cmd/Ctrl nhưng nhấn một phím khác KHÔNG PHẢI 'k':
+      if (isCmdOrCtrl && key !== 'meta' && key !== 'control' && key !== 'k' && code !== 'KeyK') {
+        commandTriggerRef.current?.reset();
+      }
+
       // Cmd/Ctrl + N: Tạo cuộc trò chuyện mới sạch & focus ô nhập liệu
       if (isCmdOrCtrl && !e.altKey && !e.shiftKey && (key === 'n' || code === 'KeyN')) {
         e.preventDefault();
@@ -1650,11 +1662,26 @@ export default function App() {
         }
       }
 
-      // Cmd/Ctrl + K: Bật/tắt bảng lệnh nhanh Command Palette
+      // Cmd/Ctrl + K: Bật/tắt bảng lệnh nhanh Command Palette kèm hiệu ứng phím cơ 3D Lucian #471
       if (isCmdOrCtrl && !e.altKey && !e.shiftKey && (key === 'k' || code === 'KeyK')) {
         e.preventDefault();
         e.stopPropagation();
-        setIsCommandPaletteOpen((prev) => !prev);
+
+        commandTriggerRef.current?.triggerChord();
+
+        const isOpening = !isCommandPaletteOpenRef.current;
+        if (isOpening) {
+          const isReduced = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+          if (isReduced) {
+            setIsCommandPaletteOpen(true);
+          } else {
+            setTimeout(() => {
+              setIsCommandPaletteOpen(true);
+            }, 110);
+          }
+        } else {
+          setIsCommandPaletteOpen(false);
+        }
         return;
       }
 
@@ -1697,9 +1724,23 @@ export default function App() {
       }
     };
 
+    const handleGlobalKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Meta' || e.key === 'Control') {
+        commandTriggerRef.current?.reset();
+      }
+    };
+
+    const handleWindowBlur = () => {
+      commandTriggerRef.current?.reset();
+    };
+
     window.addEventListener('keydown', handleGlobalKeyDown, { capture: true });
+    window.addEventListener('keyup', handleGlobalKeyUp, { capture: true });
+    window.addEventListener('blur', handleWindowBlur);
     return () => {
       window.removeEventListener('keydown', handleGlobalKeyDown, { capture: true });
+      window.removeEventListener('keyup', handleGlobalKeyUp, { capture: true });
+      window.removeEventListener('blur', handleWindowBlur);
     };
   }, [openDropdownPaneId]);
 
@@ -1896,59 +1937,21 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.9.1</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.9.2</Text>
               </View>
             </View>
           </View>
 
           {/* Cụm nút góc phải: Nút Command Palette ⌘K (trên Desktop) + Nút Tạo Cuộc Trò Chuyện Mới */}
           <View style={styles.headerRightActions}>
-            {/* Nút Command Palette ⌘K tinh tế trên Desktop (width >= 768px) */}
+            {/* Nút Command Palette ⌘K chuẩn Lucian #471 trên Desktop (width >= 768px) */}
             {isDesktop && (
-              <Pressable
-                style={({ pressed }) => [
-                  styles.commandPaletteBtn,
-                  {
-                    backgroundColor:
-                      theme.mode === 'dark'
-                        ? 'rgba(255, 255, 255, 0.05)'
-                        : 'rgba(0, 0, 0, 0.04)',
-                    borderColor: theme.borderSubtle,
-                  },
-                  pressed && { backgroundColor: theme.btnHover },
-                  Platform.OS === 'web' && { cursor: 'pointer' as any },
-                ]}
-                onPress={() => setIsCommandPaletteOpen(true)}
-                hitSlop={6}
-              >
-                <Search size={14} color={theme.textMuted} />
-                <Text
-                  style={[
-                    styles.commandPaletteBtnText,
-                    { color: theme.textSecondary },
-                  ]}
-                >
-                  Tìm kiếm
-                </Text>
-                <View
-                  style={[
-                    styles.shortcutKbd,
-                    {
-                      backgroundColor:
-                        theme.mode === 'dark'
-                          ? 'rgba(255, 255, 255, 0.08)'
-                          : 'rgba(0, 0, 0, 0.06)',
-                      borderColor: theme.borderSubtle,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[styles.shortcutKbdText, { color: theme.textMuted }]}
-                  >
-                    ⌘K
-                  </Text>
-                </View>
-              </Pressable>
+              <CommandTriggerButton
+                ref={commandTriggerRef}
+                onPress={() => setIsCommandPaletteOpen((prev) => !prev)}
+                theme={theme}
+                isDesktop={isDesktop}
+              />
             )}
 
             {/* Nút Cuộc trò chuyện mới */}

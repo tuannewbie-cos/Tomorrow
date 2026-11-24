@@ -1,6 +1,6 @@
 /**
  * Tomorrow Version Definition
- * Online • v4.9.1: Lucian #452 Prompt Box (No Model Selector, Conic Glow & Real AbortController Stop)
+ * Online • v4.9.2: Lucian #471 3D Mechanical Cmd+K Button & Global Shortcut Sync
  */
-export const APP_VERSION = 'Online • v4.9.1';
-export const APP_VERSION_NUMBER = '4.9.1';
+export const APP_VERSION = 'Online • v4.9.2';
+export const APP_VERSION_NUMBER = '4.9.2';

@@ -18,12 +18,19 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 - **Phía bên trái:**
   - **Duy nhất 1 nút `☰`** (Menu icon, 38x38 bo tròn) để đóng/mở Sidebar (`Cmd + B`).
 - **Chính giữa (Căn giữa tuyệt đối theo chiều ngang):**
-  - Cụm tiêu đề **`Tomorrow`** (`fontSize: 16.5`, `fontWeight: '700'`) đi kèm viên thuốc trạng thái **`Online • vX.X.X`** (chấm tròn xanh dịu + chữ xanh).
+  - Cụm tiêu đề **`Tomorrow`** (`fontSize: 16.5`, `fontWeight: '700'`) đi kèm viên thuốc trạng thái **`Online • v4.9.2`** (chấm tròn xanh dịu + chữ xanh).
   - Sử dụng bố cục căn giữa tuyệt đối (`position: 'absolute', left: 0, right: 0, alignItems: 'center', pointerEvents: 'none'`) để không bao giờ bị lệch tâm dù nhóm nút bên phải dài hơn bên trái.
   - **NGHIÊM CẤM:** Hiển thị thẻ tên Sổ ghi chú (VD: `📁 test`, `📁 Ghi chú chung`) hay dòng trạng thái `"Đang nhớ: ..."` trên Header.
 - **Phía bên phải:**
   - **Duy nhất 2 thành phần:**
-    1. Thanh **`Tìm kiếm ⌘K`** (trên màn hình rộng `width >= 768px`).
+    1. Nút **`Tìm kiếm ⌘K`** chuẩn **Lucian #471** (trên màn hình Desktop `width >= 768px`):
+       - Chiều cao cân xứng Header `36px`, bo góc `12px`, nền hòa sắc theme (`#1E1F26` Dark / `#FFFFFF` Light), viền mỏng và đổ bóng sâu.
+       - Kính lúp xoay nhẹ và phóng to (`rotate(-14deg) scale(1.14)`) khi kích hoạt (`.is-hit`).
+       - Cụm phím cơ nổi 3D gồm đế phím và nắp phím (`⌘` hoặc `Ctrl` tự động nhận diện theo OS và `K`):
+         * Trạng thái `.is-down`: nắp phím lún xuống `2.5px`, chữ đổi màu accent, viền sáng accent; nhả ra nảy lò xo về vị trí ban đầu `translateY(0)` trong `0.42s`.
+         * Trạng thái `.is-ask`: nhún nhẹ và phát hào quang mềm `var(--tmr-accent-soft)` khi người dùng đang giữ `⌘` / `Ctrl` chờ bấm `K`.
+         * Sóng gợn `tmr-kbtn-rp` lan tỏa từ tâm cụm phím `⌘K` ra toàn bộ nút khi nhấn kích hoạt.
+       - Đồng bộ phím tắt toàn cục `Cmd/Ctrl + K` (mở Command Palette sau 110ms cho mắt kịp thấy nhịp nhấn phím cơ, hoặc đóng ngay tức thì).
     2. Nút **Tạo cuộc trò chuyện mới** (`SquarePen` icon, 38x38 bo tròn).
   - **NGHIÊM CẤM:** Đặt nút Chia đôi màn hình (Split Screen) và nút Mặt trăng/Mặt trời chuyển Sáng/Tối trên Header (đã chuyển hoàn toàn sang phím tắt).
 
