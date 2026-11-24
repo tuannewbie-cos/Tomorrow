@@ -78,6 +78,7 @@ import {
   THEME_STORAGE_KEY,
 } from './constants/theme';
 import { injectWebFonts } from './utils/webFont';
+import { injectThemeTransitionStyles, runCircularThemeTransition } from './utils/themeTransition';
 import { compressImageForVision, cleanBase64 } from './utils/imageOptimizer';
 
 // Kiểm tra câu chào ngắn xã giao hoặc placeholder (tương thích ngược)
@@ -573,6 +574,8 @@ export default function App() {
   const isDesktop = width >= 768;
 
   const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
+  const themeModeRef = useRef<ThemeMode>(themeMode);
+  themeModeRef.current = themeMode;
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [userMemory, setUserMemory] = useState<UserMemoryProfile>(DEFAULT_USER_MEMORY);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -729,6 +732,7 @@ export default function App() {
   // 1. KHỞI TẠO WEB FONTS & NẠP DỮ LIỆU ĐA PHIÊN, THEME
   useEffect(() => {
     injectWebFonts();
+    injectThemeTransitionStyles();
 
     async function rehydrateContext() {
       try {
@@ -774,6 +778,14 @@ export default function App() {
         }
         if (savedTheme === 'light' || savedTheme === 'dark') {
           setThemeMode(savedTheme);
+          themeModeRef.current = savedTheme;
+          if (Platform.OS === 'web' && typeof document !== 'undefined') {
+            document.documentElement.dataset.theme = savedTheme;
+            document.documentElement.style.colorScheme = savedTheme;
+            const bg = savedTheme === 'dark' ? '#171717' : '#FFFFFF';
+            document.body.style.backgroundColor = bg;
+            document.documentElement.style.backgroundColor = bg;
+          }
         }
 
         // Khôi phục notebooks
@@ -833,25 +845,37 @@ export default function App() {
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  // Chuyển đổi Theme Sáng / Tối 2 chiều dùng functional updater tránh stale closure
-  const toggleTheme = useCallback(() => {
-    setThemeMode((prevMode) => {
-      const nextMode: ThemeMode = prevMode === 'dark' ? 'light' : 'dark';
-      AsyncStorage.setItem(THEME_STORAGE_KEY, nextMode).catch((err) => {
-        console.warn('[Theme] Không thể lưu theme:', err);
-      });
-      if (Platform.OS === 'web' && typeof document !== 'undefined') {
-        const bg = nextMode === 'dark' ? '#171717' : '#FFFFFF';
-        document.body.style.backgroundColor = bg;
-        document.documentElement.style.backgroundColor = bg;
-      }
-      return nextMode;
+  // Chuyển đổi Theme Sáng / Tối 2 chiều với hiệu ứng sóng tròn View Transition (Online • v4.9.3)
+  const toggleThemeWithWave = useCallback((origin?: { x: number; y: number }) => {
+    const nextMode: ThemeMode = themeModeRef.current === 'dark' ? 'light' : 'dark';
+    themeModeRef.current = nextMode;
+
+    AsyncStorage.setItem(THEME_STORAGE_KEY, nextMode).catch((err) => {
+      console.warn('[Theme] Không thể lưu theme:', err);
     });
+
+    const applyThemeSync = () => {
+      if (Platform.OS === 'web') {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { flushSync } = require('react-dom');
+          if (typeof flushSync === 'function') {
+            flushSync(() => {
+              setThemeMode(nextMode);
+            });
+            return;
+          }
+        } catch {}
+      }
+      setThemeMode(nextMode);
+    };
+
+    runCircularThemeTransition(nextMode, applyThemeSync, origin);
   }, []);
 
-  const toggleThemeRef = useRef(toggleTheme);
-  toggleThemeRef.current = toggleTheme;
-  const handleToggleTheme = toggleTheme;
+  const toggleThemeRef = useRef(toggleThemeWithWave);
+  toggleThemeRef.current = toggleThemeWithWave;
+  const handleToggleTheme = toggleThemeWithWave;
 
   // Hủy sinh phản hồi AI tức thì bằng AbortController và hủy tách chuỗi bong bóng
   const handleStopGenerationInPane = useCallback((paneId: string) => {
@@ -1937,7 +1961,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.9.2</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.9.3</Text>
               </View>
             </View>
           </View>

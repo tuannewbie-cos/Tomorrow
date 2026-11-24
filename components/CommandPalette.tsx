@@ -241,8 +241,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         iconType: 'toggle_theme',
         group: 'actions',
         action: () => {
-          onToggleTheme();
           onClose();
+          setTimeout(() => {
+            onToggleTheme();
+          }, 40);
         },
       },
       {

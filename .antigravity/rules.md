@@ -43,7 +43,13 @@
   + Công thức Toán học LaTeX Unicode (`$$...$$` hộp căn giữa viền Indigo `#6366F1`, `$...$` nội dòng).
   + Nút Quick Copy phản hồi ở góc dưới bên phải cho tin nhắn >120 ký tự hoặc có rich block.
 - **Thanh Nhập Liệu Prompt Box Lucian #452 (`components/PromptBox.tsx`):** Thiết kế 2 tầng bo góc `24px`, textarea tự giãn từ `24px` đến `96px` (tối đa 4 dòng); hiệu ứng chữ bay mờ `flyTextAnimation` khi gửi; viền `conic-gradient` xoay sáng khi đang sinh phản hồi; thanh công cụ dưới chỉ gồm nút tròn `+` mở duy nhất `📎 Tệp` bên trái và nút tròn Gửi / Dừng biến hình bên phải; đo đạc nhịp gõ ẩn `KeystrokeTelemetry` bằng `useRef` (zero re-render); TUYỆT ĐỐI CẤM nút chọn model, emote, icon quả cầu.
-- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.9.2`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.9.3`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Quy chuẩn Chuyển Đổi Theme Sóng Tròn Circular Radial Wave (`v4.9.3`):**
+  + Sử dụng Web `View Transitions API` (`document.startViewTransition`) + React 19 `flushSync` (`utils/themeTransition.ts`) loại bỏ hoàn toàn cross-fade mờ chồng hình.
+  + Tâm sóng bung tỏa từ góc trên bên phải màn hình (`x = innerWidth - 36`, `y = 28`), bán kính cực đại `endRadius = hypot(...) + 24` quét trọn 100% viewport.
+  + Hai chiều đối xứng (Two-Way Symmetry): Cả Tối → Sáng và Sáng → Tối đều bung sóng tròn `600ms cubic-bezier(0.22, 1, 0.36, 1)` đồng bộ clip-path trên `::view-transition-new(root)` và lớp viền sóng mềm phát quang `.tmr-theme-wave-rim`.
+  + Nối vào phím tắt toàn cục `Cmd + R` (không giữ Shift) và mục `Chuyển sang giao diện Sáng/Tối ⌘R` trong Command Palette (`Cmd + K`); `Cmd + Shift + R` giữ nguyên cho hard reload trình duyệt.
+  + Chống kẹt phím khi bấm liên tục (`skipTransition()`) và fallback tự động cho `prefers-reduced-motion` hoặc môi trường không hỗ trợ.
 - **Quy chuẩn Nút Tìm Kiếm ⌘K Phím Cơ 3D Lucian #471 (`v4.9.2`):**
   + Tái thiết kế nút `Tìm kiếm ⌘K` trên Header theo mẫu Lucian #471 (`components/CommandTriggerButton.tsx`).
   + Cụm 2 phím cơ 3D nổi gồm đế phím và nắp phím (`⌘`/`Ctrl` + `K`): lún `2.5px` (`.is-down`), nhún nhẹ gợi ý (`.is-ask`) khi giữ modifier, và phát sóng gợn `tmr-kbtn-rp` từ tâm phím lan tỏa ra thân nút khi kích hoạt.

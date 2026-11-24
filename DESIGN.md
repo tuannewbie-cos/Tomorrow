@@ -18,7 +18,7 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 - **Phía bên trái:**
   - **Duy nhất 1 nút `☰`** (Menu icon, 38x38 bo tròn) để đóng/mở Sidebar (`Cmd + B`).
 - **Chính giữa (Căn giữa tuyệt đối theo chiều ngang):**
-  - Cụm tiêu đề **`Tomorrow`** (`fontSize: 16.5`, `fontWeight: '700'`) đi kèm viên thuốc trạng thái **`Online • v4.9.2`** (chấm tròn xanh dịu + chữ xanh).
+  - Cụm tiêu đề **`Tomorrow`** (`fontSize: 16.5`, `fontWeight: '700'`) đi kèm viên thuốc trạng thái **`Online • v4.9.3`** (chấm tròn xanh dịu + chữ xanh).
   - Sử dụng bố cục căn giữa tuyệt đối (`position: 'absolute', left: 0, right: 0, alignItems: 'center', pointerEvents: 'none'`) để không bao giờ bị lệch tâm dù nhóm nút bên phải dài hơn bên trái.
   - **NGHIÊM CẤM:** Hiển thị thẻ tên Sổ ghi chú (VD: `📁 test`, `📁 Ghi chú chung`) hay dòng trạng thái `"Đang nhớ: ..."` trên Header.
 - **Phía bên phải:**
@@ -111,7 +111,7 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 | **`Cmd + B`** | Đóng / mở Sidebar | Animation trượt mượt 240ms |
 | **`Cmd + K`** | Mở / đóng Command Palette | Animation popup mượt 200ms |
 | **`Cmd + N`** | Mở cuộc trò chuyện mới | Giữ các phiên ngầm hoạt động |
-| **`Cmd + R`** | Chuyển đổi Sáng / Tối (`TOMORROW_THEME_MODE`) | Không giữ Shift; `Cmd+Shift+R` giữ cho hard reload |
+| **`Cmd + R`** | Chuyển đổi Sáng ↔ Tối (Circular Radial Wave View Transition) | Bung sóng tròn từ góc trên bên phải (`x = innerWidth - 36`, `y = 28`) trong `600ms`; không giữ Shift; `Cmd+Shift+R` giữ cho hard reload |
 | **`Cmd + ArrowUp`** | Mở thêm cửa sổ chat (Split Screen) | Tối đa 4 panes theo sổ ghi chú, animation popup 260ms |
 | **`Cmd + ArrowDown`** | Bật chế độ chọn đóng tab | Dùng `←`/`→` chọn tab, `Enter` để đóng, `Esc` để hủy |
 | **`Cmd + V`** | Dán ảnh từ clipboard | Tự động nén và đính kèm Vision Lab |
@@ -127,6 +127,14 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
   - Popups & Modals: `cubic-bezier(0.16, 1, 0.3, 1)` (chuẩn macOS App Launch Spring).
   - Trượt Sidebar & Drawer: `cubic-bezier(0.22, 1, 0.36, 1)` trong `240ms`.
   - Hiệu ứng đạt mượt mà 60fps, không giật lag.
+- **Hiệu Ứng Chuyển Đổi Theme Sóng Tròn (Circular Radial Wave Theme Transition — v4.9.3):**
+  - Kích hoạt qua **`Cmd + R`** (toàn cục) hoặc mục **`Chuyển sang giao diện Sáng/Tối ⌘R`** trong Command Palette (`Cmd + K`).
+  - **Cơ chế lõi:** Sử dụng Web `View Transitions API` (`document.startViewTransition`) kết hợp `flushSync` (React 19) để ép render khung hình mới tức thì không qua hiệu ứng cross-fade mờ đục.
+  - **Tâm phát sóng (`origin`):** Tọa độ góc trên bên phải cửa sổ (`x = window.innerWidth - 36`, `y = 28`), bung ra theo bán kính cực đại `endRadius = hypot(max(x, W-x), max(y, H-y)) + 24`.
+  - **Hoạt ảnh hình tròn:** `clip-path: circle(...)` quét mở rộng trên `::view-transition-new(root)` trong `600ms` với đường cong `cubic-bezier(0.22, 1, 0.36, 1)`.
+  - **Lớp viền sóng mềm (`.tmr-theme-wave-rim`):** Vòng tròn GPU-scaled với hào quang `blur(16px)` và `box-shadow` nhẹ (`rgba(255,255,255,0.45)` khi sang Light, `rgba(0,0,0,0.45)` khi sang Dark), phóng đồng bộ từ tâm `(x, y)` tạo cảm giác quầng sáng/tối quét êm ái trên toàn bộ Sidebar, Header, nút cơ `⌘K`, Split Screen và `PromptBox`.
+  - **Tính hai chiều đối xứng (Two-Way Symmetry):** Cả 2 chiều **Tối → Sáng** và **Sáng → Tối** đều khởi phát từ cùng một tâm góc trên bên phải, quét mượt mà phủ khắp giao diện.
+  - **Bảo vệ chống kẹt & Khả năng tiếp cận:** Hỗ trợ `activeTransition.skipTransition()` khi nhấn `Cmd + R` liên tục tốc độ cao; tự động fallback đổi màu ngay khi bật `prefers-reduced-motion` hoặc trên nền tảng không hỗ trợ View Transition.
 
 ---
 
