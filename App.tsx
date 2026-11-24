@@ -1961,7 +1961,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.9.5</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.9.6</Text>
               </View>
             </View>
           </View>

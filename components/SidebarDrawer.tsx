@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,13 +14,10 @@ import { ChatSession, UserMemoryProfile } from '../types/chat';
 import { isPlaceholderOrNoiseTitle } from '../storage/chatStorage';
 import { Notebook, DEFAULT_NOTEBOOK_ID } from '../storage/notebookStorage';
 import { NotebookSidebarList } from './NotebookSidebarList';
+import { TomorrowGlyph } from './TomorrowGlyph';
 import {
-  X,
-  MessageSquare,
-  Plus,
+  PanelLeftClose,
   Trash2,
-  Sparkles,
-  Clock,
 } from 'lucide-react-native';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
 
@@ -76,6 +73,64 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   const isDesktop = width >= 768;
 
   const [isClearHovered, setIsClearHovered] = useState<boolean>(false);
+  const isDark = theme.mode === 'dark';
+  const borderDivider = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
+  const borderRightColor = isDark ? 'rgba(255, 255, 255, 0.07)' : '#E6E6EA';
+
+  // Inject Web CSS for scrollbar and 60fps micro-animations without background lag
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    const styleId = 'tmr-sidebar-ember-styles';
+    if (!document.getElementById(styleId)) {
+      const styleEl = document.createElement('style');
+      styleEl.id = styleId;
+      styleEl.textContent = `
+        .tmr-sidebar-scroll::-webkit-scrollbar {
+          width: 4px;
+        }
+        .tmr-sidebar-scroll::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .tmr-sidebar-scroll::-webkit-scrollbar-thumb {
+          background: transparent;
+          border-radius: 4px;
+        }
+        .tmr-sidebar-scroll:hover::-webkit-scrollbar-thumb {
+          background: rgba(120, 120, 128, 0.28);
+        }
+        .tmr-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+          background: rgba(120, 120, 128, 0.5);
+        }
+        .tmr-sb-btn {
+          transition: background-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
+                      border-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
+                      box-shadow 150ms cubic-bezier(0.22, 1, 0.36, 1),
+                      transform 120ms ease;
+        }
+        .tmr-sb-btn:active {
+          transform: scale(0.985);
+        }
+        .tmr-sb-row {
+          transition: background-color 140ms ease,
+                      border-color 140ms ease,
+                      box-shadow 140ms ease;
+        }
+        .tmr-sb-row:hover .tmr-sb-row-title {
+          transform: translate3d(2px, 0, 0);
+        }
+        .tmr-sb-row-title {
+          transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .tmr-sb-time {
+          transition: opacity 140ms ease, transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .tmr-sb-trash {
+          transition: opacity 140ms ease, transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+      `;
+      document.head.appendChild(styleEl);
+    }
+  }, []);
 
   // Xác nhận xóa toàn bộ
   const handleConfirmClearAll = () => {
@@ -121,32 +176,38 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
         styles.drawerInner,
         {
           backgroundColor: theme.bgSidebar,
-          borderRightColor: theme.borderSubtle,
+          borderRightColor: borderRightColor,
         },
       ]}
     >
-      {/* Header Sidebar */}
-      <View style={[styles.drawerHeader, { borderBottomColor: theme.borderSubtle }]}>
+      {/* Brand Bar Header Sidebar: 52px trục chuẩn */}
+      <View style={[styles.drawerHeader, { borderBottomColor: borderDivider }]}>
         <View style={styles.brandRow}>
-          <Sparkles size={20} color="#8B5CF6" />
-          <Text style={[styles.brandTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
+          <TomorrowGlyph size={18} themeMode={theme.mode} color={isDark ? '#F4F4F5' : '#111113'} />
+          <Text style={[styles.brandTitle, { color: isDark ? '#F4F4F5' : '#111113' }]}>Tomorrow</Text>
         </View>
         {showCloseBtn && (
           <Pressable
             style={({ pressed }) => [
               styles.closeBtn,
-              pressed && { backgroundColor: theme.btnHover },
-              Platform.OS === 'web' && { cursor: 'pointer' as any },
+              pressed && { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)' },
+              Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
             ]}
             onPress={onClose}
             hitSlop={8}
+            accessibilityLabel="Đóng sidebar"
           >
-            <X size={19} color={theme.textSecondary} />
+            <PanelLeftClose size={16} color={isDark ? '#A1A1AA' : '#71717A'} />
           </Pressable>
         )}
       </View>
 
-      <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollContent}
+        contentContainerStyle={styles.scrollContentInner}
+        showsVerticalScrollIndicator={false}
+        {...(Platform.OS === 'web' && ({ className: 'tmr-sidebar-scroll' } as any))}
+      >
         {/* Danh sách phân nhóm Sổ ghi chú Antigravity */}
         <NotebookSidebarList
           notebooks={notebooks}
@@ -172,21 +233,46 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
         />
       </ScrollView>
 
-      {/* Footer nút xóa toàn bộ lịch sử */}
-      <View style={[styles.drawerFooter, { borderTopColor: theme.borderSubtle }]}>
+      {/* Footer nút xóa toàn bộ lịch sử: Ghost style, hover đỏ dịu */}
+      <View style={[styles.drawerFooter, { borderTopColor: borderDivider }]}>
         <Pressable
           style={({ pressed }) => [
             styles.clearBtn,
+            {
+              backgroundColor: isClearHovered
+                ? (isDark ? 'rgba(239, 68, 68, 0.09)' : 'rgba(220, 38, 38, 0.07)')
+                : 'transparent',
+              borderColor: isClearHovered
+                ? (isDark ? 'rgba(239, 68, 68, 0.22)' : 'rgba(220, 38, 38, 0.18)')
+                : 'transparent',
+            },
             pressed && styles.btnPressed,
-            isClearHovered && styles.clearBtnHovered,
-            Platform.OS === 'web' && { cursor: 'pointer' as any },
+            Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
           ]}
           onPress={handleConfirmClearAll}
           onHoverIn={() => setIsClearHovered(true)}
           onHoverOut={() => setIsClearHovered(false)}
         >
-          <Trash2 size={15} color="#EF4444" />
-          <Text style={styles.clearBtnText}>Xóa toàn bộ lịch sử & Reset</Text>
+          <Trash2
+            size={14}
+            color={
+              isClearHovered
+                ? (isDark ? '#F87171' : '#DC2626')
+                : '#71717A'
+            }
+          />
+          <Text
+            style={[
+              styles.clearBtnText,
+              {
+                color: isClearHovered
+                  ? (isDark ? '#F87171' : '#DC2626')
+                  : '#71717A',
+              },
+            ]}
+          >
+            Xóa toàn bộ lịch sử & Reset
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -203,13 +289,13 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
             opacity: visible ? 1 : 0,
             overflow: 'hidden',
             borderRightWidth: visible ? 1 : 0,
-            borderRightColor: theme.borderSubtle,
+            borderRightColor: borderRightColor,
             backgroundColor: theme.bgSidebar,
           },
           Platform.OS === 'web' && ({
             transition:
-              'width 240ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms cubic-bezier(0.22, 1, 0.36, 1), transform 240ms cubic-bezier(0.22, 1, 0.36, 1)',
-            transform: visible ? 'translateX(0)' : 'translateX(-12px)',
+              'width 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1)',
+            transform: visible ? 'translateX(0)' : 'translateX(-10px)',
           } as any),
         ]}
       >
@@ -274,18 +360,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    height: 60,
+    paddingHorizontal: 14,
+    height: 52,
     borderBottomWidth: 1,
   },
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 9,
   },
   brandTitle: {
-    fontSize: 16.5,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '600',
     letterSpacing: -0.3,
     fontFamily:
       Platform.OS === 'web'
@@ -293,124 +379,43 @@ const styles = StyleSheet.create({
         : undefined,
   },
   closeBtn: {
-    padding: 6,
-    borderRadius: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scrollContent: {
     flex: 1,
-    paddingHorizontal: 12,
-    paddingTop: 16,
   },
-  newChatBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    gap: 8,
-    marginBottom: 20,
-    shadowColor: '#2563EB',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  newChatText: {
-    fontWeight: '600',
-    fontSize: 13.5,
-    letterSpacing: -0.2,
-    fontFamily:
-      Platform.OS === 'web'
-        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif"
-        : undefined,
-  },
-  sessionSection: {
-    marginBottom: 20,
-  },
-  recentSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-    paddingHorizontal: 6,
-  },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.8,
-    fontFamily:
-      Platform.OS === 'web'
-        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif"
-        : undefined,
-  },
-  emptySessionBox: {
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-  },
-  emptySessionText: {
-    fontSize: 12,
-    fontStyle: 'italic',
-  },
-  sessionItemContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 10,
-    marginTop: 4,
-    borderWidth: 1,
-    paddingRight: 4,
-  },
-  sessionMainClickArea: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 9,
-    paddingLeft: 10,
-    paddingRight: 4,
-    gap: 8,
-  },
-  sessionItemTitle: {
-    fontSize: 13.5,
-    lineHeight: 19,
-    fontWeight: '500',
-    flex: 1,
-    letterSpacing: -0.1,
-    fontFamily:
-      Platform.OS === 'web'
-        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif"
-        : undefined,
-  },
-  sessionDeleteBtn: {
-    padding: 6,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
+  scrollContentInner: {
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: 16,
   },
   btnPressed: {
     opacity: 0.75,
   },
   drawerFooter: {
-    padding: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderTopWidth: 1,
   },
   clearBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.08)',
-    paddingVertical: 10,
-    borderRadius: 10,
+    height: 34,
+    borderRadius: 8,
     gap: 6,
     borderWidth: 1,
-    borderColor: 'rgba(239, 68, 68, 0.2)',
-  },
-  clearBtnHovered: {
-    backgroundColor: 'rgba(239, 68, 68, 0.18)',
   },
   clearBtnText: {
-    color: '#EF4444',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '500',
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif"
+        : undefined,
   },
 });

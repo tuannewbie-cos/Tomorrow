@@ -3101,9 +3101,9 @@ console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.9.5',
+  version: 'v4.9.6',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.9.5 — Attach Popover Inline Style Hotfix & Lucian #452 Suite (< 520 chars, System Prompt < 450 words)',
+  architecture: 'Tomorrow v4.9.6 — Ember Obsidian Minimal Monochrome Sidebar & Lucian #452 Suite (< 520 chars, System Prompt < 450 words)',
   totalScore,
   maxScore: 560,
   allPassed,

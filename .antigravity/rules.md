@@ -43,7 +43,15 @@
   + Công thức Toán học LaTeX Unicode (`$$...$$` hộp căn giữa viền Indigo `#6366F1`, `$...$` nội dòng).
   + Nút Quick Copy phản hồi ở góc dưới bên phải cho tin nhắn >120 ký tự hoặc có rich block.
 - **Thanh Nhập Liệu Prompt Box Lucian #452 1 Hàng Ngang (`components/PromptBox.tsx` — `v4.9.4`):** Thiết kế 1 hàng ngang thẳng tâm tuyệt đối bo góc `28px` (`[+]` — `Ô nhập chữ 34px` — `[↑]`), textarea tự giãn từ `34px` đến `106px` (tối đa 4 dòng); hiệu ứng chữ bay mờ `flyTextAnimation` khi gửi; viền `conic-gradient` xoay sáng khi đang sinh phản hồi; triệt tiêu hoàn toàn độ khựng nút `+` nhờ GPU SVG rotation, keep-mounted popover `📎 Tệp` và `pointerdown` dismiss; nút tròn Gửi / Dừng biến hình; đo đạc nhịp gõ ẩn `KeystrokeTelemetry` bằng `useRef` (zero re-render); TUYỆT ĐỐI CẤM nút chọn model, emote, icon quả cầu.
-- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.9.5`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.9.6`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Quy chuẩn Thanh Bên Lịch Sử Ember Obsidian Minimal Monochrome (`v4.9.6`):**
+  + Tái thiết kế toàn bộ Sidebar bên trái đồng bộ Split-View Desktop và Mobile Drawer theo phong cách Ember Obsidian mờ sâu (Dark `#141416`, viền phải `1px solid rgba(255, 255, 255, 0.07)`) và Architectural Alabaster (Light `#F7F7F8`, viền phải `1px solid #E6E6EA`), loại bỏ hoàn toàn các mảng màu tím/xanh AI slop.
+  + Brand Bar `52px` đồng trục Header: biểu tượng lõi đơn sắc `TomorrowGlyph` (`18x18`, trắng `#F4F4F5` / đen `#111113`) + chữ `Tomorrow` (`15px`, `fontWeight: '600'`) + nút đóng `PanelLeftClose` (`16x16`, bấm `28x28`, bo góc `7px`).
+  + Thanh 2 nút trên cùng `34px`: nút chính `+ Trò chuyện mới` (giải quyết triệt để lỗi cắt chữ `"Cuộc trò chuyện..."`) và nút phụ `Sổ mới` (`Folder` `13x13`).
+  + Phân nhóm Sổ ghi chú với nhãn vi mô `SỔ GHI CHÚ` (`11px`, `fontWeight: '500'`, `letterSpacing: 0.4`), đường guide line dọc `1px solid rgba(255,255,255,0.06)` (Dark) / `rgba(0,0,0,0.06)` (Light) định hướng thị giác danh sách đoạn chat thụt lề, icon `MessageSquare` (`13x13`), chấm tròn đơn sắc trung tính `5px` cho pane phụ Split Screen.
+  + Mốc thời gian tương đối `tabular-nums` (`11px`, `#52525B` Dark / `#9CA3AF` Light), tự động hoán đổi êm dịu sang icon thùng rác `Trash2` đỏ khi hover.
+  + Chân trang Sticky Footer: nút `Xóa toàn bộ lịch sử & Reset` dạng Ghost (`34px`), chỉ đổi nền đỏ dịu và viền/chữ đỏ khi hover.
+  + Tối ưu hoạt ảnh 60fps qua Web CSS: TUYỆT ĐỐI KHÔNG đặt `transition: background-color` trên vỏ Sidebar container để giữ nguyên tốc độ quét sóng tròn không gián đoạn khi bấm `Cmd + R`.
 - **Quy chuẩn Chuyển Đổi Theme Sóng Tròn Circular Radial Wave (`v4.9.3`):**
   + Sử dụng Web `View Transitions API` (`document.startViewTransition`) + React 19 `flushSync` (`utils/themeTransition.ts`) loại bỏ hoàn toàn cross-fade mờ chồng hình.
   + Tâm sóng bung tỏa từ góc trên bên phải màn hình (`x = innerWidth - 36`, `y = 28`), bán kính cực đại `endRadius = hypot(...) + 24` quét trọn 100% viewport.
