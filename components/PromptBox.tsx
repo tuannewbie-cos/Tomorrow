@@ -81,6 +81,7 @@ function ensureWebStylesInjected() {
 
     .tmr-prompt-container {
       position: relative;
+      overflow: visible;
       border-radius: 28px;
       transition: box-shadow 0.25s ease, border-color 0.25s ease;
       box-sizing: border-box;
@@ -272,6 +273,7 @@ export const PromptBox = forwardRef<PromptBoxRef, PromptBoxProps>(({
   const isGenerating = typeof propIsGenerating === 'boolean' ? propIsGenerating : (isLoading || isTomorrowTyping);
 
   const containerRef = useRef<any>(null);
+  const attachWrapperRef = useRef<any>(null);
   const textInputRef = useRef<TextInputInstance>(null);
   const textareaDOMRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<any>(null);
@@ -288,7 +290,7 @@ export const PromptBox = forwardRef<PromptBoxRef, PromptBoxProps>(({
   const [inputHeight, setInputHeight] = useState(34);
   const [selectedImage, setSelectedImage] = useState<{ uri: string; base64?: string; sizeKB?: number } | null>(null);
   const [attachedFile, setAttachedFile] = useState<AttachedFileInfo | null>(null);
-  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [isAttachMenuOpen, setIsAttachMenuOpen] = useState<boolean>(false);
 
   // Bộ token màu Lucian #452 đồng bộ theo theme
   const isDark = theme.mode === 'dark';
@@ -352,21 +354,22 @@ export const PromptBox = forwardRef<PromptBoxRef, PromptBoxProps>(({
     }
   }, [inputText, isSplitMode, isDenseSplit, adjustWebTextareaHeight]);
 
-  // Đóng popover đính kèm bằng pointerdown trên Web (nhanh hơn click, không delay)
+  // Đóng popover đính kèm bằng pointerdown trên Web (bỏ qua vùng wrapper nút + và popover)
   useEffect(() => {
-    if (Platform.OS !== 'web' || !showAttachMenu) return;
+    if (Platform.OS !== 'web' || !isAttachMenuOpen) return;
     const handlePointerDown = (e: PointerEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && target.closest && target.closest('.tmr-plus-container')) {
+      const wrapper = attachWrapperRef.current as HTMLElement | null;
+      const target = e.target as Node | null;
+      if (wrapper && target && wrapper.contains(target)) {
         return;
       }
-      setShowAttachMenu(false);
+      setIsAttachMenuOpen(false);
     };
     document.addEventListener('pointerdown', handlePointerDown);
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown);
     };
-  }, [showAttachMenu]);
+  }, [isAttachMenuOpen]);
 
   // Spring bump animation trên nút tròn khi chuyển sang trạng thái sẵn sàng gửi
   const hasContentToSend =
@@ -415,7 +418,7 @@ export const PromptBox = forwardRef<PromptBoxRef, PromptBoxProps>(({
       setInputText('');
       setSelectedImage(null);
       setAttachedFile(null);
-      setShowAttachMenu(false);
+      setIsAttachMenuOpen(false);
       setInputHeight(34);
       typingStartTimeRef.current = null;
       backspaceCountRef.current = 0;
@@ -430,7 +433,7 @@ export const PromptBox = forwardRef<PromptBoxRef, PromptBoxProps>(({
       setInputText('');
       setSelectedImage(null);
       setAttachedFile(null);
-      setShowAttachMenu(false);
+      setIsAttachMenuOpen(false);
       setInputHeight(34);
       typingStartTimeRef.current = null;
       backspaceCountRef.current = 0;
@@ -499,7 +502,7 @@ export const PromptBox = forwardRef<PromptBoxRef, PromptBoxProps>(({
     if (e && typeof e.stopPropagation === 'function') {
       e.stopPropagation();
     }
-    setShowAttachMenu(false);
+    setIsAttachMenuOpen(false);
 
     if (Platform.OS === 'web') {
       if (fileInputRef.current) {
@@ -716,7 +719,7 @@ export const PromptBox = forwardRef<PromptBoxRef, PromptBoxProps>(({
     setInputHeight(34);
     setSelectedImage(null);
     setAttachedFile(null);
-    setShowAttachMenu(false);
+    setIsAttachMenuOpen(false);
 
     if (Platform.OS === 'web' && textareaDOMRef.current) {
       textareaDOMRef.current.rows = 1;
@@ -765,8 +768,8 @@ export const PromptBox = forwardRef<PromptBoxRef, PromptBoxProps>(({
     }
 
     if (key === 'Escape') {
-      if (showAttachMenu) {
-        setShowAttachMenu(false);
+      if (isAttachMenuOpen) {
+        setIsAttachMenuOpen(false);
         return;
       }
       if (isGenerating && typeof onStopGeneration === 'function') {
@@ -986,85 +989,180 @@ export const PromptBox = forwardRef<PromptBoxRef, PromptBoxProps>(({
           {...(Platform.OS === 'web' ? { className: 'tmr-prompt-row' } : {})}
         >
           {/* TRÁI: Nút tròn dấu + (34x34px) kèm Keep-Mounted Popover */}
-          <View
-            style={styles.plusContainer}
-            {...(Platform.OS === 'web' ? { className: 'tmr-plus-container' } : {})}
-          >
-            {/* Popover đính kèm Keep-Mounted 0 layout reflow */}
-            <View
-              style={[
-                styles.attachPopover,
-                Platform.OS === 'web'
-                  ? ({
-                      backgroundColor: isDark ? '#232530' : '#FFFFFF',
-                      borderColor: tokens.border,
-                      boxShadow: isDark
-                        ? '0 10px 25px -5px rgba(0,0,0,0.6), 0 4px 10px -2px rgba(0,0,0,0.4)'
-                        : '0 10px 25px -5px rgba(0,0,0,0.15), 0 4px 10px -2px rgba(0,0,0,0.08)',
-                    } as any)
-                  : {
-                      display: showAttachMenu ? 'flex' : 'none',
+          {Platform.OS === 'web' ? (
+            <div
+              ref={attachWrapperRef}
+              className="tmr-plus-container"
+              style={{
+                position: 'relative',
+                width: 34,
+                height: 34,
+                flexShrink: 0,
+                zIndex: 50,
+              }}
+            >
+              {/* Popover đính kèm Keep-Mounted ép ẩn tuyệt đối bằng inline style thuần DOM Web */}
+              <div
+                role="menu"
+                aria-hidden={!isAttachMenuOpen}
+                style={{
+                  position: 'absolute',
+                  bottom: 'calc(100% + 10px)',
+                  left: 0,
+                  zIndex: 60,
+                  minWidth: 124,
+                  borderRadius: 16,
+                  padding: 4,
+                  border: `1px solid ${tokens.border}`,
+                  backgroundColor: isDark ? '#232530' : '#FFFFFF',
+                  boxShadow: isDark
+                    ? '0 10px 25px -5px rgba(0,0,0,0.6), 0 4px 10px -2px rgba(0,0,0,0.4)'
+                    : '0 10px 25px -5px rgba(0,0,0,0.15), 0 4px 10px -2px rgba(0,0,0,0.08)',
+                  opacity: isAttachMenuOpen ? 1 : 0,
+                  visibility: isAttachMenuOpen ? 'visible' : 'hidden',
+                  pointerEvents: isAttachMenuOpen ? 'auto' : 'none',
+                  transformOrigin: 'bottom left',
+                  transform: isAttachMenuOpen
+                    ? 'translate3d(0, 0, 0) scale(1)'
+                    : 'translate3d(0, 6px, 0) scale(0.95)',
+                  transition: isAttachMenuOpen
+                    ? 'opacity 140ms ease, transform 190ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0s'
+                    : 'opacity 140ms ease, transform 190ms cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 190ms',
+                  willChange: 'opacity, transform',
+                  boxSizing: 'border-box',
+                }}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  tabIndex={isAttachMenuOpen ? 0 : -1}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: 12,
+                    border: 'none',
+                    background: 'transparent',
+                    color: tokens.text,
+                    fontSize: 14,
+                    fontWeight: 600,
+                    letterSpacing: -0.2,
+                    cursor: 'pointer',
+                    fontFamily:
+                      "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif",
+                    transition: 'background-color 0.12s ease',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = isDark
+                      ? 'rgba(255,255,255,0.08)'
+                      : 'rgba(0,0,0,0.05)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsAttachMenuOpen(false);
+                    if (fileInputRef.current) {
+                      fileInputRef.current.click();
+                    }
+                  }}
+                >
+                  <Paperclip size={15} color={tokens.text} strokeWidth={2} />
+                  <span>Tệp</span>
+                </button>
+              </div>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.plusButton,
+                  {
+                    borderColor: tokens.borderSubtle,
+                    backgroundColor: isAttachMenuOpen
+                      ? isDark
+                        ? 'rgba(255,255,255,0.12)'
+                        : 'rgba(0,0,0,0.08)'
+                      : 'transparent',
+                  },
+                  pressed && { transform: [{ scale: 0.93 }] },
+                  {
+                    cursor: 'pointer',
+                  } as any,
+                ]}
+                onPress={(e) => {
+                  if (e && typeof (e as any).stopPropagation === 'function') {
+                    (e as any).stopPropagation();
+                  }
+                  setIsAttachMenuOpen((prev) => !prev);
+                }}
+                disabled={isGenerating}
+                hitSlop={6}
+                aria-label="Đính kèm tệp"
+                {...({ className: `tmr-add ${isAttachMenuOpen ? 'is-open' : ''}` } as any)}
+              >
+                <Plus
+                  size={16}
+                  color={isAttachMenuOpen ? tokens.text : tokens.sub}
+                  strokeWidth={2}
+                />
+              </Pressable>
+            </div>
+          ) : (
+            <View style={styles.plusContainer}>
+              {isAttachMenuOpen && (
+                <View
+                  style={[
+                    styles.attachPopover,
+                    {
                       backgroundColor: isDark ? '#232530' : '#FFFFFF',
                       borderColor: tokens.border,
                     },
-              ]}
-              {...(Platform.OS === 'web'
-                ? { className: `tmr-attach-pop ${showAttachMenu ? 'is-open' : ''}` }
-                : {})}
-            >
+                  ]}
+                >
+                  <Pressable
+                    style={styles.attachMenuItem}
+                    onPress={() => {
+                      setIsAttachMenuOpen(false);
+                      handlePickImageNative();
+                    }}
+                  >
+                    <Paperclip size={15} color={tokens.text} strokeWidth={2} />
+                    <Text style={[styles.attachMenuText, { color: tokens.text }]}>Tệp</Text>
+                  </Pressable>
+                </View>
+              )}
+
               <Pressable
                 style={({ pressed }) => [
-                  styles.attachMenuItem,
-                  pressed && { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' },
-                  Platform.OS === 'web' && ({
-                    cursor: 'pointer',
-                    transition: 'background-color 0.12s ease',
-                  } as any),
+                  styles.plusButton,
+                  {
+                    borderColor: tokens.borderSubtle,
+                    backgroundColor: isAttachMenuOpen
+                      ? isDark
+                        ? 'rgba(255,255,255,0.12)'
+                        : 'rgba(0,0,0,0.08)'
+                      : 'transparent',
+                  },
+                  pressed && { transform: [{ scale: 0.93 }] },
                 ]}
-                onPress={handleOpenFilePicker}
+                onPress={() => setIsAttachMenuOpen((prev) => !prev)}
+                disabled={isGenerating}
+                hitSlop={6}
+                aria-label="Đính kèm tệp"
               >
-                <Paperclip size={15} color={tokens.text} strokeWidth={2} />
-                <Text style={[styles.attachMenuText, { color: tokens.text }]}>
-                  Tệp
-                </Text>
+                <Plus
+                  size={16}
+                  color={isAttachMenuOpen ? tokens.text : tokens.sub}
+                  strokeWidth={2}
+                  style={{ transform: [{ rotate: isAttachMenuOpen ? '45deg' : '0deg' }] }}
+                />
               </Pressable>
             </View>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.plusButton,
-                {
-                  borderColor: tokens.borderSubtle,
-                  backgroundColor: showAttachMenu
-                    ? (isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)')
-                    : 'transparent',
-                },
-                pressed && { transform: [{ scale: 0.93 }] },
-                Platform.OS === 'web' && ({
-                  cursor: 'pointer',
-                } as any),
-              ]}
-              onPress={(e) => {
-                if (e && typeof (e as any).stopPropagation === 'function') {
-                  (e as any).stopPropagation();
-                }
-                setShowAttachMenu((prev) => !prev);
-              }}
-              disabled={isGenerating}
-              hitSlop={6}
-              aria-label="Đính kèm tệp"
-              {...(Platform.OS === 'web'
-                ? { className: `tmr-add ${showAttachMenu ? 'is-open' : ''}` }
-                : {})}
-            >
-              <Plus
-                size={16}
-                color={showAttachMenu ? tokens.text : tokens.sub}
-                strokeWidth={2}
-                style={Platform.OS !== 'web' ? { transform: [{ rotate: showAttachMenu ? '45deg' : '0deg' }] } : undefined}
-              />
-            </Pressable>
-          </View>
+          )}
 
           {/* GIỮA: Ô NHẬP TEXTAREA THẲNG TÂM TUYỆT ĐỐI (34px KHỞI TẠO, TỰ GIÃN TỐI ĐA 106px) */}
           <View
@@ -1184,6 +1282,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 10,
     position: 'relative',
+    overflow: 'visible',
     ...(Platform.OS === 'web' ? ({ boxSizing: 'border-box' } as any) : {}),
   },
   previewContainer: {

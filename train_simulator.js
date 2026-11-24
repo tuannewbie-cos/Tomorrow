@@ -3101,9 +3101,9 @@ console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.9.4',
+  version: 'v4.9.5',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.9.4 — Lucian #452 Single Inline Centered Row PromptBox & Multi-Domain Subagent Suite (< 520 chars, System Prompt < 450 words)',
+  architecture: 'Tomorrow v4.9.5 — Attach Popover Inline Style Hotfix & Lucian #452 Suite (< 520 chars, System Prompt < 450 words)',
   totalScore,
   maxScore: 560,
   allPassed,

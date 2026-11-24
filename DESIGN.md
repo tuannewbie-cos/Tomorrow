@@ -18,7 +18,7 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 - **Phía bên trái:**
   - **Duy nhất 1 nút `☰`** (Menu icon, 38x38 bo tròn) để đóng/mở Sidebar (`Cmd + B`).
 - **Chính giữa (Căn giữa tuyệt đối theo chiều ngang):**
-  - Cụm tiêu đề **`Tomorrow`** (`fontSize: 16.5`, `fontWeight: '700'`) đi kèm viên thuốc trạng thái **`Online • v4.9.4`** (chấm tròn xanh dịu + chữ xanh).
+  - Cụm tiêu đề **`Tomorrow`** (`fontSize: 16.5`, `fontWeight: '700'`) đi kèm viên thuốc trạng thái **`Online • v4.9.5`** (chấm tròn xanh dịu + chữ xanh).
   - Sử dụng bố cục căn giữa tuyệt đối (`position: 'absolute', left: 0, right: 0, alignItems: 'center', pointerEvents: 'none'`) để không bao giờ bị lệch tâm dù nhóm nút bên phải dài hơn bên trái.
   - **NGHIÊM CẤM:** Hiển thị thẻ tên Sổ ghi chú (VD: `📁 test`, `📁 Ghi chú chung`) hay dòng trạng thái `"Đang nhớ: ..."` trên Header.
 - **Phía bên phải:**
@@ -64,7 +64,7 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 
 ---
 
-### C. Thanh Nhập Liệu (Prompt Box) Chuẩn Lucian #452 1 Hàng Ngang (Online • v4.9.4)
+### C. Thanh Nhập Liệu (Prompt Box) Chuẩn Lucian #452 1 Hàng Ngang (Online • v4.9.5)
 - **Bố cục 1 hàng ngang thẳng tâm tuyệt đối (`border-radius: 28px`):** Thiết kế dạng viên thuốc thanh lịch, 3 phần tử `[+]` — `Ô nhập chữ` — `[↑]` nằm trên cùng một hàng ngang duy nhất (`align-items: flex-end`, `gap: 10px`). Chiều cao cơ bản 1 dòng ~`54px` (khung `maxWidth: 760px` ở chế độ 1 cột, `maxWidth: 100%` trong Split Screen 2–4 tab; padding: `10px 10px`, nén nhẹ `9px 10px` ở Split Screen mật độ cao). Nếu có preview ảnh/tệp đính kèm, hiển thị thành hàng riêng phía trên hàng nhập liệu bên trong vỏ hộp.
 - **Căn thẳng tâm tuyệt đối giữa 3 phần tử (1 Dòng):**
   + **Bên trái:** Nút tròn `+` cố định `34x34px` kèm popover đính kèm.
