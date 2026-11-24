@@ -203,23 +203,39 @@ if (typeof window !== 'undefined') {
   } catch (_) {}
 }
 
+export class UserAbortError extends Error {
+  constructor(message: string = 'User cancelled request') {
+    super(message);
+    this.name = 'UserAbortError';
+  }
+}
+
 /**
  * Helper fetch bảo vệ chống stale TCP keep-alive socket sau khi nghỉ/ngủ (macOS WebView / Web)
  * - Tự động nới +5000ms timeout khi vừa tỉnh dậy (needsFreshConnection)
  * - Tự động thử lại âm thầm đúng 1 lần sau 350ms với AbortController mới tinh nếu gặp lỗi mạng/socket chết
+ * - Tôn trọng externalSignal (AbortSignal từ người dùng bấm nút Dừng / nhấn Esc)
  */
 export async function fetchWithWakeRetry(
   url: string,
   options: RequestInit,
-  timeoutMs: number
+  timeoutMs: number,
+  externalSignal?: AbortSignal
 ): Promise<Response> {
   notifyAppActive();
+
+  if (externalSignal?.aborted) {
+    throw new UserAbortError();
+  }
 
   const isFresh = needsFreshConnection;
   const effectiveTimeout = isFresh ? timeoutMs + 5000 : timeoutMs;
 
   const isNetworkOrTimeoutError = (err: any): boolean => {
     if (!err) return false;
+    if (err instanceof UserAbortError || err?.name === 'UserAbortError' || externalSignal?.aborted) {
+      return false;
+    }
     const name = err.name || '';
     const msg = String(err.message || err).toLowerCase();
     return (
@@ -236,8 +252,19 @@ export async function fetchWithWakeRetry(
   };
 
   const doFetch = async (currentTimeout: number): Promise<Response> => {
+    if (externalSignal?.aborted) {
+      throw new UserAbortError();
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), currentTimeout);
+
+    const onExternalAbort = () => {
+      controller.abort();
+    };
+
+    if (externalSignal) {
+      externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+    }
 
     try {
       const mergedHeaders = {
@@ -254,8 +281,16 @@ export async function fetchWithWakeRetry(
         signal: controller.signal,
       });
       return res;
+    } catch (fetchErr: any) {
+      if (externalSignal?.aborted) {
+        throw new UserAbortError();
+      }
+      throw fetchErr;
     } finally {
       clearTimeout(timer);
+      if (externalSignal) {
+        externalSignal.removeEventListener('abort', onExternalAbort);
+      }
     }
   };
 
@@ -267,9 +302,15 @@ export async function fetchWithWakeRetry(
     }
     return res;
   } catch (err: any) {
+    if (err instanceof UserAbortError || err?.name === 'UserAbortError' || externalSignal?.aborted) {
+      throw new UserAbortError();
+    }
     if (isNetworkOrTimeoutError(err)) {
       console.warn(`[fetchWithWakeRetry] Lần gọi 1 gặp lỗi mạng/timeout (${err.message || err}), đang tự động thử lại êm sau 350ms...`);
       await new Promise((r) => setTimeout(r, 350));
+      if (externalSignal?.aborted) {
+        throw new UserAbortError();
+      }
       const retryTimeout = effectiveTimeout;
       const retryRes = await doFetch(retryTimeout);
       if (retryRes.ok) {
@@ -356,6 +397,7 @@ export interface AIResponsePayload {
   sources?: WebSource[];
   searchQuery?: string;
   isWebSearched?: boolean;
+  isCancelled?: boolean;
   // Các trường tương thích ngược nếu module cũ có tham chiếu
   reply?: string;
   emotion?: EmotionData;
@@ -1722,7 +1764,8 @@ async function callOpenAI(
   imageBase64?: string,
   maxTokens: number = 250,
   timeoutMs: number = 8000,
-  temperature: number = 0.75
+  temperature: number = 0.75,
+  externalSignal?: AbortSignal
 ): Promise<string> {
   const effectiveTimeout = timeoutMs;
 
@@ -1809,7 +1852,8 @@ async function callOpenAI(
         },
         body: JSON.stringify(payload),
       },
-      effectiveTimeout
+      effectiveTimeout,
+      externalSignal
     );
 
     if (!res.ok) {
@@ -1857,7 +1901,8 @@ async function callOpenAI(
               },
               body: JSON.stringify(payload),
             },
-            effectiveTimeout
+            effectiveTimeout,
+            externalSignal
           );
 
           if (retryRes.ok) {
@@ -1868,7 +1913,11 @@ async function callOpenAI(
               return retryText;
             }
           }
-        } catch (_) {}
+        } catch (retryErr: any) {
+          if (retryErr instanceof UserAbortError || retryErr?.name === 'UserAbortError' || externalSignal?.aborted) {
+            throw new UserAbortError();
+          }
+        }
 
         // Nếu vẫn 429 sau retry: trượt sang Gemini cho RIÊNG lượt này, KHÔNG sập Circuit Breaker!
         console.warn(`[AI Router Failover]: OpenAI vẫn 429 sau retry, trượt sang Gemini chain cho riêng lượt này (không sập Circuit Breaker).`);
@@ -1888,6 +1937,9 @@ async function callOpenAI(
     recordApiUsage('openai', 'gpt-4o-mini', userMessageWithHint.length, rawText.length, false).catch(() => {});
     return rawText;
   } catch (err: any) {
+    if (err instanceof UserAbortError || err?.name === 'UserAbortError' || externalSignal?.aborted) {
+      throw new UserAbortError();
+    }
     if (err?.name === 'AbortError' || String(err?.message || err).toLowerCase().includes('abort')) {
       // HẠNG MỤC 1: KHÔNG khóa vĩnh viễn OpenAI khi chỉ bị Timeout ảnh nặng hoặc mạng trễ
       recordApiUsage('openai', 'gpt-4o-mini', userMessageWithHint.length, 0, true).catch(() => {});
@@ -1917,7 +1969,8 @@ async function executeApiCall(
   maxTokens: number = 800,
   timeoutMs: number = TIMEOUT_MS,
   recentChats: ChatMessage[] = [],
-  temperature: number = 0.7
+  temperature: number = 0.7,
+  externalSignal?: AbortSignal
 ): Promise<ExecuteApiCallResult> {
   try {
     const validVision = await resolveValidVisionImage(imageBase64);
@@ -1974,7 +2027,7 @@ async function executeApiCall(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
-    }, timeoutMs);
+    }, timeoutMs, externalSignal);
 
     // Nếu endpoint không hỗ trợ tools google_search (400 Bad Request), tự động thử lại không dùng tools
     if (!res.ok && enableGrounding && res.status === 400) {
@@ -1984,7 +2037,7 @@ async function executeApiCall(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
-      }, timeoutMs);
+      }, timeoutMs, externalSignal);
     }
 
     if (res.ok) {
@@ -2036,6 +2089,9 @@ async function executeApiCall(
     const parsedMsg = extractApiErrorMessage(errText);
     throw new Error(`HTTP ${errStatus}: ${parsedMsg}`);
   } catch (err: any) {
+    if (err instanceof UserAbortError || err?.name === 'UserAbortError' || externalSignal?.aborted) {
+      throw new UserAbortError();
+    }
     throw err;
   }
 }
@@ -2056,7 +2112,8 @@ async function callModelFallbackChain(
   temperature: number = 0.7,
   preferSmartFlash: boolean = false,
   hasVision: boolean = false,
-  failoverTrace?: string[]
+  failoverTrace?: string[],
+  externalSignal?: AbortSignal
 ): Promise<ExecuteApiCallResult> {
   let lastError: any = null;
   // Khi có ảnh, BẮT BUỘC dùng VISION_MODEL_CHAIN (100% multimodal, cấm model chỉ text)
@@ -2065,9 +2122,15 @@ async function callModelFallbackChain(
     : (preferSmartFlash ? SMART_FLASH_MODEL_CHAIN : FREE_MODEL_CHAIN);
 
   for (const model of chain) {
+    if (externalSignal?.aborted) {
+      throw new UserAbortError();
+    }
     const endpoints = getEndpointsForModel(model, apiKey);
 
     for (const url of endpoints) {
+      if (externalSignal?.aborted) {
+        throw new UserAbortError();
+      }
       try {
         const result = await executeApiCall(
           url,
@@ -2078,13 +2141,17 @@ async function callModelFallbackChain(
           maxTokens,
           timeoutMs,
           recentChats,
-          temperature
+          temperature,
+          externalSignal
         );
         if (result && result.text) {
           recordApiUsage('gemini', model, userMessageWithHint.length, result.text.length, false).catch(() => {});
           return result;
         }
       } catch (err: any) {
+        if (err instanceof UserAbortError || err?.name === 'UserAbortError' || externalSignal?.aborted) {
+          throw new UserAbortError();
+        }
         lastError = err;
         const msg = err?.message || String(err);
         if (msg.includes('429')) {
@@ -3597,8 +3664,21 @@ async function doSendMessageToTomorrow(
   currentSessionId?: string,
   activeNotebookId?: string,
   sessions?: ChatSession[],
-  notebooks?: Notebook[]
+  notebooks?: Notebook[],
+  externalSignal?: AbortSignal
 ): Promise<AIResponsePayload> {
+  if (externalSignal?.aborted) {
+    return {
+      replies: [],
+      reply: '',
+      session_title: '',
+      should_update_title: false,
+      conversation_state: 'casual_friend',
+      memory_note: '',
+      jarvis_intent: 'chat',
+      isCancelled: true,
+    };
+  }
   try {
     const lastMsg = recentChats && recentChats.length > 0 ? recentChats[recentChats.length - 1] : undefined;
     const lastTimestamp = lastMsg?.timestamp;
@@ -3750,7 +3830,8 @@ async function doSendMessageToTomorrow(
           effectiveImageBase64,
           directive.dynamicMaxTokens,
           directive.dynamicTimeout,
-          directive.temperature ?? 0.75
+          directive.temperature ?? 0.75,
+          externalSignal
         );
         let parsed = parseAIResponseJson(openAiRaw, userText, recentChats, webSearchContext.sources);
         if (
@@ -3768,13 +3849,18 @@ async function doSendMessageToTomorrow(
               effectiveImageBase64,
               directive.dynamicMaxTokens,
               directive.dynamicTimeout,
-              0.25
+              0.25,
+              externalSignal
             );
             const retryParsed = parseAIResponseJson(retryRaw, userText, recentChats, webSearchContext.sources);
             if (retryParsed && retryParsed.replies && !isEmptyTeaserReply(retryParsed.replies)) {
               parsed = retryParsed;
             }
-          } catch (_) {}
+          } catch (retryErr: any) {
+            if (retryErr instanceof UserAbortError || retryErr?.name === 'UserAbortError' || externalSignal?.aborted) {
+              throw new UserAbortError();
+            }
+          }
         }
         if (parsed && parsed.replies && parsed.replies.length > 0) {
           const rawNote = parsed.memory_note || (parsed as any).memoryNote || '';
@@ -3807,6 +3893,9 @@ async function doSendMessageToTomorrow(
           return parsed;
         }
       } catch (err: any) {
+        if (err instanceof UserAbortError || err?.name === 'UserAbortError' || externalSignal?.aborted) {
+          throw new UserAbortError();
+        }
         const errMsg = err?.message || String(err);
         const cleanMsg = extractApiErrorMessage(errMsg);
         failoverTrace.push(`OpenAI:${cleanMsg.slice(0, 60)}`);
@@ -3819,6 +3908,9 @@ async function doSendMessageToTomorrow(
       directive.domain?.startsWith('STEM_') || directive.domain === 'VISION_LAB'
     );
     for (let keyIdx = 0; keyIdx < ALL_GEMINI_KEYS.length; keyIdx++) {
+      if (externalSignal?.aborted) {
+        throw new UserAbortError();
+      }
       const key = ALL_GEMINI_KEYS[keyIdx];
       try {
         const rawRes = await callModelFallbackChain(
@@ -3833,7 +3925,8 @@ async function doSendMessageToTomorrow(
           directive.temperature ?? 0.7,
           preferSmartFlash,
           hasImage,
-          failoverTrace
+          failoverTrace,
+          externalSignal
         );
         let parsed = parseAIResponseJson(rawRes.text, userText, recentChats, webSearchContext.sources);
         if (
@@ -3856,13 +3949,18 @@ async function doSendMessageToTomorrow(
               0.25,
               preferSmartFlash,
               hasImage,
-              failoverTrace
+              failoverTrace,
+              externalSignal
             );
             const retryParsed = parseAIResponseJson(retryRes.text, userText, recentChats, webSearchContext.sources);
             if (retryParsed && retryParsed.replies && !isEmptyTeaserReply(retryParsed.replies)) {
               parsed = retryParsed;
             }
-          } catch (_) {}
+          } catch (retryErr: any) {
+            if (retryErr instanceof UserAbortError || retryErr?.name === 'UserAbortError' || externalSignal?.aborted) {
+              throw new UserAbortError();
+            }
+          }
         }
         if (parsed && parsed.replies && parsed.replies.length > 0) {
           const rawNote = parsed.memory_note || (parsed as any).memoryNote || '';
@@ -3899,6 +3997,9 @@ async function doSendMessageToTomorrow(
           return parsed;
         }
       } catch (err: any) {
+        if (err instanceof UserAbortError || err?.name === 'UserAbortError' || externalSignal?.aborted) {
+          throw new UserAbortError();
+        }
         const errMsg = err?.message || String(err);
         const cleanMsg = extractApiErrorMessage(errMsg);
         failoverTrace.push(`Key#${keyIdx + 1}:${cleanMsg.slice(0, 60)}`);
@@ -3907,6 +4008,9 @@ async function doSendMessageToTomorrow(
     }
 
     // 3. CHỐNG SẬP TỨC THÌ: Local Resilient Fallback Engine chạy cục bộ
+    if (externalSignal?.aborted) {
+      throw new UserAbortError();
+    }
     console.error('[Vision/AI Failover Trace]:', failoverTrace);
     const debugCode = failoverTrace.map((t) => t.replace(/https?:\/\/[^\s]+/g, '').replace(/[{}"]/g, '')).join(' | ').slice(0, 150);
     console.warn('[AI Router Failover]:', 'Toàn bộ API Cloud đã cạn hoặc quá tải, kích hoạt Local Resilient Fallback Engine');
@@ -3947,6 +4051,19 @@ async function doSendMessageToTomorrow(
     }
     return fallbackRes;
   } catch (error: any) {
+    if (error instanceof UserAbortError || error?.name === 'UserAbortError' || externalSignal?.aborted) {
+      console.log('[AI Router]: Lệnh đã được người dùng chủ động ngắt.');
+      return {
+        replies: [],
+        reply: '',
+        session_title: '',
+        should_update_title: false,
+        conversation_state: 'casual_friend',
+        memory_note: '',
+        jarvis_intent: 'chat',
+        isCancelled: true,
+      };
+    }
     const errMsg = error?.message || 'Unknown error';
     console.error('[AI Error Detail]:', errMsg);
     const isTM = userMemory?.nickname === 'm' || /^(t|m|tao|mày)\b/i.test(userText);
@@ -3978,8 +4095,21 @@ export async function sendMessageToTomorrow(
   currentSessionId?: string,
   activeNotebookId?: string,
   sessions?: ChatSession[],
-  notebooks?: Notebook[]
+  notebooks?: Notebook[],
+  externalSignal?: AbortSignal
 ): Promise<AIResponsePayload> {
+  if (externalSignal?.aborted) {
+    return {
+      replies: [],
+      reply: '',
+      session_title: '',
+      should_update_title: false,
+      conversation_state: 'casual_friend',
+      memory_note: '',
+      jarvis_intent: 'chat',
+      isCancelled: true,
+    };
+  }
   await acquireAISlot();
   try {
     return await doSendMessageToTomorrow(
@@ -3995,7 +4125,8 @@ export async function sendMessageToTomorrow(
       currentSessionId,
       activeNotebookId,
       sessions,
-      notebooks
+      notebooks,
+      externalSignal
     );
   } finally {
     releaseAISlot();

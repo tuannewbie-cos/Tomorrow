@@ -42,8 +42,12 @@
   + Bảng biểu Grid kèm nút Copy TSV sang Excel/Notion, zebra striping.
   + Công thức Toán học LaTeX Unicode (`$$...$$` hộp căn giữa viền Indigo `#6366F1`, `$...$` nội dòng).
   + Nút Quick Copy phản hồi ở góc dưới bên phải cho tin nhắn >120 ký tự hoặc có rich block.
-- **Thanh Nhập Liệu Co Giãn Đa Dòng (`FloatingInputBar.tsx`):** Co giãn từ `44px` đến `160px` theo nội dung; thu về `44px` sau khi gửi; đo đạc nhịp gõ ẩn `KeystrokeTelemetry` bằng `useRef` (zero re-render).
-- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.9`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Thanh Nhập Liệu Prompt Box Lucian #452 (`components/PromptBox.tsx`):** Thiết kế 2 tầng bo góc `24px`, textarea tự giãn từ `24px` đến `96px` (tối đa 4 dòng); hiệu ứng chữ bay mờ `flyTextAnimation` khi gửi; viền `conic-gradient` xoay sáng khi đang sinh phản hồi; thanh công cụ dưới chỉ gồm nút tròn `+` mở duy nhất `📎 Tệp` bên trái và nút tròn Gửi / Dừng biến hình bên phải; đo đạc nhịp gõ ẩn `KeystrokeTelemetry` bằng `useRef` (zero re-render); TUYỆT ĐỐI CẤM nút chọn model, emote, icon quả cầu.
+- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.9.1`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Quy chuẩn Prompt Box Lucian #452 & Nút Dừng Thật AbortController (`v4.9.1`):**
+  + Tái thiết kế toàn diện Prompt Box theo mẫu Lucian #452 hoàn toàn không có nút chọn model, emote hay quả cầu web.
+  + Viền phát sáng xoay Conic Glow Spin qua CSS Web `@property --tmr-glow-a` và `@keyframes tmr-glow-spin` khi `isGenerating === true` của riêng pane đó.
+  + Nút tròn Gửi / Dừng `34x34px`: morphing mượt mà giữa mũi tên gửi và ô vuông dừng `11x11px` (`border-radius: 3px`); bấm nút Dừng hoặc nhấn `Esc` ngắt ngay `AbortController` mạng, xóa typing indicator, dừng vòng lặp tách bong bóng mà không in thông báo lỗi đỏ.
 - **Quy chuẩn Kho Few-Shot Vàng Động & Subagent Training Suite v2 (`v4.9`):**
   + Kho Few-Shot vàng 100% cục bộ (`services/fewShotBank.ts`): 12 ví dụ chuẩn phân cụm theo 7 nhánh (`COMPANION_CASUAL`, `COMPANION_EMPATHY`, `STEM_CODE`, `STEM_SCIENCE`, `STEM_ELECTRONICS`, `FINANCE_QUANT`, `WEB_CITE_LOGIC`).
   + Rào chắn tốc độ & Token: Bỏ qua 100% token khi `STOP_SIGNAL` hoặc `PING` (0 token thừa, phản hồi < 0.5s); khối thẻ `[FEW_SHOT_REF: cluster=...]` khóa cứng độ dài `<= 520 ký tự` (~90–120 từ), tuyệt đối KHÔNG nhồi vào `SYSTEM_INSTRUCTION` cố định (< 450 từ) để bảo vệ Attention khỏi Lost in the Middle.

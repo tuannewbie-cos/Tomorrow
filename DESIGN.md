@@ -47,9 +47,9 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
          * `18:00 – 22:59`: **`"Suy nghĩ buổi tối"`**
          * `23:00 – 03:59`: **`"Tĩnh lặng đêm khuya"`**
        + Kiểu chữ thanh lịch: `fontSize: 24 - 32px`, `fontWeight: '500'`, `letterSpacing: -0.6`, font `Georgia, "Times New Roman", "Plus Jakarta Sans", serif` (`#ECECEC` Dark / `#1A1A1A` Light).
-  2. **Khung nhập liệu (Input Box) đặt NGAY DƯỚI dòng chào ở chính giữa màn hình:**
-     - Tỷ lệ rộng thoáng (`maxWidth: 680px`, `borderRadius: 20px`, `minHeight: 52px`, viền mảnh tinh tế, placeholder `"Hôm nay tôi có thể giúp gì cho bạn?"`).
-     - Bảo toàn đầy đủ: nút tròn `+` Gemini (popover `📎 Tệp`) bên trái và nút Gửi bên phải.
+  2. **Khung nhập liệu Prompt Box Lucian #452 đặt NGAY DƯỚI dòng chào ở chính giữa màn hình:**
+     - Hộp Prompt Box 2 tầng bo góc `24px` (`maxWidth: 680px` / split-mode thích ứng, viền mảnh tinh tế, placeholder `"Hôm nay tôi có thể giúp gì cho bạn?"`).
+     - Bảo toàn đầy đủ: nút tròn `+` (popover `📎 Tệp`) bên trái và nút tròn Gửi / Dừng biến hình bên phải.
 - **NGHIÊM CẤM:**
   - CẤM dùng khung vuông đen bọc ngoài icon.
   - CẤM dùng badge tím `✨ Tomorrow` hay dòng phụ dài dòng.
@@ -57,22 +57,35 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 
 ---
 
-### C. Thanh Nhập Liệu (Input Bar) Phong Cách Gemini
-- **Bố cục:** Dạng viên thuốc nổi (floating pill) 1 dòng thanh thoát (`maxWidth: 820px`, chiều cao cơ bản `~48px`, tự co giãn khi `Shift + Enter` xuống dòng đến tối đa `110px`).
-- **Phía bên trái:**
-  - **Duy nhất 1 nút tròn dấu `+`** (kích thước `34x34`, hover có nền tròn dịu nhẹ).
-  - Khi bấm `+`:
-    + Nút chuyển sang nền tròn xám nhẹ và icon xoay/đổi mượt thành **`×`**.
-    + Hiện **menu popover nổi** ngay phía trên nút `+` (bo góc `16px`, nền trắng/tối đồng bộ theme, bóng đổ mềm chuẩn macOS, có animation popup mượt).
-    + Trong menu **CHỈ hiển thị duy nhất 1 mục:** **`📎 Tệp`** (icon kẹp giấy `Paperclip` + chữ `Tệp`).
-    + Bấm ra ngoài hoặc nhấn `Esc` sẽ tự động đóng menu và đổi `×` về `+`.
-  - **NGHIÊM CẤM:** Đặt icon Ảnh cũ, icon Emote (mặt cười), icon Ngôn ngữ / Quả cầu bên trái ô nhập liệu.
-- **Phía bên phải:** Nút **Gửi** (mũi tên).
+### C. Thanh Nhập Liệu (Prompt Box) Chuẩn Lucian #452 (Online • v4.9.1)
+- **Bố cục 2 tầng bo góc mềm mại (`border-radius: 24px`):** Thiết kế tối giản, thanh thoát (`maxWidth: 760px` ở chế độ 1 cột, `maxWidth: 100%` trong Split Screen 2–4 tab; padding: `14px 14px 10px 16px`, nén nhẹ `10px 8px 8px 12px` ở màn hình mật độ cao).
+- **Tầng trên (Input & Attachment Tier):**
+  + Khu vực preview đính kèm: Hiển thị gọn gàng các chip tệp (văn bản, code, PDF) hoặc preview ảnh nén Vision Lab kèm nút xóa tròn đỏ `×`.
+  + Ô nhập liệu tự giãn mượt: Textarea trên Web (hoặc TextInput trên Native), chiều cao cơ bản 1 dòng `24px`, tự giãn theo nội dung đến tối đa `96px` (4 dòng) với transition mượt mà (`height .34s cubic-bezier(.3,1.25,.5,1)`), ẩn thanh cuộn; chỉ bật `overflow-y: auto` khi vượt quá 4 dòng.
+  + Hiệu ứng chữ bay mờ khi gửi (`flyTextAnimation`): Chạy Web Animations API đẩy phần tử chữ bay lên `-22px` và mờ dần trong `420ms cubic-bezier(.3,.6,.3,1)` trước khi biến mất, đồng thời thu ô nhập liệu mượt về lại `24px`.
+- **Viền xoay sáng Conic Glow Spin (`tmr-prompt-glow`):**
+  + Viền gradient xoay 360 độ góc phát sáng (`conic-gradient`) chạy mượt quanh bo góc `24px` bằng CSS `@property --tmr-glow-a` và `@keyframes tmr-glow-spin`.
+  + Chỉ hiển thị và chạy khi phiên/pane đang sinh phản hồi (`isGenerating === true`), chuyển mờ êm dịu `0.45s` khi bắt đầu và khi kết thúc.
+- **Tầng dưới (Action Toolbar):**
+  + **Bên trái — Nút tròn dấu `+` duy nhất (`34x34px`):**
+    * Bo tròn 50%, viền mảnh tinh tế, icon dấu `+` SVG `16x16`.
+    * Khi bấm: xoay mượt thành icon `×` và hiển thị popover nổi ngay phía trên nút.
+    * Popover CHỈ chứa **duy nhất 1 mục: `📎 Tệp`** (kết nối trực tiếp thẻ `<input type="file" />` để chọn ảnh, PDF, text, code).
+    * Nhấn `Esc` hoặc bấm ra ngoài tự động đóng popover.
+  + **Ở giữa: ĐỂ TRỐNG HOÀN TOÀN.**
+  + **Bên phải (`margin-left: auto`) — Nút tròn Gửi / Dừng biến hình (`34x34px`):**
+    * Có hiệu ứng nảy lò xo (`spring bump`) bằng Web Animations API khi chuyển từ rỗng sang sẵn sàng gửi.
+    * Khi chưa có nội dung: Trạng thái disabled, nền xám dịu.
+    * Khi có nội dung sẵn sàng gửi: Nền tương phản cao đơn sắc + icon mũi tên hướng lên (`ArrowUp` `18x18`, nét `2.3`).
+    * Khi đang sinh phản hồi (`isGenerating === true`): Nút vẫn bấm được, icon mũi tên thu nhỏ bay lên mờ dần, bung ra ô vuông bo góc `11x11px` ở tâm để người dùng bấm **Dừng** phản hồi tức thì (kết nối `AbortController` hủy fetch mạng và vòng lặp bong bóng mà không báo lỗi đỏ).
 - **Cơ chế tải tệp lên (File Upload):**
   - Web: Sử dụng thẻ `<input type="file" ... />` ẩn qua ref, kích hoạt ngay trong event handler của mục `📎 Tệp` để không bao giờ bị chặn.
   - Hỗ trợ ảnh (`image/*`): Nén canvas chuẩn qua `utils/imageOptimizer.ts`, hiển thị preview ảnh có nút xóa `×`.
   - Hỗ trợ tệp văn bản / mã nguồn (`.txt`, `.md`, `.csv`, `.json`, `.py`, `.ts`, `.js`, `.cpp`...): Đọc nội dung qua `FileReader.readAsText`, hiển thị chip tệp đính kèm có nút xóa `×`, tự động đính kèm nội dung vào tin nhắn gửi cho AI.
   - Hỗ trợ tệp PDF: Đọc và hiển thị chip tệp, gửi dữ liệu nhị phân/base64 an toàn.
+- **NGHIÊM CẤM:**
+  - **TUYỆT ĐỐI CẤM** thêm nút chọn model (như `Nova 2`, `Claude`, `GPT`), icon Emote (mặt cười), icon Web/Quả cầu vào thanh Prompt Box.
+  - CẤM thanh footer chứa gợi ý hay thông tin ngoài lề.
 
 ---
 

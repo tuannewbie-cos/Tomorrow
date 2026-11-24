@@ -42,7 +42,7 @@ import {
 import { ChatBubble } from './components/ChatBubble';
 import { ColdGreeting } from './components/ColdGreeting';
 import { TomorrowGlyph, getTimeBasedGreeting } from './components/TomorrowGlyph';
-import { FloatingInputBar, FloatingInputBarRef } from './components/FloatingInputBar';
+import { PromptBox, PromptBoxRef } from './components/PromptBox';
 import { SidebarDrawer } from './components/SidebarDrawer';
 import { TypingIndicator } from './components/TypingIndicator';
 import { CommandPalette } from './components/CommandPalette';
@@ -125,10 +125,12 @@ interface ChatPaneViewProps {
     forceWebSearch?: boolean,
     telemetry?: KeystrokeTelemetry
   ) => void;
+  isGenerating?: boolean;
+  onStopGeneration?: () => void;
   onScroll: (e: any) => void;
   onScrollDownPress: () => void;
   setFlatListRef: (r: FlatList<ChatMessage> | null) => void;
-  setInputBarRef: (r: FloatingInputBarRef | null) => void;
+  setInputBarRef: (r: PromptBoxRef | null) => void;
 }
 
 // BỘ THÀNH PHẦN CHAT PANE DUY NHẤT CHUNG CHO MỌI KHUNG CHAT (ĐẢM BẢO 100% ĐỒNG NHẤT TỪNG PIXEL)
@@ -148,6 +150,8 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
   paneMessages,
   isTyping,
   isSearching,
+  isGenerating = false,
+  onStopGeneration,
   statusText,
   isDropdownOpen,
   showScrollDown,
@@ -465,13 +469,15 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
                 </Text>
               </View>
 
-              {/* Khung nhập liệu đặt NGAY DƯỚI dòng chào ở chính giữa màn hình */}
-              <FloatingInputBar
+              {/* Khung nhập liệu PromptBox Lucian #452 đặt NGAY DƯỚI dòng chào ở chính giữa màn hình */}
+              <PromptBox
                 ref={setInputBarRef}
                 onSendMessage={(text, imgBase64, imgUri, forceWebSearch, telemetry) =>
                   handleSendMessageInPane(pane.id, text, imgBase64, imgUri, forceWebSearch, telemetry)
                 }
                 isLoading={false}
+                isGenerating={isGenerating}
+                onStopGeneration={onStopGeneration}
                 isTomorrowTyping={isTyping}
                 theme={theme}
                 isSplitMode={isSplitMode}
@@ -538,13 +544,15 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
               </Pressable>
             )}
 
-            {/* Floating Input Bar cố định ở đáy khi có tin nhắn */}
-            <FloatingInputBar
+            {/* Prompt Box Lucian #452 cố định ở đáy khi có tin nhắn */}
+            <PromptBox
               ref={setInputBarRef}
               onSendMessage={(text, imgBase64, imgUri, forceWebSearch, telemetry) =>
                 handleSendMessageInPane(pane.id, text, imgBase64, imgUri, forceWebSearch, telemetry)
               }
               isLoading={false}
+              isGenerating={isGenerating}
+              onStopGeneration={onStopGeneration}
               isTomorrowTyping={isTyping}
               theme={theme}
               isSplitMode={isSplitMode}
@@ -629,11 +637,18 @@ export default function App() {
   const showScrollDownBtn = !!scrollDownByPane[activePaneId];
 
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
-  const inputBarRef = useRef<FloatingInputBarRef>(null);
+  const inputBarRef = useRef<PromptBoxRef>(null);
   const inputRef = inputBarRef;
 
   const flatListRefs = useRef<Record<string, FlatList<ChatMessage> | null>>({});
-  const inputBarRefs = useRef<Record<string, FloatingInputBarRef | null>>({});
+  const inputBarRefs = useRef<Record<string, PromptBoxRef | null>>({});
+
+  // Quản lý trạng thái đang sinh phản hồi & AbortController theo từng pane độc lập
+  const [generatingPanes, setGeneratingPanes] = useState<Record<string, boolean>>({});
+  const generatingPanesRef = useRef<Record<string, boolean>>({});
+  generatingPanesRef.current = generatingPanes;
+  const abortControllersByPaneRef = useRef<Record<string, AbortController | null>>({});
+  const cancelSequenceRef = useRef<Record<string, boolean>>({});
 
   const prevIsDesktopRef = useRef<boolean>(isDesktop);
   const isCommandPaletteOpenRef = useRef<boolean>(false);
@@ -836,6 +851,42 @@ export default function App() {
   toggleThemeRef.current = toggleTheme;
   const handleToggleTheme = toggleTheme;
 
+  // Hủy sinh phản hồi AI tức thì bằng AbortController và hủy tách chuỗi bong bóng
+  const handleStopGenerationInPane = useCallback((paneId: string) => {
+    // 1. Kích hoạt abort trên controller mạng của riêng pane đó
+    if (abortControllersByPaneRef.current[paneId]) {
+      try {
+        abortControllersByPaneRef.current[paneId]?.abort();
+      } catch {}
+      abortControllersByPaneRef.current[paneId] = null;
+    }
+    // 2. Bật cờ ngắt chuỗi hiển thị bong bóng
+    cancelSequenceRef.current[paneId] = true;
+
+    // 3. Tắt trạng thái typing và web search của phiên thuộc pane
+    const targetPane = panesRef.current.find((p) => p.id === paneId);
+    if (targetPane?.sessionId) {
+      const sId = targetPane.sessionId;
+      clearSessionTimers(sId);
+      inFlightSessionsRef.current.delete(sId);
+      setTypingSessionIds((prev) => {
+        const copy = { ...prev };
+        delete copy[sId];
+        return copy;
+      });
+      setTypingStatusBySession((prev) => ({ ...prev, [sId]: undefined }));
+      setSearchingWebBySession((prev) => ({ ...prev, [sId]: false }));
+    }
+
+    // 4. Tắt trạng thái sinh của pane
+    setGeneratingPanes((prev) => {
+      const next = { ...prev, [paneId]: false };
+      generatingPanesRef.current = next;
+      return next;
+    });
+    setIsLoading(false);
+  }, []);
+
   // 2. XỬ LÝ GỬI TIN NHẮN THEO TỪNG PANE (CÔ LẬP THEO TARGET SESSION ID)
   const handleSendMessageInPane = async (
     paneId: string,
@@ -958,6 +1009,15 @@ export default function App() {
     setSearchingWebBySession((prev) => ({ ...prev, [targetSessionId]: false }));
     setIsLoading(true);
 
+    const abortController = new AbortController();
+    abortControllersByPaneRef.current[targetPaneId] = abortController;
+    cancelSequenceRef.current[targetPaneId] = false;
+    setGeneratingPanes((prev) => {
+      const next = { ...prev, [targetPaneId]: true };
+      generatingPanesRef.current = next;
+      return next;
+    });
+
     const scrollTimer = setTimeout(() => {
       flatListRefs.current[targetPaneId]?.scrollToEnd({ animated: true });
     }, 20);
@@ -991,7 +1051,8 @@ export default function App() {
         targetSessionId,
         activeNotebookIdRef.current,
         sessionsRef.current,
-        notebooksRef.current
+        notebooksRef.current,
+        abortController.signal
       );
 
       const isDeepOrVision = Boolean(effectiveImage || text.length > 80 || forceWebSearch);
@@ -1006,6 +1067,9 @@ export default function App() {
       try {
         aiResponse = await Promise.race([aiResponsePromise, timeoutPromise]);
       } catch (err: any) {
+        if (cancelSequenceRef.current[targetPaneId] || abortController.signal.aborted || err?.name === 'UserAbortError') {
+          return;
+        }
         const errMsg = err?.message || 'Unknown error';
         console.error('[AI Error Detail]:', errMsg);
         aiResponse = localResilientFallback(text, Boolean(effectiveImage), userMemoryRef.current);
@@ -1025,6 +1089,10 @@ export default function App() {
         if (watchdogTimeoutId) clearTimeout(watchdogTimeoutId);
         setTypingStatusBySession((prev) => ({ ...prev, [targetSessionId]: undefined }));
         setSearchingWebBySession((prev) => ({ ...prev, [targetSessionId]: false }));
+      }
+
+      if (cancelSequenceRef.current[targetPaneId] || abortController.signal.aborted || aiResponse?.isCancelled) {
+        return;
       }
 
       // Cập nhật tiêu đề nếu có
@@ -1053,6 +1121,9 @@ export default function App() {
       let currentHistory = [...updatedMessages];
 
       for (const [index, replyText] of replies.entries()) {
+        if (cancelSequenceRef.current[targetPaneId] || abortController.signal.aborted) {
+          break;
+        }
         const isLastReply = index === replies.length - 1;
         const cleanReplyText = typeof replyText === 'string' && replyText !== '[object Object]'
           ? replyText
@@ -1096,6 +1167,9 @@ export default function App() {
           setTypingSessionIds((prev) => ({ ...prev, [targetSessionId]: true }));
           const typingDelay = Math.min(Math.max(replyText.length * 8, 300), 450);
           await sleep(typingDelay);
+          if (cancelSequenceRef.current[targetPaneId] || abortController.signal.aborted) {
+            break;
+          }
         } else {
           setTypingSessionIds((prev) => {
             const copy = { ...prev };
@@ -1128,6 +1202,10 @@ export default function App() {
         await saveUserMemoryProfile(newMemory);
       }
     } catch (error: any) {
+      if (cancelSequenceRef.current[targetPaneId] || abortController.signal.aborted || error?.name === 'UserAbortError') {
+        console.log('[App]: Phản hồi đã được người dùng dừng, không ghi tin nhắn lỗi.');
+        return;
+      }
       console.error('[App] Lỗi trò chuyện trong phiên:', targetSessionId, error);
       const isTM = userMemoryRef.current.nickname === 'm' || /^(t|m|tao|mày)\b/i.test(text);
       const fallbackText = isTM
@@ -1169,6 +1247,12 @@ export default function App() {
       });
       setTypingStatusBySession((prev) => ({ ...prev, [targetSessionId]: undefined }));
       setSearchingWebBySession((prev) => ({ ...prev, [targetSessionId]: false }));
+      setGeneratingPanes((prev) => {
+        const next = { ...prev, [targetPaneId]: false };
+        generatingPanesRef.current = next;
+        return next;
+      });
+      abortControllersByPaneRef.current[targetPaneId] = null;
       setIsLoading(false);
     }
   };
@@ -1590,8 +1674,15 @@ export default function App() {
         return;
       }
 
-      // Escape: Đóng dropdown pane nếu đang mở hoặc đóng Command Palette
+      // Escape: Dừng phản hồi nếu đang sinh, đóng dropdown pane nếu đang mở hoặc đóng Command Palette
       if (e.key === 'Escape' || code === 'Escape') {
+        const activeId = activePaneIdRef.current;
+        if (generatingPanesRef.current[activeId]) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleStopGenerationInPane(activeId);
+          return;
+        }
         if (openDropdownPaneId) {
           e.preventDefault();
           e.stopPropagation();
@@ -1805,7 +1896,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.9</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.9.1</Text>
               </View>
             </View>
           </View>
@@ -1985,6 +2076,8 @@ export default function App() {
                     paneMessages={paneMessages}
                     isTyping={isTyping}
                     isSearching={isSearching}
+                    isGenerating={generatingPanes[pane.id] || false}
+                    onStopGeneration={() => handleStopGenerationInPane(pane.id)}
                     statusText={statusText}
                     isDropdownOpen={openDropdownPaneId === pane.id}
                     showScrollDown={!!scrollDownByPane[pane.id]}
