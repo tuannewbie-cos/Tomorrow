@@ -54,6 +54,15 @@ import {
   detectOutputFormatIntent,
   getWebFormatDirective,
 } from './personaRouter';
+import {
+  selectDynamicFewShot,
+  FewShotCluster,
+  FewShotExample,
+  GOLDEN_FEW_SHOT_EXAMPLES,
+  getFewShotBankStats,
+  formatFewShotBlock,
+  SelectFewShotParams,
+} from './fewShotBank';
 
 export {
   isPlaceholderOrNoiseTitle,
@@ -80,6 +89,9 @@ export {
   ReferenceResolution,
   classifyWebIntelTopic,
   resolveReferenceFromHistory,
+  shouldTriggerWebSearch,
+  performSmartWebSearch,
+  resolveTemporalSearchQuery,
   OutputFormatIntent,
   detectOutputFormatIntent,
   getWebFormatDirective,
@@ -88,6 +100,13 @@ export {
   hasTemporalRecallCue,
   tokenizeForRecall,
   CONCEPT_KEYWORD_GRAPH,
+  selectDynamicFewShot,
+  FewShotCluster,
+  FewShotExample,
+  GOLDEN_FEW_SHOT_EXAMPLES,
+  getFewShotBankStats,
+  formatFewShotBlock,
+  SelectFewShotParams,
 };
 import { recordApiUsage, setOpenAICircuitBreakerState } from './quotaShield';
 
@@ -603,14 +622,15 @@ export function detectExpertDomain(userText: string, hasImage: boolean = false):
 
   // 4. Nhánh Tài chính & Đầu tư (FINANCE_QUANT)
   const financePatterns = [
-    'cổ phiếu', 'co phieu', 'chứng khoán', 'chung khoan', 'crypto', 'bitcoin',
+    'cổ phiếu', 'co phieu', 'chứng khoán', 'chung khoan', 'crypto', 'bitcoin', 'coin',
     'lãi kép', 'lai kep', 'báo cáo tài chính', 'bao cao tai chinh',
     'lạm phát', 'lam phat', 'tỷ giá', 'ty gia', 'giá vàng', 'gia vang',
     'dòng tiền', 'dong tien', 'ngân sách', 'ngan sach', 'đầu tư', 'dau tu',
     'rủi ro tài chính', 'rui ro tai chinh', 'danh mục đầu tư', 'cổ tức',
-    'trái phiếu', 'thị trường vốn', 'đòn bẩy tài chính'
+    'trái phiếu', 'thị trường vốn', 'đòn bẩy tài chính', 'all-in', 'chi phí chìm',
+    'gỡ vốn', 'cắt lỗ', 'rót vốn', 'quản trị vốn'
   ];
-  const hasShortFinance = /(?<!\p{L})(btc|eth|dcf|npv|irr|p\/e|pe ratio|roe|roa|eps)(?!\p{L})/iu.test(lower);
+  const hasShortFinance = /(?<!\p{L})(btc|eth|dcf|npv|irr|p\/e|pe ratio|roe|roa|eps|coin)(?!\p{L})/iu.test(lower);
   if (financePatterns.some((p) => lower.includes(p)) || hasShortFinance) {
     return 'FINANCE_QUANT';
   }
@@ -626,7 +646,8 @@ export function detectExpertDomain(userText: string, hasImage: boolean = false):
     // Bổ sung OOP, constructor & typo phổ biến (innit, contrucstor...)
     'constructor', 'contrucstor', 'constructer', 'destructor', '__init__', 'innit', 'init',
     'pointer', 'struct', 'class', 'function', 'method', 'biến', 'bien', 'tham số', 'tham so',
-    'đối số', 'doi so', 'phương thức', 'phuong thuc', 'đóng gói', 'dong goi', 'trừu tượng'
+    'đối số', 'doi so', 'phương thức', 'phuong thuc', 'đóng gói', 'dong goi', 'trừu tượng',
+    'useeffect', 'race condition'
   ];
   const hasShortCode = /(?<!\p{L})(code|bug|lỗi|loi|big-o|sql|api|git|def|loop|o\(1\)|o\(n\)|hàm|ham|lớp|lop)(?!\p{L})/iu.test(lower);
   if (codePatterns.some((p) => lower.includes(p)) || hasShortCode || trimmed.includes('```')) {
@@ -1184,7 +1205,8 @@ function buildSystemPrompt(
   userStyleHint?: string,
   chrono?: ChronoContext,
   memorySlice?: string,
-  semanticRecallTag?: string
+  semanticRecallTag?: string,
+  fewShotTag?: string
 ): string {
   const currentChrono = chrono || buildChronoContext();
   const recentContext = recentChats
@@ -1209,6 +1231,11 @@ function buildSystemPrompt(
   // Đính kèm thẻ [RECALL_MEMORY] từ động cơ tìm kiếm ngữ nghĩa cục bộ
   if (semanticRecallTag && semanticRecallTag.trim()) {
     prompt += `\n\n${semanticRecallTag.trim()}`;
+  }
+
+  // Đính kèm thẻ [FEW_SHOT_REF] từ kho Few-Shot vàng động
+  if (fewShotTag && fewShotTag.trim()) {
+    prompt += `\n\n${fewShotTag.trim()}`;
   }
 
   if (userStyleHint) {
@@ -1612,19 +1639,26 @@ export function stripRoboticClosings(replies: string[]): string[] {
     // 1. Hy vọng...
     /(?:hy\s*vọng|hi\s*vọng)\s+(?:câu\s*trả\s*lời|thông\s*tin|chia\s*sẻ|điều\s*này|lời\s*giải|phần\s*giải\s*thích|hướng\s*dẫn|những\s*điều\s*trên)[^.!?\n]*(?:giúp\s*ích|hữu\s*ích|có\s*ích|bổ\s*ích)[^.!?\n]*[.!?]?/giu,
     /(?:hy\s*vọng|hi\s*vọng)\s+(?:sẽ\s*)?(?:giúp\s*ích|hữu\s*ích|có\s*ích)[^.!?\n]*[.!?]?/giu,
+    /(?:hy\s*vọng|hi\s*vọng)\s+điều\s+này\s+(?:hữu\s*ích|giúp\s*ích)[^.!?\n]*[.!?]?/giu,
+    /(?:hope\s+this\s+helps|hope\s+it\s+helps|hope\s+this\s+is\s+helpful)[^.!?\n]*[.!?]?/giu,
 
-    // 2. Nếu bạn cần gì thêm...
-    /(?:nếu|khi)\s+(?:bạn|cậu|m|anh|chị|ông|bà)\s+(?:cần|có|muốn)\s+(?:thêm|gì\s*thêm|bất\s*kỳ|thắc\s*mắc|câu\s*hỏi|hỗ\s*trợ)[^.!?\n]*(?:cứ\s*hỏi|cứ\s*nhắn|cứ\s*ới|hỏi\s*thêm|bảo\s*mình|liên\s*hệ|trao\s*đổi)[^.!?\n]*[.!?]?/giu,
+    // 2. Nếu bạn cần gì thêm... / Cứ hỏi mình nếu cần nhé!
+    /(?:nếu|khi)\s+(?:bạn|cậu|m|anh|chị|ông|bà)\s+(?:cần|có|muốn)\s+(?:thêm|gì\s*thêm|bất\s*kỳ|thắc\s*mắc|câu\s*hỏi|hỗ\s*trợ)[^.!?\n]*(?:cứ\s*hỏi|cứ\s*nhắn|cứ\s*ới|hỏi\s*thêm|bảo\s*mình|liên\s*hệ|trao\s*đổi|nào)[^.!?\n]*[.!?]?/giu,
     /(?:cứ\s*hỏi|cứ\s*nhắn|đừng\s*ngần\s*ngại\s*hỏi)(?:\s+thêm)?[^.!?\n]*(?:nhé|nha|ạ)[.!?]?/giu,
+    /(?:cứ\s*hỏi\s*mình\s*nếu\s*cần\s*nhé|cứ\s*nhắn\s*(?:mình|t)\s*nếu\s*cần\s*nhé)[.!?]?/giu,
+    /(?:nếu\s+bạn\s+có\s+thêm\s+câu\s+hỏi\s+nào)[^.!?\n]*[.!?]?/giu,
+    /(?:feel\s+free\s+to\s+ask|let\s+me\s+know\s+if\s+you\s+have\s+any\s+questions|if\s+you\s+have\s+any\s+questions)[^.!?\n]*[.!?]?/giu,
 
     // 3. Bạn có muốn mình giải thích chi tiết hơn không?
     /(?:bạn|cậu|m|anh|chị)\s+(?:có\s+)?muốn\s+(?:mình|tui|em|t)\s+(?:giải\s*thích|làm\s*rõ|nói\s*thêm|hỗ\s*trợ)[^.!?\n]*(?:chi\s*tiết\s*hơn|thêm|không|nữa\s*không)[^.!?\n]*[.!?]?/giu,
 
-    // 4. Chúc bạn học tập / làm việc hiệu quả!
+    // 4. Chúc bạn học tập / làm việc hiệu quả / Chúc bạn thành công!
     /chúc\s+(?:bạn|cậu|m|anh|chị)\s+(?:học\s*tập|làm\s*việc|một\s*ngày|buổi\s*tối|thành\s*công|may\s*mắn)[^.!?\n]*(?:hiệu\s*quả|vui\s*vẻ|tốt\s*lành|thuận\s*lợi)?[.!?]?/giu,
+    /chúc\s+bạn\s+thành\s+công[.!?]?/giu,
+    /(?:good\s+luck|have\s+a\s+great\s+day|all\s+the\s+best)[^.!?\n]*[.!?]?/giu,
 
     // 5. Rất vui được hỗ trợ...
-    /(?:rất\s*vui\s*được\s*hỗ\s*trợ|sẵn\s*sàng\s*hỗ\s*trợ|chúc\s*bạn\s*thành\s*công)[^.!?\n]*[.!?]?/giu,
+    /(?:rất\s*vui\s*được\s*hỗ\s*trợ|sẵn\s*sàng\s*hỗ\s*trợ|chúc\s*bạn\s*thành\s*công|happy\s+to\s+help)[^.!?\n]*[.!?]?/giu,
   ];
 
   return replies
@@ -3626,19 +3660,41 @@ async function doSendMessageToTomorrow(
     });
 
     // TRUY HỒI NGỮ NGHĨA CỤC BỘ (Semantic Recall Context)
-    const semanticRecallTag = buildSemanticRecallContext({
-      userText,
-      intentMode: directive.intentMode,
-      expertDomain: directive.domain,
-      currentSessionId,
-      activeNotebookId,
-      sessions,
-      notebooks,
-      memoryVault: currentVault,
-    });
+    // Bỏ qua khi STOP_SIGNAL hoặc PING để giữ độ trễ tối thiểu
+    const semanticRecallTag =
+      (directive.intentMode === 'STOP_SIGNAL' || directive.intentMode === 'PING')
+        ? ''
+        : buildSemanticRecallContext({
+            userText,
+            intentMode: directive.intentMode,
+            expertDomain: directive.domain,
+            currentSessionId,
+            activeNotebookId,
+            sessions,
+            notebooks,
+            memoryVault: currentVault,
+          });
 
     if (semanticRecallTag && semanticRecallTag.trim()) {
       finalUserMessage += `\n\n${semanticRecallTag.trim()}`;
+    }
+
+    // CHỌN LỌC DYNAMIC FEW-SHOT VÀNG ĐỘNG (Tiết kiệm Token & <= 520 ký tự)
+    // Bỏ qua khi STOP_SIGNAL hoặc PING để giữ độ trễ tối thiểu (0 token thừa, phản hồi < 0.5s)
+    const dynamicFewShotTag =
+      (directive.intentMode === 'STOP_SIGNAL' || directive.intentMode === 'PING')
+        ? ''
+        : selectDynamicFewShot({
+            intentMode: directive.intentMode,
+            persona: dualPersona.persona,
+            expertDomain: directive.domain,
+            psychState: directive.psych?.psychState,
+            webTopic: webSearchContext.topic,
+            userText,
+          });
+
+    if (dynamicFewShotTag && dynamicFewShotTag.trim()) {
+      finalUserMessage += `\n\n${dynamicFewShotTag.trim()}`;
     }
 
     const systemPrompt = buildSystemPrompt(
@@ -3648,7 +3704,8 @@ async function doSendMessageToTomorrow(
       userStyle.styleHint,
       chrono,
       memorySlice,
-      semanticRecallTag
+      semanticRecallTag,
+      dynamicFewShotTag
     );
 
     const attachPsychStateMemory = (targetPayload: AIResponsePayload) => {

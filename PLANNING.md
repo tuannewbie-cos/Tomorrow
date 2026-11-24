@@ -423,6 +423,20 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
     + Trong phiên làm việc, người dùng bấm `Cmd + ArrowUp` vẫn mở thêm các tab mới (`2 -> 3 -> 4`) linh hoạt như bình thường.
   - Header cập nhật: **`Online • v4.8.2`**.
 
+- [x] **Ngày 13 (`ai/subagent-training-v2` — Phiên bản `Online • v4.9`): Kho Few-Shot Vàng Động & Bộ Benchmark Subagent Đa Lĩnh Vực v2 (12 Kịch Bản)**
+  - **Kho Few-Shot Vàng Động 100% Cục bộ (`services/fewShotBank.ts`):**
+    + Bộ 12 Golden Few-Shot Examples tinh gọn, phân cụm chuẩn xác theo 7 kịch bản (`COMPANION_CASUAL`, `COMPANION_EMPATHY`, `STEM_CODE`, `STEM_SCIENCE`, `STEM_ELECTRONICS`, `FINANCE_QUANT`, `WEB_CITE_LOGIC`).
+    + Hàm `selectDynamicFewShot`: Bỏ qua 100% token khi `STOP_SIGNAL` hoặc `PING` (0 token thừa, phản hồi < 0.5s); chọn tối đa 1–2 ví dụ sát nhất theo nhân cách, miền chuyên môn, tâm lý và chủ đề web.
+    + Khóa cứng ngân sách độ dài thẻ `[FEW_SHOT_REF: cluster=...]` <= 520 ký tự (~90–120 từ), không nhồi vào `SYSTEM_INSTRUCTION` cố định (< 450 từ) nhằm bảo vệ tuyệt đối cơ chế Attention khỏi Lost in the Middle.
+    + Đính kèm thẻ `[FEW_SHOT_REF]` trong lớp ngữ cảnh động theo lượt (`buildSystemPrompt` & `finalUserMessage`) đồng thời cho cả OpenAI và chuỗi xoay vòng Gemini miễn phí.
+    + Hàm `getFewShotBankStats()` xác nhận 100% các khối sinh ra đều <= 520 ký tự.
+    + Mở rộng bộ lọc `stripRoboticClosings` gọt sạch các câu kết máy móc ("Nếu bạn có thêm câu hỏi nào...", "Hy vọng điều này hữu ích...", "Chúc bạn thành công...", "Cứ hỏi mình nếu cần nhé!"), bảo toàn 100% khối code và bảng Markdown.
+  - **Nâng cấp `train_simulator.js` thành Subagent Training Suite v2 (12 Kịch Bản Đa Lĩnh Vực):**
+    + Giữ nguyên 100% 44 bài kiểm thử hồi quy cũ từ Ngày 8–12.
+    + Bổ sung 12 kịch bản Subagent Training v2 đa lĩnh vực: `Psych_Masked_Sadness_Hesitation`, `Psych_Burnout_Daytime_ChronoGuard`, `Casual_Stop_Signal_Strict`, `Code_Cpp_Pointer_Bug`, `Code_TS_Async_RaceCondition`, `STEM_Physics_Mechanics_SI`, `STEM_Chem_Redox_Balance`, `STEM_Electronics_Circuit_Safety`, `Finance_Quant_Student_Allocation`, `Logic_Debate_RedTeaming`, `Memory_BM25_And_Vault_Synergy`, `Web_Followup_Citation_Clean`.
+    + Vận hành 2 chế độ: `--local` (mặc định) chạy 100% Deterministic Subagent Rubric Engine (0đ API, đạt 560/560 điểm 100% hoàn hảo) và `--live` (Judge Subagent chấm 5 tiêu chí: Đúng nhân cách, Không văn mẫu máy móc, Độ chính xác/Logic, Đúng rào chắn thời gian/đại từ, Độ sắc sảo, tự động fallback êm về `--local` nếu gặp lỗi API).
+  - Header cập nhật: **`Online • v4.9`**.
+
 - [ ] **Ngày 12 – 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
   - Tìm kiếm toàn văn (Full-text search) trên danh sách phiên trò chuyện trong Sidebar.

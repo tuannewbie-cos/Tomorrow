@@ -43,7 +43,13 @@
   + Công thức Toán học LaTeX Unicode (`$$...$$` hộp căn giữa viền Indigo `#6366F1`, `$...$` nội dòng).
   + Nút Quick Copy phản hồi ở góc dưới bên phải cho tin nhắn >120 ký tự hoặc có rich block.
 - **Thanh Nhập Liệu Co Giãn Đa Dòng (`FloatingInputBar.tsx`):** Co giãn từ `44px` đến `160px` theo nội dung; thu về `44px` sau khi gửi; đo đạc nhịp gõ ẩn `KeystrokeTelemetry` bằng `useRef` (zero re-render).
-- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.8.2`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.9`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Quy chuẩn Kho Few-Shot Vàng Động & Subagent Training Suite v2 (`v4.9`):**
+  + Kho Few-Shot vàng 100% cục bộ (`services/fewShotBank.ts`): 12 ví dụ chuẩn phân cụm theo 7 nhánh (`COMPANION_CASUAL`, `COMPANION_EMPATHY`, `STEM_CODE`, `STEM_SCIENCE`, `STEM_ELECTRONICS`, `FINANCE_QUANT`, `WEB_CITE_LOGIC`).
+  + Rào chắn tốc độ & Token: Bỏ qua 100% token khi `STOP_SIGNAL` hoặc `PING` (0 token thừa, phản hồi < 0.5s); khối thẻ `[FEW_SHOT_REF: cluster=...]` khóa cứng độ dài `<= 520 ký tự` (~90–120 từ), tuyệt đối KHÔNG nhồi vào `SYSTEM_INSTRUCTION` cố định (< 450 từ) để bảo vệ Attention khỏi Lost in the Middle.
+  + Đính kèm thẻ ngữ cảnh động theo lượt vào cả OpenAI và chuỗi xoay vòng Gemini miễn phí.
+  + Khử mùi trợ lý máy móc (`stripRoboticClosings`): Gọt sạch các câu kết rập khuôn ("Nếu bạn có thêm câu hỏi nào...", "Hy vọng điều này hữu ích...", "Chúc bạn thành công...", "Cứ hỏi mình nếu cần nhé!"), bảo toàn 100% code blocks và bảng Markdown.
+  + Bộ Benchmark Subagent 12 Kịch bản (`train_simulator.js`): Giữ nguyên 44 test cũ, chạy 12 kịch bản đa lĩnh vực mới đạt 560/560 điểm tuyệt đối; hỗ trợ chế độ `--live` với Judge Subagent 5 tiêu chí và tự động fallback êm về `--local`.
 - **Quy chuẩn Chia đều 4 Cột 25% & Khởi động 1 Pane Mặc định (`v4.8.2`):**
   + Cấm gán `minWidth` cứng (như `minWidth: 320`) trên `singlePaneWrapper` và `overflowX: 'auto'` trên `panesContainer`. Mọi pane luôn tuân thủ `flex: 1, flexBasis: 0, minWidth: 0, maxWidth: '100%', overflow: 'hidden'` để 4 cột chia đều 25% khít mép không tràn ngang.
   + Chế độ hiển thị mật độ cao (`totalPanes >= 3`): header padding 8px, text co giãn mượt, lời chào fontSize 17–20 không xén chữ "Chào buổi sáng", input pill padding 6–8px và placeholder "Nhắn tin..." gọn gàng.
