@@ -110,6 +110,8 @@ export interface ChatSession {
   messageCount?: number;
   lastIntent?: string;
   notebookId?: string; // Sổ ghi chú mà phiên này trực thuộc (mặc định 'default-notebook')
+  isPinned?: boolean;
+  pinnedAt?: number;
 }
 
 export interface MemeItem {

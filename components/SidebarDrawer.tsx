@@ -30,6 +30,7 @@ interface SidebarDrawerProps {
   onCreateNewSession: () => void;
   onDeleteSession: (id: string) => void;
   onRenameSession?: (id: string, newTitle: string) => void;
+  onTogglePinSession?: (id: string) => void;
   onClearAll: () => void;
   userMemory: UserMemoryProfile;
   theme?: ThemeColors;
@@ -59,6 +60,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   onCreateNewSession,
   onDeleteSession,
   onRenameSession,
+  onTogglePinSession,
   onClearAll,
   userMemory,
   theme = DARK_THEME,
@@ -212,7 +214,8 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
         .tmr-sb-dark .tmr-row-more-btn:hover {
           background-color: rgba(255, 255, 255, 0.12) !important;
         }
-        .tmr-menu-item-rename:hover {
+        .tmr-menu-item-rename:hover,
+        .tmr-menu-item-action:hover {
           background-color: var(--tmr-menu-hover-bg) !important;
         }
         .tmr-menu-item-delete:hover {
@@ -333,6 +336,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           }}
           onDeleteSession={onDeleteSession}
           onRenameSession={onRenameSession}
+          onTogglePinSession={onTogglePinSession}
           onCloseSidebarMobile={isDesktop ? undefined : onClose}
         />
       </ScrollView>

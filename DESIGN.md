@@ -18,21 +18,19 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 - **Phía bên trái:**
   - **Duy nhất 1 nút `☰`** (Menu icon, 38x38 bo tròn) để đóng/mở Sidebar (`Cmd + B`).
 - **Chính giữa (Căn giữa tuyệt đối theo chiều ngang):**
-  - Cụm tiêu đề **`Tomorrow`** (`fontSize: 16.5`, `fontWeight: '700'`) đi kèm viên thuốc trạng thái **`Online • v4.10.4`** (chấm tròn xanh dịu + chữ xanh).
+  - Cụm tiêu đề **`Tomorrow`** (`fontSize: 16.5`, `fontWeight: '700'`) đi kèm viên thuốc trạng thái **`Online • v4.10.5`** (chấm tròn xanh dịu + chữ xanh).
   - Sử dụng bố cục căn giữa tuyệt đối (`position: 'absolute', left: 0, right: 0, alignItems: 'center', pointerEvents: 'none'`) để không bao giờ bị lệch tâm dù nhóm nút bên phải dài hơn bên trái.
   - **NGHIÊM CẤM:** Hiển thị thẻ tên Sổ ghi chú (VD: `📁 test`, `📁 Ghi chú chung`) hay dòng trạng thái `"Đang nhớ: ..."` trên Header.
 - **Phía bên phải:**
-  - **Duy nhất 2 thành phần:**
-    1. Nút **`Tìm kiếm ⌘K`** chuẩn **Lucian #471** (trên màn hình Desktop `width >= 768px`):
-       - Chiều cao cân xứng Header `36px`, bo góc `12px`, nền hòa sắc theme (`#1E1F26` Dark / `#FFFFFF` Light), viền mỏng và đổ bóng sâu.
-       - Kính lúp xoay nhẹ và phóng to (`rotate(-14deg) scale(1.14)`) khi kích hoạt (`.is-hit`).
-       - Cụm phím cơ nổi 3D gồm đế phím và nắp phím (`⌘` hoặc `Ctrl` tự động nhận diện theo OS và `K`):
-         * Trạng thái `.is-down`: nắp phím lún xuống `2.5px`, chữ đổi màu accent, viền sáng accent; nhả ra nảy lò xo về vị trí ban đầu `translateY(0)` trong `0.42s`.
-         * Trạng thái `.is-ask`: nhún nhẹ và phát hào quang mềm `var(--tmr-accent-soft)` khi người dùng đang giữ `⌘` / `Ctrl` chờ bấm `K`.
-         * Sóng gợn `tmr-kbtn-rp` lan tỏa từ tâm cụm phím `⌘K` ra toàn bộ nút khi nhấn kích hoạt.
-       - Đồng bộ phím tắt toàn cục `Cmd/Ctrl + K` (mở Command Palette sau 110ms cho mắt kịp thấy nhịp nhấn phím cơ, hoặc đóng ngay tức thì).
-    2. Nút **Tạo cuộc trò chuyện mới** (`SquarePen` icon, 38x38 bo tròn).
-  - **NGHIÊM CẤM:** Đặt nút Chia đôi màn hình (Split Screen) và nút Mặt trăng/Mặt trời chuyển Sáng/Tối trên Header (đã chuyển hoàn toàn sang phím tắt).
+  - **Duy nhất 1 thành phần trên Desktop (`width >= 768px`):** Nút **`Tìm kiếm ⌘K`** chuẩn **Lucian #471** (đã loại bỏ hoàn toàn nút tạo chat/chỉnh sửa bên cạnh — việc tạo chat mới thực hiện qua nút `+ Trò chuyện mới` trên Sidebar hoặc phím tắt `Cmd + N`):
+    - Chiều cao cân xứng Header `36px`, bo góc `12px`, nền hòa sắc theme (`#1E1F26` Dark / `#FFFFFF` Light), viền mỏng và đổ bóng sâu.
+    - Kính lúp xoay nhẹ và phóng to (`rotate(-14deg) scale(1.14)`) khi kích hoạt (`.is-hit`).
+    - Cụm phím cơ nổi 3D gồm đế phím và nắp phím (`⌘` hoặc `Ctrl` tự động nhận diện theo OS và `K`):
+      * Trạng thái `.is-down`: nắp phím lún xuống `2.5px`, chữ đổi màu accent, viền sáng accent; nhả ra nảy lò xo về vị trí ban đầu `translateY(0)` trong `0.42s`.
+      * Trạng thái `.is-ask`: nhún nhẹ và phát hào quang mềm `var(--tmr-accent-soft)` khi người dùng đang giữ `⌘` / `Ctrl` chờ bấm `K`.
+      * Sóng gợn `tmr-kbtn-rp` lan tỏa từ tâm cụm phím `⌘K` ra toàn bộ nút khi nhấn kích hoạt.
+    - Đồng bộ phím tắt toàn cục `Cmd/Ctrl + K` (mở Command Palette sau 110ms cho mắt kịp thấy nhịp nhấn phím cơ, hoặc đóng ngay tức thì).
+  - **NGHIÊM CẤM:** Đặt nút Chia đôi màn hình (Split Screen), nút tạo chat hay nút Mặt trăng/Mặt trời chuyển Sáng/Tối trên Header.
 
 ---
 
@@ -105,7 +103,7 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 
 ---
 
-### E. Thanh Bên Lịch Sử (Sidebar Drawer) Chuẩn Antigravity Minimalist (`Online • v4.10.4`)
+### E. Thanh Bên Lịch Sử (Sidebar Drawer) Chuẩn Antigravity Minimalist (`Online • v4.10.5`)
 - **Thiết kế Đơn sắc Tối giản (Antigravity Minimalist Monochrome — Loại bỏ AI Slop):**
   + Tuyệt đối thanh trừng khung hộp trắng dày quanh tiêu đề sổ, bỏ icon `💬` (`MessageSquare`) và bỏ đường kẻ guide line dọc trước danh sách đoạn chat.
   + **Nền Tối (Ember Matte Obsidian):** Nền `#141416` (sâu hơn khung chat chính `#171717`, viền phải `1px solid rgba(255, 255, 255, 0.07)`). Đường phân tách `1px solid rgba(255, 255, 255, 0.06)`. Mục đang chọn (Active Pill) nền `#242429`, viền `1px solid rgba(255, 255, 255, 0.10)`, chữ `#FFFFFF` (`fontWeight: '600'`). Item hover nền `rgba(255, 255, 255, 0.05)`, chữ `#FFFFFF`. Item thường chữ `#E4E4E7` (`fontWeight: '500'`).
@@ -123,8 +121,8 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
   3. **Hàng Sổ Ghi Chú Phẳng & Danh sách Pure Typography (Pure DOM trên Web):**
      - **Hàng tiêu đề Sổ (`36px`, `padding: 0 8px 0 10px`, `borderRadius: 9px`):** Thiết kế phẳng hoàn toàn (KHÔNG nền trắng, KHÔNG viền hộp, KHÔNG `boxShadow`). Icon `Folder` nét mảnh (`16x16`, `strokeWidth={1.75}`) + tên sổ (`14.5px`, `fontWeight: '600'`). Mặc định cụm nút góc phải (`+` tạo chat trong sổ, `⋮` tùy chọn sổ) ẩn (`opacity: 0; pointer-events: none;`), chỉ hiện mượt `140ms` khi hover hoặc khi menu đang mở (`.is-menu-open`).
      - **Danh sách đoạn chat (`height: 38px`, `borderRadius: 10px`, `padding: 0 8px 0 32px`):** Trên Web dựng bằng thẻ DOM thuần (`<div>`, `<span>`, `<button type="button">`, `<input>`) để kích hoạt chuẩn CSS `:hover` và click không bị `react-native-web` chặn. Pure Typography — **KHÔNG** icon `💬` và **KHÔNG** đường kẻ dọc; căn lề trái đồng nhất thẳng trục chữ tên Sổ. Tiêu đề đoạn chat `14.5px` (`letterSpacing: -0.2`, `500` mặc định / `600` active). Chỉ báo phiên phụ mở ở pane Split Screen là chấm tròn đơn sắc `5px` đặt gọn ở lề trái `left: 15px`.
-     - **Mốc thời gian & Menu nổi `⋮` via React Portal (`createPortal`):** Mặc định (kể cả dòng active) hộp bên phải cố định `32×28px` hiển thị mốc thời gian `tabular-nums` (`13px`, `fontWeight: '500'`, `#8E8E93` Dark / `#6B7280` Light). Khi hover hoặc `.is-menu-open`, mốc thời gian ẩn và hiện nút tròn `28×28px` chứa icon `MoreVertical` (`15px`). Bấm `⋮` bung menu nổi qua `createPortal(..., document.body)` (`position: fixed; z-index: 9999`), neo tọa độ `getBoundingClientRect()` tràn mép phải Sidebar và tự lật lên trên gần đáy viewport, tự đóng khi bấm ngoài / cuộn / `Esc`. Menu tối giản **chỉ có đúng 2 mục** (`Rename` inline `<input autoFocus>` và `Delete` xóa trực tiếp xuống `CHAT_SESSIONS_V2`, đóng pane đang mở, không `window.confirm`; Sổ mặc định chỉ hiện `Rename`).
-     - **`See all (N)` / Trạng thái sổ trống:** Căn thẳng trục chữ `paddingLeft: 32px`, `height: 34px`, cỡ chữ `14px` `fontWeight: '500'`.
+     - **Mốc thời gian & Menu nổi `⋮` via React Portal (`createPortal`):** Mặc định (kể cả dòng active) hộp bên phải cố định `32×28px` hiển thị mốc thời gian `tabular-nums` (`13px`, `fontWeight: '500'`, `#8E8E93` Dark / `#6B7280` Light). Khi hover hoặc `.is-menu-open`, mốc thời gian ẩn và hiện nút tròn `28×28px` chứa icon `MoreVertical` (`15px`). Bấm `⋮` bung menu nổi qua `createPortal(..., document.body)` (`position: fixed; z-index: 9999`), neo tọa độ `getBoundingClientRect()` tràn mép phải Sidebar và tự lật lên trên gần đáy viewport, tự đóng khi bấm ngoài / cuộn / `Esc`. Menu nổi đoạn chat tối giản **chuẩn đúng 3 mục** (không `Archive`): **`Rename`** (inline `<input autoFocus>`), **`Pin` / `Unpin`** (đưa các đoạn chat đã ghim lên đầu sổ kèm icon `Pin` `12px` xoay nhẹ `45deg` đặt gọn trong lề trái `32px`), và **`Delete`** sau hairline divider (xóa trực tiếp xuống `CHAT_SESSIONS_V2`, đóng pane đang mở, không `window.confirm`). (Menu Sổ có `Rename`, và `Delete` với sổ tùy chỉnh).
+     - **`Xem thêm (N)` / Trạng thái sổ trống:** Với ngưỡng mặc định `VISIBLE_LIMIT = 5`, chỉ hiện nút mở rộng khi `hiddenCount = sortedSessions.length - 5 > 0`, hiển thị chính xác số phiên còn đang ẩn **`Xem thêm (${hiddenCount})`** (hoặc **`Thu gọn`** khi đã mở), căn thẳng trục chữ `paddingLeft: 32px`, `height: 34px`, cỡ chữ `14px` `fontWeight: '500'`.
   4. **Chân trang Cố định (Sticky Footer Ghost Reset):**
      - Nút **`Xóa toàn bộ lịch sử & Reset`** thiết kế phong cách Ghost (`height: 34px`, `borderRadius: 8px`, chữ `13px`), nền trong suốt, chỉ chuyển nền/viền/chữ đỏ dịu khi hover.
 - **Tối ưu Hiệu Năng Hoạt Ảnh 60fps & Bảo Toàn `Cmd + R`:**

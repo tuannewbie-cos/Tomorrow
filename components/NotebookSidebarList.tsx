@@ -18,6 +18,8 @@ import {
   ChevronDown,
   ChevronRight,
   MoreVertical,
+  Pin,
+  PinOff,
 } from 'lucide-react-native';
 import { ChatSession } from '../types/chat';
 import { Notebook, DEFAULT_NOTEBOOK_ID, formatRelativeTime } from '../storage/notebookStorage';
@@ -26,6 +28,7 @@ import { isPlaceholderOrNoiseTitle } from '../storage/chatStorage';
 
 const WEB_FONT_STACK =
   'Be Vietnam Pro, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+const VISIBLE_LIMIT = 5;
 
 const getWebCreatePortal = ():
   | ((children: React.ReactNode, container: Element) => React.ReactPortal)
@@ -57,6 +60,7 @@ type ContextMenuState =
       id: string;
       notebookId: string;
       title: string;
+      isPinned: boolean;
       anchorRect: AnchorRect;
     }
   | {
@@ -81,6 +85,7 @@ export interface NotebookSidebarListProps {
   onSelectSession: (sessionId: string, notebookId: string) => void;
   onCreateSessionInNotebook: (notebookId: string) => void;
   onRenameSession?: (sessionId: string, newTitle: string) => Promise<void> | void;
+  onTogglePinSession?: (sessionId: string) => void;
   onDeleteSession: (sessionId: string) => void;
   onCloseSidebarMobile?: () => void;
 }
@@ -242,12 +247,34 @@ const SidebarSessionRow: React.FC<SidebarSessionRowProps> = React.memo(({
           minWidth: 0,
         }}
       >
+        {session.isPinned && (
+          <span
+            aria-label="Đã ghim"
+            style={{
+              position: 'absolute',
+              left: 11,
+              top: '50%',
+              transform: 'translateY(-50%) rotate(45deg)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+            }}
+          >
+            <Pin
+              size={12}
+              strokeWidth={2}
+              color={isDark ? 'rgba(255, 255, 255, 0.45)' : 'rgba(0, 0, 0, 0.45)'}
+            />
+          </span>
+        )}
+
         {isOpenInWorkspace && !isActive && (
           <span
             aria-hidden="true"
             style={{
               position: 'absolute',
-              left: 15,
+              left: session.isPinned ? 4 : 15,
               top: '50%',
               transform: 'translateY(-50%)',
               width: 5,
@@ -377,11 +404,30 @@ const SidebarSessionRow: React.FC<SidebarSessionRowProps> = React.memo(({
         onCloseSidebarMobile?.();
       }}
     >
+      {session.isPinned && (
+        <View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            left: 11,
+            top: '50%',
+            transform: [{ translateY: -6 }, { rotate: '45deg' }],
+          }}
+        >
+          <Pin
+            size={12}
+            strokeWidth={2}
+            color={isDark ? 'rgba(255, 255, 255, 0.45)' : 'rgba(0, 0, 0, 0.45)'}
+          />
+        </View>
+      )}
+
       {isOpenInWorkspace && !isActive && (
         <View
           pointerEvents="none"
           style={[
             styles.workspaceDotIndicator,
+            session.isPinned && { left: 4 },
             { backgroundColor: isDark ? '#E4E4E7' : '#18181B' },
           ]}
         />
@@ -447,6 +493,7 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
   onSelectSession,
   onCreateSessionInNotebook,
   onRenameSession,
+  onTogglePinSession,
   onDeleteSession,
   onCloseSidebarMobile,
 }) => {
@@ -590,6 +637,7 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
               id: session.id,
               notebookId,
               title: session.title || formatSidebarSessionTitle(session.title),
+              isPinned: Boolean(session.isPinned),
               anchorRect: rect,
             }
       );
@@ -764,15 +812,32 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
           const isRenaming = renamingNotebookId === nb.id;
           const isFolderMenuOpen = openMenu?.kind === 'notebook' && openMenu.id === nb.id;
 
-          // Lọc danh sách phiên thuộc notebook này
+          // Lọc và sắp xếp danh sách phiên thuộc notebook này (đã ghim lên đầu theo pinnedAt giảm dần)
           const nbSessions = sessions.filter(
             (s) => (s.notebookId || DEFAULT_NOTEBOOK_ID) === nb.id
           );
+          const sortedSessions = [...nbSessions].sort((a, b) => {
+            const aPinned = Boolean(a.isPinned);
+            const bPinned = Boolean(b.isPinned);
+            if (aPinned !== bPinned) {
+              return aPinned ? -1 : 1;
+            }
+            if (aPinned && bPinned) {
+              return (
+                (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0) ||
+                (b.updatedAt || 0) - (a.updatedAt || 0)
+              );
+            }
+            return (b.updatedAt || 0) - (a.updatedAt || 0);
+          });
 
-          // Phân trang mặc định 5 phiên
+          // Phân trang mặc định VISIBLE_LIMIT = 5 phiên, đếm chính xác số đoạn chat đang ẩn
           const isExpanded = !!expandedNotebookIds[nb.id];
-          const displayedSessions = isExpanded ? nbSessions : nbSessions.slice(0, 5);
-          const hasMore = nbSessions.length > 5;
+          const hiddenCount = Math.max(0, sortedSessions.length - VISIBLE_LIMIT);
+          const hasMore = hiddenCount > 0;
+          const displayedSessions = isExpanded
+            ? sortedSessions
+            : sortedSessions.slice(0, VISIBLE_LIMIT);
 
           return (
             <View key={nb.id} style={styles.notebookGroup}>
@@ -1164,7 +1229,7 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                       ]}
                       {...(Platform.OS === 'web' && ({ className: 'tmr-see-all-text' } as any))}
                     >
-                      {isExpanded ? 'Thu gọn' : `See all (${nbSessions.length})`}
+                      {isExpanded ? 'Thu gọn' : `Xem thêm (${hiddenCount})`}
                     </Text>
                     {isExpanded ? (
                       <ChevronDown
@@ -1197,8 +1262,15 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
 
         const showDelete =
           openMenu.kind === 'session' || (openMenu.kind === 'notebook' && openMenu.canDelete);
+        const sessionTarget =
+          openMenu.kind === 'session'
+            ? sessions.find((s) => s.id === openMenu.id)
+            : undefined;
+        const isSessionPinned = Boolean(
+          sessionTarget?.isPinned ?? (openMenu.kind === 'session' ? openMenu.isPinned : false)
+        );
         const MENU_WIDTH = 172;
-        const estimatedHeight = showDelete ? 94 : 48;
+        const estimatedHeight = openMenu.kind === 'session' ? 132 : showDelete ? 94 : 48;
         const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1200;
         const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800;
 
@@ -1287,6 +1359,45 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
               <Pencil size={15} strokeWidth={1.85} />
               <span>Rename</span>
             </button>
+
+            {openMenu.kind === 'session' && (
+              <button
+                type="button"
+                role="menuitem"
+                className="tmr-menu-item-action"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const current = openMenu;
+                  setOpenMenu(null);
+                  onTogglePinSession?.(current.id);
+                }}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '8px 10px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: 'transparent',
+                  color: isDark ? '#F4F4F5' : '#18181B',
+                  fontSize: 13.5,
+                  fontWeight: 500,
+                  fontFamily: WEB_FONT_STACK,
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                  boxSizing: 'border-box',
+                }}
+              >
+                {isSessionPinned ? (
+                  <PinOff size={15} strokeWidth={1.85} />
+                ) : (
+                  <Pin size={15} strokeWidth={1.85} />
+                )}
+                <span>{isSessionPinned ? 'Unpin' : 'Pin'}</span>
+              </button>
+            )}
 
             {showDelete && (
               <>

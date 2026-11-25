@@ -1813,6 +1813,24 @@ export default function App() {
     });
   }, []);
 
+  // 5.6. GHIM / BỎ GHIM PHIÊN TRÒ CHUYỆN & LƯU NGAY XUỐNG CHAT_SESSIONS_V2
+  const handleTogglePinSession = useCallback((sessionId: string) => {
+    setSessions((prev) => {
+      const next = prev.map((s) =>
+        s.id === sessionId
+          ? {
+              ...s,
+              isPinned: !s.isPinned,
+              pinnedAt: !s.isPinned ? Date.now() : undefined,
+            }
+          : s
+      );
+      sessionsRef.current = next;
+      void saveSessions(next);
+      return next;
+    });
+  }, []);
+
   // 6. XÓA TOÀN BỘ LỊCH SỬ & RESET
   const handleClearAll = async () => {
     await clearAllChatData();
@@ -2187,12 +2205,12 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: themeMode === 'dark' ? '#FFFFFF' : '#09090B' }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.10.4</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.10.5</Text>
               </View>
             </View>
           </View>
 
-          {/* Cụm nút góc phải: Nút Command Palette ⌘K (trên Desktop) + Nút Tạo Cuộc Trò Chuyện Mới */}
+          {/* Cụm nút góc phải: Duy nhất nút Command Palette ⌘K (trên Desktop) */}
           <View style={styles.headerRightActions}>
             {/* Nút Command Palette ⌘K chuẩn Lucian #471 trên Desktop (width >= 768px) */}
             {isDesktop && (
@@ -2203,20 +2221,6 @@ export default function App() {
                 isDesktop={isDesktop}
               />
             )}
-
-            {/* Nút Cuộc trò chuyện mới */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.headerBtn,
-                { backgroundColor: theme.btnBg },
-                pressed && { backgroundColor: theme.btnHover },
-                Platform.OS === 'web' && { cursor: 'pointer' as any },
-              ]}
-              onPress={handleCreateNewSession}
-              hitSlop={8}
-            >
-              <SquarePen size={19} color={theme.btnIcon} />
-            </Pressable>
           </View>
         </View>
 
@@ -2232,6 +2236,7 @@ export default function App() {
             onCreateNewSession={handleCreateNewSession}
             onDeleteSession={handleDeleteSession}
             onRenameSession={handleRenameSession}
+            onTogglePinSession={handleTogglePinSession}
             onClearAll={handleClearAll}
             userMemory={userMemory}
             theme={theme}

@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.10.4` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.10.5` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -469,6 +469,10 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
   - **Hàng chat & hàng sổ Pure DOM trên Web (`components/NotebookSidebarList.tsx`):** Thay `<Pressable>` / `pointerEvents="none"` lồng nhau trên Web bằng thẻ DOM thuần (`<div>`, `<button type="button">`, `<span>`, `<input>`) để kích hoạt chuẩn CSS `:hover` (`.tmr-chat-row`, `.tmr-folder-row`) ẩn mốc thời gian / hiện nút tròn `⋮` (`MoreVertical`) ở góc phải.
   - **Context Menu nổi qua React Portal (`createPortal` vào `document.body`):** Neo tọa độ từ `getBoundingClientRect()`, tự lật lên trên khi gần đáy màn hình, tràn qua mép phải Sidebar, tự đóng khi bấm ngoài / cuộn / `Esc`. Chỉ chứa đúng 2 mục: **`Rename`** (sửa inline trực tiếp bằng `<input autoFocus>`) và **`Delete`** (xóa trực tiếp vào `CHAT_SESSIONS_V2`, dọn sạch mọi `panes` & `savedPanes`, hủy stream đang chạy mà không bật `window.confirm`).
   - **Header & Tài liệu:** Đồng bộ `Online • v4.10.4` trên `App.tsx`, `DESIGN.md`, `PLANNING.md` và `.antigravity/rules.md`.
+- [x] **Ngày 14.5 (`Online • v4.10.5`): Sửa đếm `Xem thêm (N)`, thêm `Pin`/`Unpin` trong menu `⋮` & Xóa nút chỉnh sửa dư thừa trên Header**
+  - **Đếm chuẩn số phiên đang ẩn (`components/NotebookSidebarList.tsx`):** Tính `hiddenCount = Math.max(0, sortedSessions.length - 5)` từ cùng mảng đã sắp xếp, hiển thị `Xem thêm (${hiddenCount})` / `Thu gọn`.
+  - **Ghim / Bỏ ghim phiên (`types/chat.ts`, `App.tsx`, `components/SidebarDrawer.tsx`, `components/NotebookSidebarList.tsx`):** Bổ sung `isPinned` & `pinnedAt` vào `ChatSession` (lưu trong `CHAT_SESSIONS_V2`), sắp xếp phiên ghim lên đầu sổ (`pinnedAt` giảm dần), hiển thị icon `Pin` `12px` gọn trong lề trái `32px`, và bổ sung mục `Pin`/`Unpin` thành đủ 3 mục (`Rename`, `Pin`/`Unpin`, `Delete`) trong menu Portal `⋮`.
+  - **Thanh Header sạch (`App.tsx`, `DESIGN.md`):** Xóa bỏ hoàn toàn nút `SquarePen` bên phải nút `Tìm kiếm ⌘K`, chỉ giữ duy nhất cụm phím cơ 3D `Tìm kiếm ⌘K` ở góc phải; cập nhật Header `Online • v4.10.5`.
 
 - [ ] **Ngày 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
