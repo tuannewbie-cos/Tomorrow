@@ -87,6 +87,7 @@ const memoryVault = loadTsModule(path.resolve(__dirname, 'services/memoryVaultSe
 const richMarkdownView = loadTsModule(path.resolve(__dirname, 'components/RichMarkdownView.tsx'));
 const notebookStorage = loadTsModule(path.resolve(__dirname, 'storage/notebookStorage.ts'));
 const semanticRecall = loadTsModule(path.resolve(__dirname, 'services/semanticRecallService.ts'));
+const proactiveGreeting = loadTsModule(path.resolve(__dirname, 'services/proactiveGreetingService.ts'));
 
 // 1. BỘ LỌC TIÊU ĐỀ RÁC (Đồng bộ storage/chatStorage.ts)
 function isPlaceholderOrNoiseTitle(title) {
@@ -3071,8 +3072,287 @@ async function runAllTests() {
     });
   }
 
+  // ==================== NGÀY 14: PROACTIVE GREETING ENGINE (TESTS 57-61) ====================
+
+  // TEST 57: Test_Day14_Chrono_Daytime_Guard
+  {
+    const morningDate = new Date(2026, 10, 25, 8, 30, 0);
+    const afternoonDate = new Date(2026, 10, 25, 14, 20, 0);
+    const gMorning = proactiveGreeting.generateProactiveGreeting({
+      sessions: [],
+      activeNotebookId: 'default-notebook',
+      memoryVault: null,
+      now: morningDate,
+    });
+    const gAfternoon = proactiveGreeting.generateProactiveGreeting({
+      sessions: [],
+      activeNotebookId: 'default-notebook',
+      memoryVault: null,
+      now: afternoonDate,
+    });
+
+    const bannedNightWords = /thức khuya|đêm muộn|ngủ đi|thức đêm|khuya rồi/i;
+    const morningClean =
+      gMorning.period === 'MORNING' &&
+      !bannedNightWords.test(gMorning.headline) &&
+      !bannedNightWords.test(gMorning.subline) &&
+      gMorning.headline.length <= 58 &&
+      gMorning.subline.length <= 96 &&
+      gMorning.tone !== 'LATE_NIGHT_CALM';
+    const afternoonClean =
+      gAfternoon.period === 'AFTERNOON' &&
+      !bannedNightWords.test(gAfternoon.headline) &&
+      !bannedNightWords.test(gAfternoon.subline) &&
+      gAfternoon.headline.length <= 58 &&
+      gAfternoon.subline.length <= 96 &&
+      gAfternoon.tone !== 'LATE_NIGHT_CALM';
+
+    const passed = morningClean && afternoonClean;
+    results.push({
+      name: 'Test_Day14_Chrono_Daytime_Guard',
+      input: '08:30 sáng & 14:20 chiều',
+      mode: 'DAY14_CHRONO_DAYTIME_GUARD',
+      output: [
+        `08:30 [${gMorning.period}/${gMorning.tone}]: "${gMorning.headline}"`,
+        `14:20 [${gAfternoon.period}/${gAfternoon.tone}]: "${gAfternoon.headline}"`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Rào chắn ban ngày 08:30 & 14:20 chuẩn xác, 0% từ khóa "thức khuya"/"đêm muộn", headline <= 58 & subline <= 96'
+        : 'Thất bại: Lọt từ khóa đêm muộn vào ban ngày hoặc sai period/budget',
+    });
+  }
+
+  // TEST 58: Test_Day14_LateNight_Calm_Tone
+  {
+    const lateNightDate = new Date(2026, 10, 25, 0, 45, 0);
+    const gNight = proactiveGreeting.generateProactiveGreeting({
+      sessions: [],
+      activeNotebookId: 'default-notebook',
+      memoryVault: null,
+      now: lateNightDate,
+    });
+
+    const isLatePeriod = gNight.period === 'LATE_NIGHT';
+    const isCalmTone = gNight.tone === 'LATE_NIGHT_CALM';
+    const hasGentleNightCue = /(khuya|đêm|nghỉ|nhịp)/i.test(gNight.headline);
+    const budgetOk = gNight.headline.length <= 58 && gNight.subline.length <= 96;
+
+    const passed = isLatePeriod && isCalmTone && hasGentleNightCue && budgetOk;
+    results.push({
+      name: 'Test_Day14_LateNight_Calm_Tone',
+      input: '00:45 đêm',
+      mode: 'DAY14_LATE_NIGHT_CALM',
+      output: [
+        `Period: ${gNight.period}, Tone: ${gNight.tone}`,
+        `Headline: "${gNight.headline}"`,
+        `Subline: "${gNight.subline}"`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Khung 00:45 đêm kích hoạt chuẩn period=LATE_NIGHT và tone=LATE_NIGHT_CALM trầm nhẹ'
+        : 'Thất bại: Sai tone LATE_NIGHT_CALM hoặc sai nội dung đêm khuya',
+    });
+  }
+
+  // TEST 59: Test_Day14_Notebook_Scoped_Resume_And_NoiseFilter
+  {
+    const nowDate = new Date(2026, 10, 25, 9, 15, 0);
+    const nowMs = nowDate.getTime();
+    const mockSessions = [
+      {
+        id: 'sess-noise-hello',
+        title: 'hello',
+        notebookId: 'study-nb',
+        updatedAt: nowMs - 1 * 3600 * 1000, // 1h trước (mới hơn nhưng tiêu đề rác)
+        messages: [
+          { id: 'm1', role: 'user', text: 'hello', timestamp: nowMs - 3600000 },
+          { id: 'm2', role: 'model', text: 'yo', timestamp: nowMs - 3590000 },
+        ],
+      },
+      {
+        id: 'sess-calc2-study',
+        title: 'Ôn tập Giải tích 2 tích phân bội',
+        notebookId: 'study-nb',
+        updatedAt: nowMs - 14 * 3600 * 1000, // 14h trước, đúng sổ study-nb
+        messages: [
+          { id: 'm3', role: 'user', text: 'Tính tích phân bội hai trên miền D như thế nào?', timestamp: nowMs - 14 * 3600000 },
+          { id: 'm4', role: 'model', text: 'Ta dùng định lý Fubini đổi thứ tự lấy tích phân...', timestamp: nowMs - 14 * 3600000 + 5000 },
+        ],
+      },
+      {
+        id: 'sess-default-other',
+        title: 'Lên kế hoạch chi tiêu tháng này',
+        notebookId: 'default-notebook',
+        updatedAt: nowMs - 2 * 3600 * 1000, // 2h trước ở sổ khác
+        messages: [
+          { id: 'm5', role: 'user', text: 'Phân bổ ngân sách sinh viên 5 triệu sao cho ổn?', timestamp: nowMs - 2 * 3600000 },
+          { id: 'm6', role: 'model', text: 'Bạn có thể chia theo quy tắc 50/30/20...', timestamp: nowMs - 2 * 3600000 + 5000 },
+        ],
+      },
+    ];
+
+    const gStudy = proactiveGreeting.generateProactiveGreeting({
+      sessions: mockSessions,
+      activeNotebookId: 'study-nb',
+      memoryVault: null,
+      now: nowDate,
+    });
+
+    const filteredNoise = gStudy.targetSessionId !== 'sess-noise-hello' && !gStudy.subline.toLowerCase().includes('hello');
+    const pickedStudySession = gStudy.targetSessionId === 'sess-calc2-study';
+    const hasActionLabel = gStudy.actionLabel === 'Tiếp tục ↗';
+    const hasTopicInSubline = gStudy.subline.includes('Giải tích 2') && gStudy.subline.includes('14h trước');
+
+    const passed = filteredNoise && pickedStudySession && hasActionLabel && hasTopicInSubline;
+    results.push({
+      name: 'Test_Day14_Notebook_Scoped_Resume_And_NoiseFilter',
+      input: 'activeNotebookId="study-nb" (có "hello" 1h + "Ôn tập Giải tích 2" 14h + sổ khác 2h)',
+      mode: 'DAY14_NOTEBOOK_SCOPED_RESUME',
+      output: [
+        `targetSessionId: ${gStudy.targetSessionId}`,
+        `subline: "${gStudy.subline}"`,
+        `actionLabel: "${gStudy.actionLabel}"`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Lọc bỏ hoàn toàn phiên rác "hello", ưu tiên đúng sổ study-nb chọn phiên "Ôn tập Giải tích 2..." (14h trước) kèm nút "Tiếp tục ↗"'
+        : 'Thất bại: Không lọc rác "hello" hoặc chọn sai phiên theo sổ activeNotebookId',
+    });
+  }
+
+  // TEST 60: Test_Day14_Empathy_Override_LowMood
+  {
+    const morningDate = new Date(2026, 10, 25, 9, 0, 0);
+    const mockVault = {
+      schemaVersion: 2,
+      pronouns: 't - m',
+      favorites: [],
+      activeProjects: ['Đồ án tốt nghiệp'],
+      habits: [],
+      recentContext: [],
+      studySubjects: [{ id: 's1', subject: 'Giải tích 2', level: 'weak', focusTopic: 'tích phân bội', updatedAt: morningDate.toISOString() }],
+      financeGoals: [],
+      moodHistory: [
+        {
+          date: morningDate.toISOString(),
+          mood: 'MASKED_SADNESS',
+          note: 'ổn mà... hơi mệt chút thôi',
+        },
+      ],
+      updatedAt: morningDate.getTime(),
+    };
+
+    const gEmpathy = proactiveGreeting.generateProactiveGreeting({
+      sessions: [],
+      activeNotebookId: 'default-notebook',
+      memoryVault: mockVault,
+      now: morningDate,
+    });
+
+    const isWarmTone = gEmpathy.tone === 'WARM_GENTLE';
+    const noDeadlinePressure = !/(deadline|nộp bài|gấp|bài tập|chạy ngay|tích phân bội)/i.test(
+      `${gEmpathy.headline} ${gEmpathy.subline}`
+    );
+    const gentleCopy = /(nhịp nhẹ|gỡ rối|nói chuyện ngắn|thong thả|chậm rãi)/i.test(
+      `${gEmpathy.headline} ${gEmpathy.subline}`
+    );
+
+    const passed = isWarmTone && noDeadlinePressure && gentleCopy;
+    results.push({
+      name: 'Test_Day14_Empathy_Override_LowMood',
+      input: 'moodHistory: MASKED_SADNESS (trong 24h)',
+      mode: 'DAY14_EMPATHY_OVERRIDE',
+      output: [
+        `Tone: ${gEmpathy.tone}`,
+        `Headline: "${gEmpathy.headline}"`,
+        `Subline: "${gEmpathy.subline}"`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Kích hoạt Empathy Override: khóa tone=WARM_GENTLE, giọng dịu thoáng, 0% thúc ép deadline/bài tập'
+        : 'Thất bại: Không chuyển sang WARM_GENTLE hoặc vẫn thúc ép bài tập/deadline',
+    });
+  }
+
+  // TEST 61: Test_Day14_FirstTurn_Bridge_And_PromptBudget
+  {
+    const samplePayload = proactiveGreeting.generateProactiveGreeting({
+      sessions: [
+        {
+          id: 'sess-bridge-1',
+          title: 'Ôn tập Giải tích 2 tích phân bội',
+          notebookId: 'default-notebook',
+          updatedAt: Date.now() - 3 * 3600 * 1000,
+          messages: [
+            { id: 'u1', role: 'user', text: 'Giải thích tích phân bội giúp mình?', timestamp: Date.now() - 3 * 3600000 },
+            { id: 'a1', role: 'model', text: 'Tích phân bội dùng để tính...', timestamp: Date.now() - 3 * 3600000 + 5000 },
+          ],
+        },
+      ],
+      activeNotebookId: 'default-notebook',
+    });
+
+    const tagTurn1 = aiService.buildProactiveBridgeTag({
+      proactiveContextTag: samplePayload.contextTag,
+      history: [],
+      userText: 'ừ tiếp tục phần đó đi',
+      intentMode: 'CASUAL_FRIEND',
+    });
+    const tagStop = aiService.buildProactiveBridgeTag({
+      proactiveContextTag: samplePayload.contextTag,
+      history: [],
+      userText: 'okk',
+      intentMode: 'STOP_SIGNAL',
+    });
+    const tagPing = aiService.buildProactiveBridgeTag({
+      proactiveContextTag: samplePayload.contextTag,
+      history: [],
+      userText: 'yo',
+      intentMode: 'PING',
+    });
+    const tagTurn2 = aiService.buildProactiveBridgeTag({
+      proactiveContextTag: samplePayload.contextTag,
+      history: [
+        { id: '1', role: 'user', text: 'ừ tiếp tục phần đó đi', timestamp: Date.now() - 10000 },
+        { id: '2', role: 'model', text: 'Tiếp phần tích phân bội đây...', timestamp: Date.now() - 5000 },
+      ],
+      userText: 'cho ví dụ cụ thể',
+      intentMode: 'EXPERT_JARVIS',
+    });
+
+    const sysWords = (aiService.SYSTEM_INSTRUCTION || '').trim().split(/\s+/).filter(Boolean).length;
+    const contextBudgetOk = samplePayload.contextTag.length > 0 && samplePayload.contextTag.length <= 180;
+    const turn1Injected = tagTurn1.startsWith('[PROACTIVE_GREETING:') && tagTurn1.includes(samplePayload.contextTag);
+    const stopPingDisabled = tagStop === '' && tagPing === '';
+    const turn2Disabled = tagTurn2 === '';
+    const budgetUnder450 = sysWords > 0 && sysWords < 450;
+
+    const passed = contextBudgetOk && turn1Injected && stopPingDisabled && turn2Disabled && budgetUnder450;
+    results.push({
+      name: 'Test_Day14_FirstTurn_Bridge_And_PromptBudget',
+      input: 'contextTag <= 180, Turn 1 vs Turn 2 vs STOP_SIGNAL/PING & SYSTEM_INSTRUCTION < 450 words',
+      mode: 'DAY14_FIRST_TURN_BRIDGE',
+      output: [
+        `contextTag (${samplePayload.contextTag.length} chars <= 180)`,
+        `Turn1 Tag: "${tagTurn1.slice(0, 60)}..."`,
+        `STOP/PING/Turn2: "${tagStop}|${tagPing}|${tagTurn2}" (empty)`,
+        `SYSTEM_INSTRUCTION: ${sysWords} words (< 450)`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? `contextTag=${samplePayload.contextTag.length} chars (<=180), [PROACTIVE_GREETING] chỉ tiêm lượt 1, tắt ở STOP/PING/Turn 2, SYSTEM_INSTRUCTION=${sysWords} từ (<450)`
+        : 'Thất bại: Lỗi tiêm thẻ [PROACTIVE_GREETING] hoặc vượt ngân sách SYSTEM_INSTRUCTION',
+    });
+  }
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 56 SCENARIOS (TOMORROW V4.9 — ONLINE • V4.9):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 61 SCENARIOS (TOMORROW V4.10 — ONLINE • V4.10):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
@@ -3085,7 +3365,7 @@ results.forEach((r, idx) => {
 
 console.log('\n📊 BẢNG ĐIỂM 12 KỊCH BẢN SUBAGENT V2 (DAY 13):');
 console.log('='.repeat(75));
-const day13Results = results.slice(44);
+const day13Results = results.slice(44, 56);
 day13Results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
   console.log(`${icon} [SUBAGENT ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(45)} | Điểm: ${r.score}/10`);
@@ -3093,22 +3373,34 @@ day13Results.forEach((r, idx) => {
 });
 console.log('='.repeat(75));
 
+console.log('\n📊 BẢNG ĐIỂM 5 KỊCH BẢN NGÀY 14 (PROACTIVE GREETING ENGINE):');
+console.log('='.repeat(75));
+const day14Results = results.slice(56);
+day14Results.forEach((r, idx) => {
+  const icon = r.passed ? '✅' : '❌';
+  console.log(`${icon} [DAY14 ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(48)} | Điểm: ${r.score}/10`);
+  console.log(`   Chi tiết: ${r.details}`);
+});
+console.log('='.repeat(75));
+
 const totalScore = results.reduce((acc, cur) => acc + cur.score, 0);
+const maxScore = results.length * 10;
 const allPassed = results.every(r => r.passed);
 
-console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/560 (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
+console.log(`\n🏆 TỔNG ĐIỂM CHUNG CUỘC: ${totalScore}/${maxScore} (${allPassed ? '100% HOÀN HẢO' : 'CHƯA ĐẠT'})`);
 console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.9.6',
+  version: 'v4.10',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.9.6 — Ember Obsidian Minimal Monochrome Sidebar & Lucian #452 Suite (< 520 chars, System Prompt < 450 words)',
+  architecture: 'Tomorrow v4.10 — Proactive Greeting Engine, Ember Monochrome Welcome Cue & First-Turn Bridge (< 450 words)',
   totalScore,
-  maxScore: 560,
+  maxScore,
   allPassed,
   scenarios: results,
   day13Scenarios: day13Results,
+  day14Scenarios: day14Results,
   liveEvaluations: liveEvaluations.length > 0 ? liveEvaluations : undefined,
 };
 

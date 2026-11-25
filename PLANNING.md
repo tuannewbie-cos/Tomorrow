@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.8.2` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.10` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -17,7 +17,7 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
 
 | Giai đoạn | Nội dung trọng tâm | Thời gian | Trạng thái |
 | :--- | :--- | :--- | :--- |
-| **Phase 1** | **Core Foundation, 3-Layer Reflex, Quota Shield & Vision Lab** | Ngày 1 – 15 | 🟡 Đang hoàn thiện (Ngày 1-11 Xong, v4.7.1 Xong) |
+| **Phase 1** | **Core Foundation, 3-Layer Reflex, Quota Shield & Vision Lab** | Ngày 1 – 15 | 🟡 Đang hoàn thiện (Ngày 1-14 Xong, v4.10 Xong) |
 | **Phase 2** | **Tri thức Chuyên sâu, Khoa học & Thị trường** | Ngày 16 – 30 | ⚪ Chưa bắt đầu |
 | **Phase 3** | **Voice HUD, Realtime Waveform & Voiceprint** | Ngày 31 – 45 | ⚪ Chưa bắt đầu |
 | **Phase 4** | **Camera MediaPipe Nội bộ (100% Private RAM)** | Ngày 46 – 60 | ⚪ Chưa bắt đầu |
@@ -437,7 +437,23 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
     + Vận hành 2 chế độ: `--local` (mặc định) chạy 100% Deterministic Subagent Rubric Engine (0đ API, đạt 560/560 điểm 100% hoàn hảo) và `--live` (Judge Subagent chấm 5 tiêu chí: Đúng nhân cách, Không văn mẫu máy móc, Độ chính xác/Logic, Đúng rào chắn thời gian/đại từ, Độ sắc sảo, tự động fallback êm về `--local` nếu gặp lỗi API).
   - Header cập nhật: **`Online • v4.9`**.
 
-- [ ] **Ngày 12 – 15: Hoàn thiện Phase 1**
+- [x] **Ngày 14 (`feat/proactive-greeting-engine` — Phiên bản `Online • v4.10`): Động cơ Chào Chủ động Cục bộ 0-Token, Welcome Screen Chuẩn Ember Monochrome & First-Turn Context Bridge**
+  - **Động cơ Chào Chủ động Cục bộ (`services/proactiveGreetingService.ts` + `services/chronoService.ts`):**
+    + Chạy 100% cục bộ bằng TypeScript (`< 2ms`, 0 token API), tổng hợp 4 nguồn tín hiệu: đồng hồ sinh học `buildChronoContext` (rào chắn tuyệt đối ban ngày 04:00–22:59 không nhắc thức khuya), quét phiên dang dở 72h (`findResumableSession`) ưu tiên `activeNotebookId` và lọc rác `isPlaceholderOrNoiseTitle`, kho trí nhớ `USER_MEMORY_PROFILE_V1` (`moodHistory`, `studySubjects`, `activeProjects`, `financeGoals`), và cơ chế Đồng cảm Ưu tiên (`Empathy Override` khóa `tone = 'WARM_GENTLE'` khi có `MASKED_SADNESS` / `LOW_DOWN_DEFLATED` / `STRESSED_OVERWHELMED` trong 24h).
+    + Xoay biến thể câu chào deterministic theo `dayOfYear + period`, khóa cứng ngân sách `headline <= 58` chars, `subline <= 96` chars, `contextTag <= 180` chars.
+  - **Màn hình Mở đầu Chuẩn `DESIGN.md` & Ember Monochrome (`App.tsx` / `<ChatPaneView />`):**
+    + Giữ nguyên lõi `TomorrowGlyph` căn giữa + 1 dòng `headline` (`Plus Jakarta Sans`) + tối đa 1 dòng `subline` dịu + inline text link `Tiếp tục ↗` đơn sắc mở ngay `targetSessionId` vào pane active.
+    + Đồng bộ làm mới theo `activeNotebookId`, Split Screen 4 tab, và listener `focus`/`visibilitychange` + tick 10 phút khi chuyển khung giờ (không re-render khi đang chat).
+  - **Cầu nối Ngữ cảnh Lượt Đầu Tiên (`First-Turn Proactive Bridge` trong `services/aiService.ts` & `App.tsx`):**
+    + Mở rộng `proactiveContextTag?: string` trong `sendMessageToTomorrow` / `sendMessageToAI`.
+    + Hàm `buildProactiveBridgeTag` chỉ tiêm `[PROACTIVE_GREETING: ...]` ở lượt đầu (`history.length === 0`), tắt hoàn toàn khi `STOP_SIGNAL` / `PING` hoặc `history.length > 0`, đồng bộ cho cả OpenAI và chuỗi Gemini miễn phí.
+    + Giữ nguyên `SYSTEM_INSTRUCTION` 440 từ (< 450 từ).
+  - **Bộ kiểm thử tự động `train_simulator.js`:**
+    + Bổ sung +5 unit test Ngày 14 (`Test_Day14_Chrono_Daytime_Guard`, `Test_Day14_LateNight_Calm_Tone`, `Test_Day14_Notebook_Scoped_Resume_And_NoiseFilter`, `Test_Day14_Empathy_Override_LowMood`, `Test_Day14_FirstTurn_Bridge_And_PromptBudget`).
+    + Đạt 61/61 kịch bản PASS (610/610 điểm 100% hoàn hảo).
+  - Header cập nhật: **`Online • v4.10`**.
+
+- [ ] **Ngày 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
   - Tìm kiếm toàn văn (Full-text search) trên danh sách phiên trò chuyện trong Sidebar.
   - Đóng gói chuẩn ứng dụng Desktop macOS thông qua WebKit / Electron / PWA Wrapper nâng cao.

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
   View,
@@ -38,7 +38,12 @@ import {
   detectExpertDomain,
   buildLocalReflexDirective,
   resolveDualPersona,
+  buildChronoContext,
 } from './services/aiService';
+import {
+  generateProactiveGreeting,
+  ProactiveGreetingPayload,
+} from './services/proactiveGreetingService';
 import { ChatBubble } from './components/ChatBubble';
 import { ColdGreeting } from './components/ColdGreeting';
 import { TomorrowGlyph, getTimeBasedGreeting } from './components/TomorrowGlyph';
@@ -129,6 +134,8 @@ interface ChatPaneViewProps {
   ) => void;
   isGenerating?: boolean;
   onStopGeneration?: () => void;
+  proactiveGreeting?: ProactiveGreetingPayload;
+  onResumeSession?: (paneId: string, targetSessionId: string) => void;
   onScroll: (e: any) => void;
   onScrollDownPress: () => void;
   setFlatListRef: (r: FlatList<ChatMessage> | null) => void;
@@ -154,6 +161,8 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
   isSearching,
   isGenerating = false,
   onStopGeneration,
+  proactiveGreeting,
+  onResumeSession,
   statusText,
   isDropdownOpen,
   showScrollDown,
@@ -173,7 +182,6 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
   setInputBarRef,
 }) => {
   const hasPaneHistory = paneMessages.length > 0;
-  const paneGreeting = getColdGreetingText(userMemory, hasPaneHistory);
   const isQuadOrDenseSplit = totalPanes >= 3;
 
   const rawTitle = paneSession?.title;
@@ -435,40 +443,83 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
                 isQuadOrDenseSplit && { maxWidth: '100%', minWidth: 0, paddingHorizontal: 4 },
               ]}
             >
-              {/* Hàng chào ngang: Icon lõi Tomorrow + Dòng chào ngắn theo khung giờ thực tế */}
+              {/* Khối chào chủ động tối giản Ember Monochrome chuẩn DESIGN.md */}
               <View
                 style={[
-                  styles.claudeGreetingRow,
-                  isQuadOrDenseSplit && {
-                    gap: 8,
-                    marginBottom: 16,
-                    maxWidth: '100%',
-                    minWidth: 0,
-                    paddingHorizontal: 4,
-                    justifyContent: 'center',
-                  },
+                  styles.proactiveWelcomeHeader,
+                  isQuadOrDenseSplit && { marginBottom: 14, paddingHorizontal: 4 },
                 ]}
               >
-                <TomorrowGlyph
-                  size={isQuadOrDenseSplit ? (totalPanes === 4 ? 20 : 22) : (isSplitMode ? 26 : 32)}
-                  themeMode={theme.mode}
-                />
+                <View style={{ marginBottom: isQuadOrDenseSplit ? 10 : 14 }}>
+                  <TomorrowGlyph
+                    size={isQuadOrDenseSplit ? (totalPanes === 4 ? 22 : 24) : (isSplitMode ? 28 : 34)}
+                    themeMode={theme.mode}
+                  />
+                </View>
+
                 <Text
                   numberOfLines={1}
                   ellipsizeMode="tail"
                   adjustsFontSizeToFit
                   style={[
-                    styles.claudeGreetingText,
+                    styles.proactiveHeadlineText,
                     {
-                      fontSize: totalPanes === 4 ? 17 : totalPanes === 3 ? 20 : (isSplitMode ? 24 : 32),
-                      color: theme.mode === 'dark' ? '#ECECEC' : '#1A1A1A',
-                      flexShrink: 1,
-                      minWidth: 0,
+                      fontSize: totalPanes === 4 ? 17 : totalPanes === 3 ? 20 : (isSplitMode ? 22 : 26),
+                      lineHeight: totalPanes === 4 ? 22 : totalPanes === 3 ? 26 : (isSplitMode ? 28 : 34),
+                      color: theme.mode === 'dark' ? '#F4F4F5' : '#111113',
                     },
                   ]}
                 >
-                  {getTimeBasedGreeting()}
+                  {proactiveGreeting?.headline || getTimeBasedGreeting()}
                 </Text>
+
+                {!!proactiveGreeting?.subline && (
+                  <View style={styles.proactiveSublineRow}>
+                    <Text
+                      numberOfLines={isQuadOrDenseSplit ? 2 : 1}
+                      ellipsizeMode="tail"
+                      style={[
+                        styles.proactiveSublineText,
+                        {
+                          fontSize: isQuadOrDenseSplit ? 12 : (isSplitMode ? 12.5 : 13.5),
+                          lineHeight: isQuadOrDenseSplit ? 17 : 19,
+                          color: theme.mode === 'dark' ? '#A1A1AA' : '#52525B',
+                        },
+                      ]}
+                    >
+                      {proactiveGreeting.subline}
+                    </Text>
+                    {!!(proactiveGreeting.targetSessionId && proactiveGreeting.actionLabel) && (
+                      <Pressable
+                        onPress={() => onResumeSession?.(pane.id, proactiveGreeting.targetSessionId!)}
+                        hitSlop={6}
+                        style={({ hovered, pressed }: any) => [
+                          styles.proactiveActionLink,
+                          {
+                            opacity: pressed ? 0.6 : hovered ? 1 : 0.88,
+                          },
+                          Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+                        ]}
+                      >
+                        {({ hovered }: any) => (
+                          <Text
+                            style={[
+                              styles.proactiveActionLinkText,
+                              {
+                                fontSize: isQuadOrDenseSplit ? 12 : (isSplitMode ? 12.5 : 13.5),
+                                lineHeight: isQuadOrDenseSplit ? 17 : 19,
+                                color: theme.mode === 'dark' ? '#F4F4F5' : '#111113',
+                                textDecorationLine: hovered ? 'underline' : 'none',
+                              },
+                            ]}
+                          >
+                            {proactiveGreeting.actionLabel}
+                          </Text>
+                        )}
+                      </Pressable>
+                    )}
+                  </View>
+                )}
               </View>
 
               {/* Khung nhập liệu PromptBox Lucian #452 đặt NGAY DƯỚI dòng chào ở chính giữa màn hình */}
@@ -674,6 +725,65 @@ export default function App() {
   userMemoryRef.current = userMemory;
 
   const theme = themeMode === 'light' ? LIGHT_THEME : DARK_THEME;
+
+  // HẠNG MỤC 1 & 2 (Ngày 14): Động cơ chào chủ động cục bộ 0-token & Làm mới theo đồng hồ thực
+  const [greetingClockNow, setGreetingClockNow] = useState<Date>(() => new Date());
+  const greetingClockNowRef = useRef<Date>(greetingClockNow);
+  greetingClockNowRef.current = greetingClockNow;
+
+  const proactiveGreeting = useMemo(() => {
+    return generateProactiveGreeting({
+      sessions,
+      activeNotebookId,
+      memoryVault: userMemory.vault || userMemory,
+      now: greetingClockNow,
+    });
+  }, [sessions, activeNotebookId, userMemory, greetingClockNow]);
+  const proactiveGreetingRef = useRef<ProactiveGreetingPayload>(proactiveGreeting);
+  proactiveGreetingRef.current = proactiveGreeting;
+
+  const refreshGreetingClockIfPeriodChanged = useCallback(() => {
+    const now = new Date();
+    const prevChrono = buildChronoContext(greetingClockNowRef.current);
+    const nextChrono = buildChronoContext(now);
+    if (nextChrono.period !== prevChrono.period || nextChrono.dateStr !== prevChrono.dateStr) {
+      setGreetingClockNow(now);
+    }
+  }, []);
+
+  useEffect(() => {
+    const syncGreetingClock = () => {
+      // Chỉ cập nhật khi có ít nhất 1 pane trống và đã chuyển sang khung giờ/ngày mới (không gây re-render khi đang chat)
+      const hasEmptyPane = panesRef.current.some((p) => {
+        if (!p.sessionId) return true;
+        const sess = sessionsRef.current.find((s) => s.id === p.sessionId);
+        return !sess || !sess.messages || sess.messages.length === 0;
+      });
+      if (!hasEmptyPane) return;
+      refreshGreetingClockIfPeriodChanged();
+    };
+
+    const intervalId = setInterval(syncGreetingClock, 10 * 60 * 1000);
+
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const handleVisibility = () => {
+        if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+          syncGreetingClock();
+        }
+      };
+      window.addEventListener('focus', syncGreetingClock);
+      document.addEventListener('visibilitychange', handleVisibility);
+      return () => {
+        clearInterval(intervalId);
+        window.removeEventListener('focus', syncGreetingClock);
+        document.removeEventListener('visibilitychange', handleVisibility);
+      };
+    }
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []);
 
   useEffect(() => {
     isCommandPaletteOpenRef.current = isCommandPaletteOpen;
@@ -1056,6 +1166,12 @@ export default function App() {
       const carriedOverImg = resolveCarriedOverVisionImage(text, updatedMessages, resolvedBase64 || resolvedUri);
       const effectiveImage = resolvedBase64 || carriedOverImg;
 
+      // HẠNG MỤC 3 (Ngày 14): First-Turn Proactive Bridge — chỉ truyền ở lượt đầu (messages.length === 0)
+      const firstTurnProactiveTag =
+        existingMessages.length === 0
+          ? (proactiveGreetingRef.current?.contextTag || '').slice(0, 180)
+          : undefined;
+
       const aiResponsePromise = sendMessageToTomorrow(
         text,
         userMemoryRef.current,
@@ -1078,7 +1194,8 @@ export default function App() {
         activeNotebookIdRef.current,
         sessionsRef.current,
         notebooksRef.current,
-        abortController.signal
+        abortController.signal,
+        firstTurnProactiveTag
       );
 
       const isDeepOrVision = Boolean(effectiveImage || text.length > 80 || forceWebSearch);
@@ -1306,6 +1423,7 @@ export default function App() {
     );
     panesRef.current = nextPanes;
     setPanes(nextPanes);
+    refreshGreetingClockIfPeriodChanged();
 
     // C. Dọn ô nhập / ảnh tạm của khung đang soạn trong pane đó
     inputBarRef.current?.clear?.();
@@ -1333,6 +1451,7 @@ export default function App() {
     setPanes(nextPanes);
     setActivePaneId(paneId);
     activePaneIdRef.current = paneId;
+    refreshGreetingClockIfPeriodChanged();
 
     inputBarRefs.current[paneId]?.clear?.();
     inputBarRefs.current[paneId]?.reset?.();
@@ -1422,6 +1541,7 @@ export default function App() {
   // HẠNG MỤC 2: CÁC THAO TÁC SPLIT PANES (CHIA ĐÔI, THÊM PANE, ĐÓNG PANE, ĐỔI PHIÊN)
   // Cmd+ArrowUp: Luôn mở thêm pane trống mới (tối đa 4), không bao giờ gộp lại
   const handleAddNewSplitPane = useCallback(() => {
+    refreshGreetingClockIfPeriodChanged();
     // Thoát chế độ đóng pane nếu đang bật
     if (isPaneCloseModeRef.current) {
       setIsPaneCloseMode(false);
@@ -1514,6 +1634,7 @@ export default function App() {
     setPanes(nextPanes);
     setActivePaneId(paneId);
     activePaneIdRef.current = paneId;
+    refreshGreetingClockIfPeriodChanged();
     saveNotebookWorkspace(activeNotebookIdRef.current, nextPanes, paneId);
 
     inputBarRefs.current[paneId]?.setSelectedImage?.(null);
@@ -1961,7 +2082,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.9.6</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.10</Text>
               </View>
             </View>
           </View>
@@ -2105,6 +2226,8 @@ export default function App() {
                     isSearching={isSearching}
                     isGenerating={generatingPanes[pane.id] || false}
                     onStopGeneration={() => handleStopGenerationInPane(pane.id)}
+                    proactiveGreeting={proactiveGreeting}
+                    onResumeSession={(pId, targetSessId) => handleSwitchSessionInPane(pId, targetSessId)}
                     statusText={statusText}
                     isDropdownOpen={openDropdownPaneId === pane.id}
                     showScrollDown={!!scrollDownByPane[pane.id]}
@@ -2524,6 +2647,56 @@ const styles = StyleSheet.create({
         : undefined,
     fontWeight: '500',
     letterSpacing: -0.6,
+  },
+  proactiveWelcomeHeader: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 22,
+    width: '100%',
+    minWidth: 0,
+    paddingHorizontal: 8,
+  },
+  proactiveHeadlineText: {
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
+        : undefined,
+    fontWeight: '600',
+    letterSpacing: -0.5,
+    textAlign: 'center',
+    maxWidth: '100%',
+  },
+  proactiveSublineRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 7,
+    maxWidth: '100%',
+  },
+  proactiveSublineText: {
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif"
+        : undefined,
+    fontWeight: '400',
+    opacity: 0.85,
+    textAlign: 'center',
+    flexShrink: 1,
+  },
+  proactiveActionLink: {
+    paddingHorizontal: 2,
+    paddingVertical: 1,
+    flexShrink: 0,
+  },
+  proactiveActionLinkText: {
+    fontFamily:
+      Platform.OS === 'web'
+        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif"
+        : undefined,
+    fontWeight: '500',
+    letterSpacing: -0.1,
   },
   flatListStyle: {
     flex: 1,
