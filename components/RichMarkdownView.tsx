@@ -1632,7 +1632,7 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
               color: linkColor,
               textDecorationLine: 'underline',
               fontWeight: '600',
-              fontSize: compact ? 13.5 : 15,
+              fontSize: compact ? 14.5 : 16,
             }}
             onPress={() => handleOpenUrl(token.url || token.text)}
           >
@@ -1640,7 +1640,7 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
           </Text>
         );
       }
-      return <Text key={`t-${idx}`} style={compact ? { fontSize: 14, lineHeight: 21 } : undefined}>{token.text}</Text>;
+      return <Text key={`t-${idx}`} style={compact ? { fontSize: 14.5, lineHeight: 22, fontWeight: '500' } : undefined}>{token.text}</Text>;
     });
   };
 
@@ -1714,7 +1714,7 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
                 },
               ]}
             >
-              <Text style={[styles.blockquoteText, compact && { fontSize: 13.5, lineHeight: 20 }, { color: textColor }]}>
+              <Text style={[styles.blockquoteText, compact && { fontSize: 14, lineHeight: 21 }, { color: textColor }]}>
                 {renderInline(block.text)}
               </Text>
             </View>
@@ -1727,7 +1727,7 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
               {block.items.map((item, itemIdx) => (
                 <View key={`bli-${itemIdx}`} style={styles.listItemRow}>
                   <Text style={[styles.bulletDot, { color: linkColor }]}>•</Text>
-                  <Text style={[styles.listItemText, compact && { fontSize: 13.5, lineHeight: 20 }, { color: textColor }]}>
+                  <Text style={[styles.listItemText, compact && { fontSize: 14.5, lineHeight: 22 }, { color: textColor }]}>
                     {renderInline(item)}
                   </Text>
                 </View>
@@ -1741,10 +1741,10 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
             <View key={`block-nlist-${bIdx}`} style={[styles.listWrapper, compact && { marginVertical: 2 }]}>
               {block.items.map((item, itemIdx) => (
                 <View key={`nli-${itemIdx}`} style={styles.listItemRow}>
-                  <Text style={[styles.numberPrefix, compact && { fontSize: 13, lineHeight: 20 }, { color: linkColor }]}>
+                  <Text style={[styles.numberPrefix, compact && { fontSize: 13.5, lineHeight: 22 }, { color: linkColor }]}>
                     {item.num}.
                   </Text>
-                  <Text style={[styles.listItemText, compact && { fontSize: 13.5, lineHeight: 20 }, { color: textColor }]}>
+                  <Text style={[styles.listItemText, compact && { fontSize: 14.5, lineHeight: 22 }, { color: textColor }]}>
                     {renderInline(item.text)}
                   </Text>
                 </View>
@@ -1759,7 +1759,7 @@ export const RichMarkdownView: React.FC<RichMarkdownViewProps> = ({
             key={`block-para-${bIdx}`}
             style={[
               styles.paragraph,
-              compact && { fontSize: 14, lineHeight: 21, marginVertical: 2 },
+              compact && { fontSize: 14.5, lineHeight: 22, marginVertical: 2 },
               { color: textColor },
             ]}
           >
@@ -1776,8 +1776,9 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   paragraph: {
-    fontSize: 15.5,
-    lineHeight: 23,
+    fontSize: 16,
+    lineHeight: 25,
+    fontWeight: '500',
     letterSpacing: -0.1,
     marginVertical: 3,
     fontFamily:
@@ -1841,8 +1842,9 @@ const styles = StyleSheet.create({
     marginVertical: 6,
   },
   blockquoteText: {
-    fontSize: 14.5,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 23,
+    fontWeight: '500',
     fontStyle: 'italic',
   },
   listWrapper: {
@@ -1855,22 +1857,23 @@ const styles = StyleSheet.create({
   },
   bulletDot: {
     fontSize: 16,
-    lineHeight: 22,
+    lineHeight: 25,
     width: 16,
     textAlign: 'center',
     marginRight: 6,
   },
   numberPrefix: {
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 25,
     fontWeight: '700',
     minWidth: 20,
     marginRight: 6,
   },
   listItemText: {
     flex: 1,
-    fontSize: 15,
-    lineHeight: 22.5,
+    fontSize: 16,
+    lineHeight: 25,
+    fontWeight: '500',
   },
   codeBlockWrapper: {
     backgroundColor: '#0D1117',

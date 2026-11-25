@@ -2079,10 +2079,10 @@ export default function App() {
           {/* Tiêu đề "Tomorrow" căn giữa tuyệt đối theo chiều ngang */}
           <View style={styles.headerCenter} pointerEvents="none">
             <View style={[styles.titleRow, { gap: 6, alignItems: 'center' }]}>
-              <Text style={[styles.headerTitle, { color: theme.textPrimary }]}>Tomorrow</Text>
+              <Text style={[styles.headerTitle, { color: themeMode === 'dark' ? '#FFFFFF' : '#09090B' }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.10</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.10.1</Text>
               </View>
             </View>
           </View>
@@ -2661,7 +2661,7 @@ const styles = StyleSheet.create({
       Platform.OS === 'web'
         ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif"
         : undefined,
-    fontWeight: '600',
+    fontWeight: '700',
     letterSpacing: -0.5,
     textAlign: 'center',
     maxWidth: '100%',

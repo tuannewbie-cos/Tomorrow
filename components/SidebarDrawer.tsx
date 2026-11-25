@@ -118,6 +118,15 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
         .tmr-sb-row:hover .tmr-sb-row-title {
           transform: translate3d(2px, 0, 0);
         }
+        .tmr-folder-actions {
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 140ms ease;
+        }
+        .tmr-folder-row:hover .tmr-folder-actions {
+          opacity: 1 !important;
+          pointer-events: auto !important;
+        }
         .tmr-sb-row-title {
           transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
         }
@@ -183,8 +192,8 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
       {/* Brand Bar Header Sidebar: 52px trục chuẩn */}
       <View style={[styles.drawerHeader, { borderBottomColor: borderDivider }]}>
         <View style={styles.brandRow}>
-          <TomorrowGlyph size={18} themeMode={theme.mode} color={isDark ? '#F4F4F5' : '#111113'} />
-          <Text style={[styles.brandTitle, { color: isDark ? '#F4F4F5' : '#111113' }]}>Tomorrow</Text>
+          <TomorrowGlyph size={18} themeMode={theme.mode} color={isDark ? '#FFFFFF' : '#09090B'} />
+          <Text style={[styles.brandTitle, { color: isDark ? '#FFFFFF' : '#09090B' }]}>Tomorrow</Text>
         </View>
         {showCloseBtn && (
           <Pressable
@@ -370,8 +379,8 @@ const styles = StyleSheet.create({
     gap: 9,
   },
   brandTitle: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: 16.5,
+    fontWeight: '700',
     letterSpacing: -0.3,
     fontFamily:
       Platform.OS === 'web'
@@ -411,7 +420,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   clearBtnText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '500',
     fontFamily:
       Platform.OS === 'web'

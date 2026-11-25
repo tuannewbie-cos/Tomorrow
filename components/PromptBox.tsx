@@ -1176,7 +1176,8 @@ export const PromptBox = forwardRef<PromptBoxRef, PromptBoxProps>(({
                 styles.textareaInput,
                 {
                   color: tokens.text,
-                  fontSize: isDenseSplit ? 13 : isSplitMode ? 14 : 15,
+                  fontSize: isDenseSplit ? 13.5 : isSplitMode ? 14.5 : 15.5,
+                  fontWeight: '500',
                   ...(Platform.OS !== 'web' ? { height: Math.min(106, Math.max(34, inputHeight)) } : {}),
                 },
                 Platform.OS === 'web' &&
@@ -1355,7 +1356,8 @@ const styles = StyleSheet.create({
     minHeight: 34,
     maxHeight: 106,
     lineHeight: 24,
-    fontSize: 15,
+    fontSize: 15.5,
+    fontWeight: '500',
     letterSpacing: -0.15,
     paddingTop: 5,
     paddingBottom: 5,

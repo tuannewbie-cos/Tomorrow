@@ -13,7 +13,6 @@ import {
   Plus,
   Pencil,
   Trash2,
-  MessageSquare,
   Check,
   X,
   ChevronDown,
@@ -81,13 +80,13 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
   // Trạng thái mở rộng danh sách phiên "See all (N)" theo từng notebook
   const [expandedNotebookIds, setExpandedNotebookIds] = useState<Record<string, boolean>>({});
 
-  // Trạng thái hover dòng sổ & hover dòng chat trên Web
+  // Trạng thái hover dòng sổ & dòng chat & nút See all trên Web
   const [hoveredNotebookId, setHoveredNotebookId] = useState<string | null>(null);
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
+  const [hoveredSeeAllNbId, setHoveredSeeAllNbId] = useState<string | null>(null);
 
-  // Palette Ember Obsidian (Dark) & Architectural Alabaster (Light)
+  // Palette Antigravity Minimalist
   const dividerLineColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
-  const sectionLabelColor = isDark ? '#636366' : '#8E8E93';
 
   // Xử lý tạo sổ mới
   const handleConfirmCreateNotebook = async () => {
@@ -208,16 +207,15 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
           {...(Platform.OS === 'web' && ({ className: 'tmr-sb-btn' } as any))}
         >
           <Folder
-            size={13}
-            color={isDark ? (hoveredTopAction === 'notebook' ? '#F4F4F5' : '#A1A1AA') : (hoveredTopAction === 'notebook' ? '#111113' : '#71717A')}
+            size={14}
+            strokeWidth={1.85}
+            color={isDark ? (hoveredTopAction === 'notebook' ? '#F4F4F5' : '#E4E4E7') : (hoveredTopAction === 'notebook' ? '#111113' : '#111113')}
           />
           <Text
             style={[
               styles.newNotebookText,
               {
-                color: isDark
-                  ? (hoveredTopAction === 'notebook' ? '#F4F4F5' : '#A1A1AA')
-                  : (hoveredTopAction === 'notebook' ? '#111113' : '#52525B'),
+                color: isDark ? '#F4F4F5' : '#111113',
               },
             ]}
           >
@@ -226,7 +224,7 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
         </Pressable>
       </View>
 
-      {/* Hairline Divider ngăn cách với danh sách */}
+      {/* Hairline Divider ngăn cách với danh sách kèm khoảng thở sạch 10px */}
       <View style={[styles.sectionDivider, { backgroundColor: dividerLineColor }]} />
 
       {/* Ô nhập tạo sổ mới inline (34px) */}
@@ -283,14 +281,7 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
         </View>
       )}
 
-      {/* Micro Label: SỔ GHI CHÚ */}
-      <View style={styles.sectionLabelRow}>
-        <Text style={[styles.sectionLabelText, { color: sectionLabelColor }]}>
-          SỔ GHI CHÚ
-        </Text>
-      </View>
-
-      {/* 2. DANH SÁCH SỔ GHI CHÚ PHÂN NHÓM CHUẨN EMBER OBSIDIAN */}
+      {/* 2. DANH SÁCH SỔ GHI CHÚ PHÂN NHÓM CHUẨN ANTIGRAVITY MINIMALIST */}
       <View style={styles.notebooksContainer}>
         {notebooks.map((nb) => {
           const isNotebookActive = nb.id === activeNotebookId;
@@ -361,20 +352,14 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                   style={[
                     styles.folderRow,
                     {
-                      backgroundColor: isNotebookActive
-                        ? (isDark ? '#222226' : '#FFFFFF')
-                        : isNbHovered
-                        ? (isDark ? 'rgba(255, 255, 255, 0.045)' : 'rgba(0, 0, 0, 0.04)')
-                        : 'transparent',
-                      borderColor: isNotebookActive
-                        ? (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)')
+                      backgroundColor: isNbHovered
+                        ? (isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)')
                         : 'transparent',
                     },
-                    !isDark && isNotebookActive && styles.folderRowLightActive,
                   ]}
                   onPointerEnter={() => setHoveredNotebookId(nb.id)}
                   onPointerLeave={() => setHoveredNotebookId(null)}
-                  {...(Platform.OS === 'web' && ({ className: 'tmr-sb-row' } as any))}
+                  {...(Platform.OS === 'web' && ({ className: 'tmr-sb-row tmr-folder-row' } as any))}
                 >
                   {/* Bấm vào tiêu đề sổ để chuyển sổ */}
                   <Pressable
@@ -386,27 +371,24 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                     onPress={() => onSelectNotebook(nb.id)}
                   >
                     <Folder
-                      size={14}
+                      size={16}
+                      strokeWidth={1.75}
                       color={
-                        isNotebookActive
-                          ? (isDark ? '#FFFFFF' : '#111113')
-                          : isNbHovered
-                          ? (isDark ? '#D4D4D8' : '#3F3F46')
-                          : (isDark ? '#71717A' : '#71717A')
+                        (isNotebookActive || isNbHovered)
+                          ? (isDark ? '#F4F4F5' : '#18181B')
+                          : (isDark ? '#A1A1AA' : '#52525B')
                       }
-                      style={{ marginRight: 8 }}
+                      style={{ marginRight: 9 }}
                     />
                     <Text
                       numberOfLines={1}
                       style={[
                         styles.folderTitle,
                         {
-                          color: isNotebookActive
-                            ? (isDark ? '#F4F4F5' : '#111113')
-                            : isNbHovered
-                            ? (isDark ? '#E4E4E7' : '#18181B')
+                          color: (isNotebookActive || isNbHovered)
+                            ? (isDark ? '#F4F4F5' : '#18181B')
                             : (isDark ? '#A1A1AA' : '#52525B'),
-                          fontWeight: isNotebookActive ? '600' : '500',
+                          fontWeight: '600',
                         },
                       ]}
                       {...(Platform.OS === 'web' && ({ className: 'tmr-sb-row-title' } as any))}
@@ -415,12 +397,15 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                     </Text>
                   </Pressable>
 
-                  {/* Nút hành động góc phải của Folder (hover hoặc active) */}
+                  {/* Nút hành động góc phải của Folder: Ẩn khi nghỉ, chỉ hiện mượt khi hover */}
                   <View
+                    pointerEvents={isNbHovered ? 'auto' : 'none'}
                     style={[
                       styles.folderActionsRight,
-                      { opacity: (isNbHovered || isNotebookActive) ? 1 : 0.4 },
+                      { opacity: isNbHovered ? 1 : 0 },
+                      Platform.OS === 'web' && ({ transition: 'opacity 140ms ease' } as any),
                     ]}
+                    {...(Platform.OS === 'web' && ({ className: 'tmr-folder-actions' } as any))}
                   >
                     {/* Nút + tạo chat trực tiếp trong sổ này */}
                     <Pressable
@@ -437,7 +422,7 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                       hitSlop={6}
                       accessibilityLabel="Tạo đoạn chat trong sổ này"
                     >
-                      <Plus size={13} color={isDark ? '#A1A1AA' : '#71717A'} />
+                      <Plus size={14} color={isDark ? '#E4E4E7' : '#27272A'} />
                     </Pressable>
 
                     {/* Nút Sửa tên */}
@@ -451,7 +436,7 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                       hitSlop={6}
                       accessibilityLabel="Đổi tên sổ"
                     >
-                      <Pencil size={12} color={isDark ? '#A1A1AA' : '#71717A'} />
+                      <Pencil size={13} color={isDark ? '#E4E4E7' : '#27272A'} />
                     </Pressable>
 
                     {/* Nút Xóa sổ (chỉ hiển thị với sổ tùy chỉnh, không hiển thị default-notebook) */}
@@ -466,23 +451,18 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                         hitSlop={6}
                         accessibilityLabel="Xóa sổ"
                       >
-                        <Trash2 size={12} color={isDark ? '#A1A1AA' : '#71717A'} />
+                        <Trash2 size={13} color={isDark ? '#E4E4E7' : '#27272A'} />
                       </Pressable>
                     )}
                   </View>
                 </View>
               )}
 
-              {/* DANH SÁCH ĐOẠN CHAT CÓ ĐƯỜNG GUIDE LINE DỌC (borderLeftWidth: 1) */}
-              <View
-                style={[
-                  styles.sessionListIndented,
-                  { borderLeftColor: dividerLineColor },
-                ]}
-              >
+              {/* DANH SÁCH ĐOẠN CHAT PURE TYPOGRAPHY CHUẨN ANTIGRAVITY (KHÔNG icon 💬, KHÔNG vạch dọc) */}
+              <View style={styles.sessionListGroup}>
                 {nbSessions.length === 0 ? (
-                  <Text style={[styles.emptyNbText, { color: isDark ? '#52525B' : '#9CA3AF' }]}>
-                    Chưa có đoạn chat nào trong sổ này
+                  <Text style={[styles.emptyNbText, { color: isDark ? '#71717A' : '#71717A' }]}>
+                    Chưa có đoạn chat nào
                   </Text>
                 ) : (
                   displayedSessions.map((sess) => {
@@ -498,20 +478,29 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                           styles.sessionRowContainer,
                           {
                             backgroundColor: isActive
-                              ? (isDark ? '#222226' : '#FFFFFF')
+                              ? (isDark ? '#242429' : '#EBEBED')
                               : isHovered
-                              ? (isDark ? 'rgba(255, 255, 255, 0.045)' : 'rgba(0, 0, 0, 0.04)')
+                              ? (isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)')
                               : 'transparent',
                             borderColor: isActive
-                              ? (isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)')
+                              ? (isDark ? 'rgba(255, 255, 255, 0.10)' : 'rgba(0, 0, 0, 0.09)')
                               : 'transparent',
                           },
-                          !isDark && isActive && styles.sessionRowLightActive,
                         ]}
                         onPointerEnter={() => setHoveredSessionId(sess.id)}
                         onPointerLeave={() => setHoveredSessionId(null)}
                         {...(Platform.OS === 'web' && ({ className: 'tmr-sb-row' } as any))}
                       >
+                        {/* Chấm tròn đơn sắc 5px trung tính cho pane phụ Split Screen */}
+                        {isOpenInWorkspace && !isActive && (
+                          <View
+                            style={[
+                              styles.workspaceDotIndicator,
+                              { backgroundColor: isDark ? '#E4E4E7' : '#18181B' },
+                            ]}
+                          />
+                        )}
+
                         {/* Khu vực bấm chọn phiên */}
                         <Pressable
                           style={({ pressed }) => [
@@ -524,28 +513,6 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                             onCloseSidebarMobile?.();
                           }}
                         >
-                          {/* Chấm tròn đơn sắc 5px trung tính cho pane phụ */}
-                          {isOpenInWorkspace && !isActive && (
-                            <View
-                              style={[
-                                styles.workspaceDotIndicator,
-                                { backgroundColor: isDark ? '#E4E4E7' : '#18181B' },
-                              ]}
-                            />
-                          )}
-
-                          <MessageSquare
-                            size={13}
-                            color={
-                              isActive
-                                ? (isDark ? '#FFFFFF' : '#111113')
-                                : isHovered
-                                ? (isDark ? '#D4D4D8' : '#3F3F46')
-                                : (isDark ? '#71717A' : '#71717A')
-                            }
-                            style={{ marginRight: 7 }}
-                          />
-
                           <Text
                             numberOfLines={1}
                             ellipsizeMode="tail"
@@ -553,11 +520,11 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                               styles.sessionTitleText,
                               {
                                 color: isActive
-                                  ? (isDark ? '#F4F4F5' : '#111113')
+                                  ? (isDark ? '#FFFFFF' : '#000000')
                                   : isHovered
-                                  ? (isDark ? '#E4E4E7' : '#18181B')
-                                  : (isDark ? '#A1A1AA' : '#52525B'),
-                                fontWeight: isActive ? '600' : '400',
+                                  ? (isDark ? '#FFFFFF' : '#000000')
+                                  : (isDark ? '#E4E4E7' : '#1F1F23'),
+                                fontWeight: isActive ? '600' : '500',
                               },
                             ]}
                             {...(Platform.OS === 'web' && ({ className: 'tmr-sb-row-title' } as any))}
@@ -566,7 +533,7 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                           </Text>
                         </Pressable>
 
-                        {/* Mốc thời gian tương đối tabular-nums, hover hoán đổi sang thùng rác */}
+                        {/* Mặc định (kể cả active) luôn hiện mốc thời gian; CHỈ khi hover mới trượt hiện nút xóa */}
                         <View style={styles.sessionRightBox}>
                           {isHovered && Platform.OS === 'web' ? (
                             <Pressable
@@ -583,13 +550,13 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                               accessibilityLabel="Xóa đoạn chat"
                               {...(Platform.OS === 'web' && ({ className: 'tmr-sb-trash' } as any))}
                             >
-                              <Trash2 size={12} color="#EF4444" />
+                              <Trash2 size={14} color="#EF4444" />
                             </Pressable>
                           ) : (
                             <Text
                               style={[
                                 styles.relativeTimeText,
-                                { color: isDark ? '#52525B' : '#9CA3AF' },
+                                { color: isDark ? '#8E8E93' : '#6B7280' },
                               ]}
                               {...(Platform.OS === 'web' && ({ className: 'tmr-sb-time' } as any))}
                             >
@@ -602,7 +569,7 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                   })
                 )}
 
-                {/* Nút See all (N) / Thu gọn */}
+                {/* Nút See all (N) / Thu gọn căn thẳng mép chữ 32px */}
                 {hasMore && (
                   <Pressable
                     style={({ pressed }) => [
@@ -611,15 +578,34 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                       Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
                     ]}
                     onPress={() => toggleSeeAll(nb.id)}
+                    onHoverIn={() => setHoveredSeeAllNbId(nb.id)}
+                    onHoverOut={() => setHoveredSeeAllNbId(null)}
                     hitSlop={4}
                   >
-                    <Text style={[styles.seeAllText, { color: isDark ? '#71717A' : '#71717A' }]}>
+                    <Text
+                      style={[
+                        styles.seeAllText,
+                        {
+                          color: hoveredSeeAllNbId === nb.id
+                            ? (isDark ? '#E4E4E7' : '#18181B')
+                            : (isDark ? '#8E8E93' : '#71717A'),
+                        },
+                      ]}
+                    >
                       {isExpanded ? 'Thu gọn' : `See all (${nbSessions.length})`}
                     </Text>
                     {isExpanded ? (
-                      <ChevronDown size={12} color={isDark ? '#71717A' : '#71717A'} style={{ marginLeft: 3 }} />
+                      <ChevronDown
+                        size={13}
+                        color={hoveredSeeAllNbId === nb.id ? (isDark ? '#E4E4E7' : '#18181B') : (isDark ? '#8E8E93' : '#71717A')}
+                        style={{ marginLeft: 4 }}
+                      />
                     ) : (
-                      <ChevronRight size={12} color={isDark ? '#71717A' : '#71717A'} style={{ marginLeft: 3 }} />
+                      <ChevronRight
+                        size={13}
+                        color={hoveredSeeAllNbId === nb.id ? (isDark ? '#E4E4E7' : '#18181B') : (isDark ? '#8E8E93' : '#71717A')}
+                        style={{ marginLeft: 4 }}
+                      />
                     )}
                   </Pressable>
                 )}
@@ -649,15 +635,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    height: 34,
+    height: 36,
     paddingHorizontal: 10,
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1,
   },
   newChatText: {
-    fontSize: 13,
-    fontWeight: '500',
-    letterSpacing: -0.1,
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: -0.15,
     fontFamily:
       Platform.OS === 'web'
         ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
@@ -668,15 +654,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    height: 34,
-    paddingHorizontal: 10,
-    borderRadius: 8,
+    gap: 6,
+    height: 36,
+    paddingHorizontal: 11,
+    borderRadius: 10,
     borderWidth: 1,
   },
   newNotebookText: {
-    fontSize: 13,
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: -0.15,
     fontFamily:
       Platform.OS === 'web'
         ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
@@ -687,40 +674,28 @@ const styles = StyleSheet.create({
     width: '100%',
     marginBottom: 10,
   },
-  sectionLabelRow: {
-    paddingLeft: 4,
-    marginBottom: 6,
-  },
-  sectionLabelText: {
-    fontSize: 11,
-    fontWeight: '500',
-    letterSpacing: 0.4,
-    fontFamily:
-      Platform.OS === 'web'
-        ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
-        : undefined,
-  },
   inlineCreateBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 34,
-    paddingHorizontal: 8,
-    borderRadius: 7,
+    height: 36,
+    paddingHorizontal: 10,
+    borderRadius: 9,
     borderWidth: 1,
     marginBottom: 10,
   },
   inlineRenameBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 34,
-    paddingHorizontal: 8,
-    borderRadius: 7,
+    height: 36,
+    paddingHorizontal: 10,
+    borderRadius: 9,
     borderWidth: 1,
     marginVertical: 1,
   },
   inlineInput: {
     flex: 1,
-    fontSize: 12.5,
+    fontSize: 14,
+    fontWeight: '500',
     paddingVertical: 2,
     paddingHorizontal: 4,
     outlineStyle: 'none' as any,
@@ -737,24 +712,16 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   notebookGroup: {
-    marginBottom: 8,
+    marginBottom: 10,
   },
   folderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    height: 34,
-    borderRadius: 8,
-    borderWidth: 1,
+    paddingHorizontal: 10,
+    height: 36,
+    borderRadius: 9,
     marginVertical: 1,
-  },
-  folderRowLightActive: {
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
   },
   folderMainClick: {
     flex: 1,
@@ -763,7 +730,9 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   folderTitle: {
-    fontSize: 13,
+    fontSize: 14.5,
+    fontWeight: '600',
+    letterSpacing: -0.2,
     fontFamily:
       Platform.OS === 'web'
         ? "'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif"
@@ -779,50 +748,45 @@ const styles = StyleSheet.create({
     padding: 3,
     borderRadius: 4,
   },
-  sessionListIndented: {
-    marginLeft: 14,
-    paddingLeft: 10,
-    borderLeftWidth: 1,
+  sessionListGroup: {
     marginTop: 2,
+    gap: 2,
   },
   emptyNbText: {
-    fontSize: 11.5,
+    fontSize: 13.5,
     fontStyle: 'italic',
-    paddingVertical: 4,
-    paddingLeft: 2,
+    paddingVertical: 6,
+    paddingLeft: 32,
+    paddingRight: 12,
   },
   sessionRowContainer: {
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    height: 34,
-    borderRadius: 7,
+    paddingLeft: 32,
+    paddingRight: 12,
+    height: 38,
+    borderRadius: 10,
     borderWidth: 1,
-    marginVertical: 1,
-  },
-  sessionRowLightActive: {
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
   },
   sessionMainArea: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     minWidth: 0,
-    marginRight: 6,
+    marginRight: 8,
   },
   workspaceDotIndicator: {
+    position: 'absolute',
+    left: 15,
     width: 5,
     height: 5,
     borderRadius: 2.5,
-    marginRight: 6,
   },
   sessionTitleText: {
-    fontSize: 12.5,
+    fontSize: 14.5,
+    letterSpacing: -0.2,
     flex: 1,
     fontFamily:
       Platform.OS === 'web'
@@ -832,10 +796,11 @@ const styles = StyleSheet.create({
   sessionRightBox: {
     alignItems: 'flex-end',
     justifyContent: 'center',
-    minWidth: 28,
+    minWidth: 32,
   },
   relativeTimeText: {
-    fontSize: 11,
+    fontSize: 13,
+    fontWeight: '500',
     fontVariant: ['tabular-nums'],
     fontFamily:
       Platform.OS === 'web'
@@ -848,12 +813,13 @@ const styles = StyleSheet.create({
   seeAllBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 4,
-    paddingHorizontal: 4,
+    height: 34,
+    paddingLeft: 32,
+    paddingRight: 12,
     marginTop: 2,
   },
   seeAllText: {
-    fontSize: 11.5,
+    fontSize: 14,
     fontWeight: '500',
     fontFamily:
       Platform.OS === 'web'

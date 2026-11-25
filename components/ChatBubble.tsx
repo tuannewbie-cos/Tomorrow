@@ -35,7 +35,7 @@ const ChatBubbleBase: React.FC<ChatBubbleProps> = ({
   };
 
   const bubbleBg = isAI ? theme.bubbleAI : theme.bubbleUser;
-  const textColor = isAI ? theme.textAI : theme.textUser;
+  const textColor = isAI ? (theme.mode === 'dark' ? '#F4F4F5' : '#111113') : theme.textUser;
   const borderColor = isAI ? theme.borderAI : 'transparent';
   const timestampColor = isAI ? theme.textMuted : 'rgba(255, 255, 255, 0.8)';
 

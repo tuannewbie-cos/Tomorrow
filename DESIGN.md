@@ -18,7 +18,7 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 - **Phía bên trái:**
   - **Duy nhất 1 nút `☰`** (Menu icon, 38x38 bo tròn) để đóng/mở Sidebar (`Cmd + B`).
 - **Chính giữa (Căn giữa tuyệt đối theo chiều ngang):**
-  - Cụm tiêu đề **`Tomorrow`** (`fontSize: 16.5`, `fontWeight: '700'`) đi kèm viên thuốc trạng thái **`Online • v4.9.6`** (chấm tròn xanh dịu + chữ xanh).
+  - Cụm tiêu đề **`Tomorrow`** (`fontSize: 16.5`, `fontWeight: '700'`) đi kèm viên thuốc trạng thái **`Online • v4.10.1`** (chấm tròn xanh dịu + chữ xanh).
   - Sử dụng bố cục căn giữa tuyệt đối (`position: 'absolute', left: 0, right: 0, alignItems: 'center', pointerEvents: 'none'`) để không bao giờ bị lệch tâm dù nhóm nút bên phải dài hơn bên trái.
   - **NGHIÊM CẤM:** Hiển thị thẻ tên Sổ ghi chú (VD: `📁 test`, `📁 Ghi chú chung`) hay dòng trạng thái `"Đang nhớ: ..."` trên Header.
 - **Phía bên phải:**
@@ -105,33 +105,31 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 
 ---
 
-### E. Thanh Bên Lịch Sử (Sidebar Drawer) Chuẩn Ember Obsidian (Online • v4.9.6)
-- **Thiết kế Đơn sắc Tối giản (Minimal Monochrome — Loại bỏ AI Slop):**
-  + Tuyệt đối thanh trừng các mảng màu tím (`#8B5CF6`, `#6366F1`) và xanh dương (`#3B82F6`) gây rối mắt trên Sidebar.
-  + **Nền Tối (Ember Matte Obsidian):** Nền `#141416` (sâu hơn khung chat chính `#171717`, viền phải `1px solid rgba(255, 255, 255, 0.07)`). Đường phân tách `1px solid rgba(255, 255, 255, 0.06)`. Item active (Active Pill) nền `#222226`, viền `1px solid rgba(255, 255, 255, 0.08)`, chữ `#F4F4F5`, icon `#FFFFFF`. Item hover nền `rgba(255, 255, 255, 0.045)`, chữ `#E4E4E7`. Item thường chữ `#A1A1AA`, icon `#71717A`.
-  + **Nền Sáng (Architectural Alabaster Parity khi bấm `Cmd + R`):** Nền `#F7F7F8` (tách biệt rõ với khung chat `#FFFFFF`, viền phải `1px solid #E6E6EA`). Item active nền `#FFFFFF` nổi nhẹ với đổ bóng `0 1px 2px rgba(0, 0, 0, 0.05)`, viền `1px solid rgba(0, 0, 0, 0.08)`, chữ `#111113`, icon `#111113`. Item hover nền `rgba(0, 0, 0, 0.04)`. Item thường chữ `#52525B`, icon `#71717A`.
+### E. Thanh Bên Lịch Sử (Sidebar Drawer) Chuẩn Antigravity Minimalist (`Online • v4.10.1`)
+- **Thiết kế Đơn sắc Tối giản (Antigravity Minimalist Monochrome — Loại bỏ AI Slop):**
+  + Tuyệt đối thanh trừng khung hộp trắng dày quanh tiêu đề sổ, bỏ icon `💬` (`MessageSquare`) và bỏ đường kẻ guide line dọc trước danh sách đoạn chat.
+  + **Nền Tối (Ember Matte Obsidian):** Nền `#141416` (sâu hơn khung chat chính `#171717`, viền phải `1px solid rgba(255, 255, 255, 0.07)`). Đường phân tách `1px solid rgba(255, 255, 255, 0.06)`. Mục đang chọn (Active Pill) nền `#242429`, viền `1px solid rgba(255, 255, 255, 0.10)`, chữ `#FFFFFF` (`fontWeight: '600'`). Item hover nền `rgba(255, 255, 255, 0.05)`, chữ `#FFFFFF`. Item thường chữ `#E4E4E7` (`fontWeight: '500'`).
+  + **Nền Sáng (Architectural Alabaster Parity khi bấm `Cmd + R`):** Nền `#F7F7F8` (tách biệt rõ với khung chat `#FFFFFF`, viền phải `1px solid #E6E6EA`). Mục đang chọn (Active Pill) nền `#EBEBED`, viền `1px solid rgba(0, 0, 0, 0.09)` không đổ bóng nặng, chữ `#000000` (`fontWeight: '600'`). Item hover nền `rgba(0, 0, 0, 0.04)`. Item thường chữ `#1F1F23` (`fontWeight: '500'`).
 - **Cấu trúc & Bố cục Trục dọc Chuẩn mực:**
   1. **Brand Bar (Trục chuẩn `52px`):**
      - Đồng trục tuyệt đối với Header, viền đáy `1px solid rgba(255, 255, 255, 0.06)` (Dark) / `rgba(0, 0, 0, 0.06)` (Light).
-     - Thay thế icon tím bằng biểu tượng lõi đơn sắc **`TomorrowGlyph`** (`size={18}`, `#F4F4F5` Dark / `#111113` Light).
-     - Tiêu đề **`Tomorrow`** (`15px`, `fontWeight: '600'`, `letterSpacing: -0.3`).
-     - Góc phải: Thay nút `X` cứng bằng icon thanh mảnh **`PanelLeftClose`** (`16x16`, khung bấm `28x28`, bo góc `7px`, hover êm ái).
-  2. **Thanh Nút Thao Tác Đầu Trang (`34px` — Khắc phục lỗi cắt chữ):**
-     - Bố cục 2 nút ngang: Nút chính **`+ Trò chuyện mới`** (`flex: 1`, `minWidth: 0`, icon `Plus` `14x14`, chữ `"Trò chuyện mới"` `13px`, `fontWeight: '500'`, không bao giờ bị cắt thành `"Cuộc trò chuyện..."`).
-     - Nút phụ **`Sổ mới`** (`flexShrink: 0`, padding `10px`, icon `Folder` `13x13`).
-     - Bên dưới có đường kẻ tóc (Hairline Divider) phân cách tự nhiên với danh sách.
-  3. **Phân nhóm Sổ ghi chú & Đường Guide Line Dọc:**
-     - Nhãn vi mô **`SỔ GHI CHÚ`** (`11px`, `fontWeight: '500'`, `letterSpacing: 0.4`, `#636366` Dark / `#8E8E93` Light).
-     - Hàng sổ ghi chú (`34px`): Folder icon đơn sắc, tên sổ gọn gàng, cụm nút hành động (`+`, sửa tên, xóa sổ) ẩn mờ (`opacity: 0.4`) và sáng rõ khi hover (`opacity: 1`).
-     - Danh sách đoạn chat thụt lề có **đường kẻ guide line dọc** `1px solid rgba(255, 255, 255, 0.06)` (Dark) / `rgba(0, 0, 0, 0.06)` (Light) định hướng thị giác chuẩn macOS.
-     - Icon đoạn chat `MessageSquare` (`13x13`). Chỉ báo phiên phụ mở ở pane Split Screen là chấm tròn đơn sắc trung tính `5px` (`#E4E4E7` Dark / `#18181B` Light), không dùng màu xanh lá nổi cộm.
-     - Thời gian tương đối dạng `tabular-nums` (`11px`, `#52525B` Dark / `#9CA3AF` Light), tự động hoán đổi êm dịu sang icon thùng rác `Trash2` đỏ khi di chuột (hover).
+     - Biểu tượng lõi đơn sắc **`TomorrowGlyph`** (`size={18}`, `#FFFFFF` Dark / `#09090B` Light).
+     - Tiêu đề **`Tomorrow`** (`16.5px`, `fontWeight: '700'`, `letterSpacing: -0.3`, `#FFFFFF` Dark / `#09090B` Light).
+     - Góc phải: Icon thanh mảnh **`PanelLeftClose`** (`16x16`, khung bấm `28x28`, bo góc `7px`, hover êm ái).
+  2. **Thanh Nút Thao Tác Đầu Trang (`36px`, `borderRadius: 10px`):**
+     - Bố cục 2 nút ngang: Nút chính **`+ Trò chuyện mới`** (`flex: 1`, `minWidth: 0`, icon `Plus` `14x14`, chữ `14px`, `fontWeight: '600'`, `#F4F4F5` Dark / `#111113` Light).
+     - Nút phụ **`Sổ mới`** (`flexShrink: 0`, padding `11px`, icon `Folder` `14x14`, chữ `14px`, `fontWeight: '600'`).
+     - Bên dưới có đường kẻ tóc (Hairline Divider) kèm khoảng thở sạch `10px` dẫn thẳng vào danh sách Sổ (bỏ nhãn phụ `SỔ GHI CHÚ` thừa).
+  3. **Hàng Sổ Ghi Chú Phẳng & Danh sách Pure Typography:**
+     - **Hàng tiêu đề Sổ (`36px`, `paddingHorizontal: 10px`, `borderRadius: 9px`):** Thiết kế phẳng hoàn toàn (KHÔNG nền trắng, KHÔNG viền hộp, KHÔNG `boxShadow`). Icon `Folder` nét mảnh (`16x16`, `strokeWidth={1.75}`) + tên sổ (`14.5px`, `fontWeight: '600'`, `gap: 9px`). Mặc định cụm nút thao tác (`+`, sửa `✎`, xóa `🗑`) ẩn (`opacity: 0; pointer-events: none;`), chỉ hiện mượt `140ms` khi hover vào hàng Sổ.
+     - **Danh sách đoạn chat (`height: 38px`, `borderRadius: 10px`, `gap: 2px`):** Pure Typography — **KHÔNG** icon `💬` và **KHÔNG** đường kẻ dọc; căn lề trái đồng nhất thẳng trục chữ tên Sổ (`paddingLeft: 32px`, `paddingRight: 12px`). Tiêu đề đoạn chat `14.5px` (`letterSpacing: -0.2`, `500` mặc định / `600` active). Chỉ báo phiên phụ mở ở pane Split Screen là chấm tròn đơn sắc `5px` đặt gọn ở lề trái `left: 15px`.
+     - **Mốc thời gian & Nút Xóa:** Mặc định (kể cả dòng active) bên phải luôn hiển thị mốc thời gian `tabular-nums` (`13px`, `fontWeight: '500'`, `#8E8E93` Dark / `#6B7280` Light). CHỈ khi hover vào dòng chat mới trượt hiện nút thùng rác xóa (`e.stopPropagation()`).
+     - **`See all (N)` / Trạng thái sổ trống:** Căn thẳng trục chữ `paddingLeft: 32px`, `height: 34px`, cỡ chữ `14px` `fontWeight: '500'`.
   4. **Chân trang Cố định (Sticky Footer Ghost Reset):**
-     - Nút **`Xóa toàn bộ lịch sử & Reset`** thiết kế phong cách Ghost (`height: 34px`, `borderRadius: 8px`), nền trong suốt, icon và chữ màu trung tính `#71717A`.
-     - Chỉ khi hover mới chuyển sang nền cảnh báo đỏ dịu `rgba(239, 68, 68, 0.09)` (Dark) / `rgba(220, 38, 38, 0.07)` (Light), viền đỏ mảnh và chữ/icon đỏ `#F87171` / `#DC2626`.
+     - Nút **`Xóa toàn bộ lịch sử & Reset`** thiết kế phong cách Ghost (`height: 34px`, `borderRadius: 8px`, chữ `13px`), nền trong suốt, chỉ chuyển nền/viền/chữ đỏ dịu khi hover.
 - **Tối ưu Hiệu Năng Hoạt Ảnh 60fps & Bảo Toàn `Cmd + R`:**
   + Split-View slide transition: `width 260ms cubic-bezier(0.22, 1, 0.36, 1), transform 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 200ms ease`.
-  + **TUYỆT ĐỐI KHÔNG** đặt `transition: background-color` trên vỏ Sidebar container để tránh gây lệch pha với View Transition quét sóng tròn khi người dùng nhấn `Cmd + R`.
+  + **TUYỆT ĐỐI KHÔNG** đặt `transition: background-color` hay `transition: color` trên vỏ Sidebar container để tránh gây lệch pha với View Transition quét sóng tròn khi người dùng nhấn `Cmd + R`.
   + Thanh cuộn Sidebar: Rộng `4px`, trong suốt mặc định, hiện vệt mờ khi rê chuột vào danh sách.
 
 ---
@@ -153,7 +151,9 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 ---
 
 ## 4. Hệ Thống Chuyển Động & Kiểu Chữ (Motion & Typography)
-- **Typography:** Ưu tiên font `Plus Jakarta Sans` / `SF Pro Text` / `SF Pro Display` / `Inter`, hiển thị siêu mịn chuẩn Retina macOS. Dòng chào mở đầu dùng font serif thanh thoát (`Georgia, "Times New Roman", "Plus Jakarta Sans", serif`).
+- **Typography (v4.10.1 Retina Contrast Boost):** Ưu tiên font `Plus Jakarta Sans` / `SF Pro Text` / `SF Pro Display` / `Inter`, hiển thị sắc nét chuẩn Retina macOS.
+  + **Sidebar:** Tên `Tomorrow` `16.5px` (`700`), nút top `14px` (`600`), tên Sổ `14.5px` (`600`), tiêu đề đoạn chat `14.5px` (`500` thường / `600` active), mốc thời gian `13px` (`500`), `See all (N)` `14px` (`500`).
+  + **Nội dung Chat & Nhập liệu:** Tin nhắn (`ChatBubble` / `RichMarkdownView`) `fontSize: 16px`, `lineHeight: 25`, `fontWeight: '500'` (`#111113` Light / `#F4F4F5` Dark; bold `700`). Ô nhập `PromptBox` `fontSize: 15.5px`, `fontWeight: '500'`. Tiêu đề chào mở đầu `headline` `fontWeight: '700'`.
 - **Đường cong chuyển động (Easing Curves):**
   - Popups & Modals: `cubic-bezier(0.16, 1, 0.3, 1)` (chuẩn macOS App Launch Spring).
   - Trượt Sidebar & Drawer: `cubic-bezier(0.22, 1, 0.36, 1)` trong `240ms`.
@@ -178,7 +178,7 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 | **Thanh Sidebar (Cạnh trái)** | `#141416` (Ember Obsidian mờ sâu) | `#F7F7F8` (Architectural Alabaster) |
 | **Đường viền phân tách (`borderSubtle`)** | `rgba(255, 255, 255, 0.07)` | `#E6E6EA` |
 | **Khung nhập liệu (`inputBg` / `inputBorder`)** | `#262626` / `#363636` | `#FFFFFF` / `#E2E4E8` |
-| **Item Sổ / Đoạn chat đang chọn (`activeBg`)** | `#222226` (Active Pill đơn sắc) | `#FFFFFF` (nổi nhẹ bóng 0 1px 2px) |
+| **Đoạn chat đang chọn (`activeBg`)** | `#242429` (`1px solid rgba(255,255,255,0.10)`) | `#EBEBED` (`1px solid rgba(0,0,0,0.09)`) |
 | **Biểu tượng lõi (`TomorrowGlyph`)** | `#F3F4F6` (Trắng ngà sắc nét) | `#18181B` (Đen than sang trọng) |
 | **Dòng chữ chào (`claudeGreetingText`)** | `#ECECEC` | `#1A1A1A` |
 | **Đường line Split Pane active (`activePaneLine`)** | **`#FFFFFF` (Trắng đơn sắc, 1.5–2px)** | **`#000000` (Đen đơn sắc, 1.5–2px)** |
