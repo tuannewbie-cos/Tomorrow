@@ -3529,8 +3529,163 @@ async function runAllTests() {
     });
   }
 
+  // ==================== NGÀY 14.3 (v4.10.3): VÁ DỨT ĐIỂM CHỐT PHIÊN & FALLBACK (TESTS 65-67) ====================
+
+  // TEST 65: Test_Day14_3_Combined_StopPhrase_OkXongRoi
+  {
+    const nowDate = new Date(2026, 10, 25, 11, 0, 0);
+    const nowMs = nowDate.getTime();
+    const mockSession = {
+      id: 'sess-ok-xong-roi',
+      title: 'So sánh MacBook M1 và M2',
+      notebookId: 'default-notebook',
+      updatedAt: nowMs - 2 * 60 * 1000,
+      messages: [
+        { id: 'm1', role: 'user', text: 'So sánh M1 và M2 giúp mình', timestamp: nowMs - 180000 },
+        { id: 'm2', role: 'model', text: 'M2 hơn GPU và màn hình sáng hơn nhẹ...', timestamp: nowMs - 150000 },
+        { id: 'm3', role: 'user', text: 'ok xong rồi', timestamp: nowMs - 120000 },
+        { id: 'm4', role: 'model', text: 'có gì hay ho không? :)))', timestamp: nowMs - 110000 },
+      ],
+    };
+
+    const completed = proactiveGreeting.isSessionCompleted(mockSession);
+    const directive = aiService.buildLocalReflexDirective('ok xong rồi', mockSession.messages.slice(0, 2), false);
+    const parsedStop = aiService.parseAIResponseJson(
+      JSON.stringify({ conversation_state: 'casual_friend', replies: ['ok nè', 'có gì hay ho không? :)))'] }),
+      'ok xong rồi',
+      mockSession.messages.slice(0, 2)
+    );
+
+    const passed =
+      completed === true &&
+      directive.intentMode === 'STOP_SIGNAL' &&
+      parsedStop &&
+      parsedStop.replies.length === 1 &&
+      !parsedStop.replies[0].includes('?');
+
+    results.push({
+      name: 'Test_Day14_3_Combined_StopPhrase_OkXongRoi',
+      input: '"ok xong rồi" (dù model đáp câu có "?")',
+      mode: 'DAY14_3_COMBINED_STOP',
+      output: [
+        `isSessionCompleted=${completed}`,
+        `intentMode=${directive.intentMode}`,
+        `replies=${JSON.stringify(parsedStop ? parsedStop.replies : [])}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Nhận diện chuẩn "ok xong rồi" là đã chốt phiên (bất chấp "?" của model) và khóa STOP_SIGNAL chỉ 1 bong bóng gọn không hỏi lại'
+        : 'Thất bại: Không bắt trúng "ok xong rồi" hoặc vẫn bung 2 bong bóng hỏi ngược',
+    });
+  }
+
+  // TEST 66: Test_Day14_3_Recent_Completed_Blocks_Stale_Fallback
+  {
+    const nowDate = new Date(2026, 10, 25, 11, 5, 0);
+    const nowMs = nowDate.getTime();
+    const mockSessions = [
+      {
+        id: 'sess-macbook-2m',
+        title: 'So sánh MacBook M1 và M2',
+        notebookId: 'default-notebook',
+        updatedAt: nowMs - 2 * 60 * 1000, // 2 phút trước, đã chốt
+        messages: [
+          { id: 'm1', role: 'user', text: 'So sánh MacBook M1 và M2?', timestamp: nowMs - 180000 },
+          { id: 'm2', role: 'model', text: 'M2 mạnh hơn nhẹ ở GPU...', timestamp: nowMs - 150000 },
+          { id: 'm3', role: 'user', text: 'ok xong rồi', timestamp: nowMs - 120000 },
+        ],
+      },
+      {
+        id: 'sess-ui-22h',
+        title: 'Gỡ rối UI',
+        notebookId: 'default-notebook',
+        updatedAt: nowMs - 22 * 3600 * 1000, // 22 giờ trước
+        messages: [
+          { id: 'm4', role: 'user', text: 'Làm sao sửa layout flexbox bị lệch?', timestamp: nowMs - 22 * 3600000 },
+          { id: 'm5', role: 'model', text: 'Thêm minWidth: 0 và flexBasis: 0...', timestamp: nowMs - 22 * 3600000 + 2000 },
+        ],
+      },
+    ];
+
+    const g = proactiveGreeting.generateProactiveGreeting({
+      sessions: mockSessions,
+      activeNotebookId: 'default-notebook',
+      memoryVault: null,
+      now: nowDate,
+    });
+
+    const passed = g.targetSessionId === undefined && !g.subline.includes('Gỡ rối UI') && !g.subline.includes('Đang dở');
+    results.push({
+      name: 'Test_Day14_3_Recent_Completed_Blocks_Stale_Fallback',
+      input: 'Phiên "So sánh MacBook M1 và M2" (2m trước, "ok xong rồi") + "Gỡ rối UI" (22h trước)',
+      mode: 'DAY14_3_BLOCK_STALE_FALLBACK',
+      output: [
+        `targetSessionId=${g.targetSessionId || 'undefined'}`,
+        `headline="${g.headline}"`,
+        `subline="${g.subline}"`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Sau khi chốt phiên 2 phút trước và bấm Cmd+N, không đào ngược phiên "Gỡ rối UI" 22h trước lên hiện "Đang dở..."'
+        : 'Thất bại: Vẫn lôi phiên cũ 22h trước lên hiện "Đang dở..."',
+    });
+  }
+
+  // TEST 67: Test_Day14_3_Filter_Generic_Chat_Titles
+  {
+    const nowDate = new Date(2026, 10, 25, 11, 10, 0);
+    const nowMs = nowDate.getTime();
+    const mockSessions = [
+      {
+        id: 'sess-generic-1',
+        title: 'Trò chuyện ngày chủ nhật',
+        notebookId: 'default-notebook',
+        updatedAt: nowMs - 1 * 3600 * 1000,
+        messages: [
+          { id: 'm1', role: 'user', text: 'hôm nay thời tiết mát mẻ nhỉ', timestamp: nowMs - 3600000 },
+          { id: 'm2', role: 'model', text: 'ừa công nhận dễ chịu thật', timestamp: nowMs - 3590000 },
+        ],
+      },
+      {
+        id: 'sess-generic-2',
+        title: 'Trò chuyện ngắn',
+        notebookId: 'default-notebook',
+        updatedAt: nowMs - 2 * 3600 * 1000,
+        messages: [
+          { id: 'm3', role: 'user', text: 'buồn ngủ quá', timestamp: nowMs - 7200000 },
+          { id: 'm4', role: 'model', text: 'chợp mắt chút đi', timestamp: nowMs - 7190000 },
+        ],
+      },
+    ];
+
+    const g = proactiveGreeting.generateProactiveGreeting({
+      sessions: mockSessions,
+      activeNotebookId: 'default-notebook',
+      memoryVault: null,
+      now: nowDate,
+    });
+
+    const passed = g.targetSessionId === undefined && !g.subline.includes('Đang dở');
+    results.push({
+      name: 'Test_Day14_3_Filter_Generic_Chat_Titles',
+      input: '"Trò chuyện ngày chủ nhật" & "Trò chuyện ngắn"',
+      mode: 'DAY14_3_FILTER_GENERIC_TITLES',
+      output: [
+        `targetSessionId=${g.targetSessionId || 'undefined'}`,
+        `subline="${g.subline}"`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Loại bỏ hoàn toàn các tiêu đề tán gẫu chung ("Trò chuyện ngày chủ nhật", "Trò chuyện ngắn"), không gắn nhãn "Đang dở..."'
+        : 'Thất bại: Vẫn gắn "Đang dở..." cho phiên tán gẫu chung',
+    });
+  }
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 64 SCENARIOS (TOMORROW V4.10.2 — ONLINE • V4.10.2):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 67 SCENARIOS (TOMORROW V4.10.3 — ONLINE • V4.10.3):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
@@ -3551,7 +3706,7 @@ day13Results.forEach((r, idx) => {
 });
 console.log('='.repeat(75));
 
-console.log('\n📊 BẢNG ĐIỂM 8 KỊCH BẢN NGÀY 14 & V4.10.2 (PROACTIVE GREETING ENGINE):');
+console.log('\n📊 BẢNG ĐIỂM 11 KỊCH BẢN NGÀY 14 & V4.10.2–V4.10.3 (PROACTIVE GREETING ENGINE):');
 console.log('='.repeat(75));
 const day14Results = results.slice(56);
 day14Results.forEach((r, idx) => {
@@ -3570,9 +3725,9 @@ console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.10.2',
+  version: 'v4.10.3',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.10.2 — Completed Session Filter, Exclude Open Split Panes, Hydration Fade-In Gate & Antigravity Minimalist Sidebar (< 450 words)',
+  architecture: 'Tomorrow v4.10.3 — Desktop Sidebar Lock, Zero-Rerender Hover CSS, Instant Click & Completed Session Guard (< 450 words)',
   totalScore,
   maxScore,
   allPassed,

@@ -702,8 +702,12 @@ export function buildLocalReflexDirective(
 
   // A. STOP_SIGNAL (Giữ nguyên quyền ưu tiên cao nhất khi không có ảnh, cấm hỏi lại, budget 250t)
   const STOP_PATTERNS = /^(okk+|ok+|oki+|ừm*|ừa|ukm*|thôi|nghỉ|pp|bye|cút|im|im đi|cook|sybau|ngủ đây|thôi nhé|dừng|ok r|để t xem)[!.? ]*$/i;
+  const COMPLETED_CLOSE_REGEX =
+    /^(?:(?:ok+|oke+|oki+|okii+|okie|okela|ừm*|ừa|ukm*|uhm?|rồi|thôi|được|dc|tks|thanks|cảm ơn|cam on|bye|tạm biệt|cook|sybau)[\s,!.…-]*)*(?:xong(?:\s*(?:hết|rồi|r|nha|nhé|luôn))?|ổn\s*(?:rồi|r)|được\s*(?:rồi|r)|dc\s*r|nghỉ|đi ngủ|ngủ đây|ngủ thôi|bye|tạm biệt|cook|sybau|ok+\s*(?:rồi|r|nhé|nha|đó)?|oke+\s*(?:rồi|r|nhé|nha)?|thôi\s*(?:nhé|nha|rồi)?|cảm ơn\s*(?:nhé|nha|nhiều)?|thanks|tks)[\s,!.…]*$/i;
+  const hasOpenQuestion = lower.includes('?') || /\b(nhưng|còn|tiếp|sao|lỗi|bug|giải thích|hỏi)\b/i.test(lower);
   const isStopSignal =
     STOP_PATTERNS.test(lower) ||
+    (!hasOpenQuestion && lower.length <= 45 && COMPLETED_CLOSE_REGEX.test(lower)) ||
     ['sybau', 'cook', 'cút', 'im đi', 'im', 'ngủ đây', 'nghỉ thôi', 'thôi nhé', 'dừng'].some(
       (s) => lower === s || lower.startsWith(s + ' ')
     );
@@ -1065,8 +1069,12 @@ export function extractUserStyleLocal(text: string, recentChats?: ChatMessage[])
 
   // 2. PHÁT HIỆN TÍN HIỆU KẾT THÚC / CHỐT CÂU / TIẾNG LÓNG ĐUỔI KHÉO (isClosingSignal)
   const CLOSING_PATTERNS = /^(okk+|ok+|oki+|ừm*|ừa|ukm*|thôi|nghỉ|pp|bye|cút|im|im đi|cook|sybau|ngủ đây|thôi nhé|dừng)[!.? ]*$/i;
+  const EXTENDED_CLOSING_REGEX =
+    /^(?:(?:ok+|oke+|oki+|okii+|okie|okela|ừm*|ừa|ukm*|uhm?|rồi|thôi|được|dc|tks|thanks|cảm ơn|cam on|bye|tạm biệt|cook|sybau)[\s,!.…-]*)*(?:xong(?:\s*(?:hết|rồi|r|nha|nhé|luôn))?|ổn\s*(?:rồi|r)|được\s*(?:rồi|r)|dc\s*r|nghỉ|đi ngủ|ngủ đây|ngủ thôi|bye|tạm biệt|cook|sybau|ok+\s*(?:rồi|r|nhé|nha|đó)?|oke+\s*(?:rồi|r|nhé|nha)?|thôi\s*(?:nhé|nha|rồi)?|cảm ơn\s*(?:nhé|nha|nhiều)?|thanks|tks)[\s,!.…]*$/i;
+  const hasOpenQ = lower.includes('?') || /\b(nhưng|còn|tiếp|sao|lỗi|bug|giải thích|hỏi)\b/i.test(lower);
   const isClosingSignal =
     CLOSING_PATTERNS.test(lower) ||
+    (!hasOpenQ && lower.length <= 45 && EXTENDED_CLOSING_REGEX.test(lower)) ||
     ['sybau', 'cook', 'cút', 'im đi', 'im', 'ngủ đây', 'nghỉ thôi', 'thôi nhé', 'dừng'].some(
       (s) => lower === s || lower.startsWith(s + ' ')
     );
@@ -2684,11 +2692,15 @@ export function parseAIResponseJson(
         const userClean = (userText || '').toLowerCase().trim();
 
         // 1. PHÒNG THỦ TUYỆT ĐỐI CHO TÍN HIỆU KẾT THÚC / DỪNG / TIẾNG LÓNG (closing_stop)
+        const COMPLETED_CLOSE_REGEX_PARSE =
+          /^(?:(?:ok+|oke+|oki+|okii+|okie|okela|ừm*|ừa|ukm*|uhm?|rồi|thôi|được|dc|tks|thanks|cảm ơn|cam on|bye|tạm biệt|cook|sybau)[\s,!.…-]*)*(?:xong(?:\s*(?:hết|rồi|r|nha|nhé|luôn))?|ổn\s*(?:rồi|r)|được\s*(?:rồi|r)|dc\s*r|nghỉ|đi ngủ|ngủ đây|ngủ thôi|bye|tạm biệt|cook|sybau|ok+\s*(?:rồi|r|nhé|nha|đó)?|oke+\s*(?:rồi|r|nhé|nha)?|thôi\s*(?:nhé|nha|rồi)?|cảm ơn\s*(?:nhé|nha|nhiều)?|thanks|tks)[\s,!.…]*$/i;
+        const hasOpenQParse = userClean.includes('?') || /\b(nhưng|còn|tiếp|sao|lỗi|bug|giải thích|hỏi)\b/i.test(userClean);
         const isUserClosing =
           conversation_state === 'closing_stop' ||
           conversation_state === 'soft_close' ||
           conversation_state === 'hard_close' ||
           /^(okk+|ok+|oki+|ừm*|ừa|ukm*|thôi|nghỉ|pp|bye|cút|im|im đi|cook|sybau|ngủ đây|thôi nhé|dừng)[!.? ]*$/i.test(userClean) ||
+          (!hasOpenQParse && userClean.length <= 45 && COMPLETED_CLOSE_REGEX_PARSE.test(userClean)) ||
           userClean.includes('sybau') ||
           userClean.includes('cook') ||
           userClean === 'cút' ||
@@ -2707,6 +2719,8 @@ export function parseAIResponseJson(
             singleReply = 'rồi rồi đi đây :)))';
           } else if (userClean.includes('nghỉ') || userClean.includes('ngủ')) {
             singleReply = 'ừa nghỉ đi';
+          } else if (userClean.includes('xong')) {
+            singleReply = 'ok xong việc nhé';
           } else if (userClean.includes('thử') || userClean.includes('test')) {
             singleReply = 'ok triển đi nhé';
           } else if (userClean.includes('cảm ơn') || userClean.includes('thank')) {
@@ -2969,8 +2983,12 @@ export function localResilientFallback(
     };
   }
 
+  const COMPLETED_CLOSE_REGEX_FALLBACK =
+    /^(?:(?:ok+|oke+|oki+|okii+|okie|okela|ừm*|ừa|ukm*|uhm?|rồi|thôi|được|dc|tks|thanks|cảm ơn|cam on|bye|tạm biệt|cook|sybau)[\s,!.…-]*)*(?:xong(?:\s*(?:hết|rồi|r|nha|nhé|luôn))?|ổn\s*(?:rồi|r)|được\s*(?:rồi|r)|dc\s*r|nghỉ|đi ngủ|ngủ đây|ngủ thôi|bye|tạm biệt|cook|sybau|ok+\s*(?:rồi|r|nhé|nha|đó)?|oke+\s*(?:rồi|r|nhé|nha)?|thôi\s*(?:nhé|nha|rồi)?|cảm ơn\s*(?:nhé|nha|nhiều)?|thanks|tks)[\s,!.…]*$/i;
+  const hasOpenQFallback = lower.includes('?') || /\b(nhưng|còn|tiếp|sao|lỗi|bug|giải thích|hỏi)\b/i.test(lower);
   const isSoftClose =
     /^(okk+|ok+|okkk|oki+|okie|okela|ok nha|ok nhé|ok nhe|ok r|ok r đó|ok r do|ok roi|ok rồi|ok rồi đó|ok bạn|ok b|ừ|ừa|uk|uh|uhm|ừm|um|umk|thank kiu|thank kiuu|thanks|tks|thank you|cảm ơn|cảm ơn nhiều|cam on|pp|bye|g9|thôi|nghỉ đây|ngủ đây)[!.? ]*$/i.test(lower) ||
+    (!hasOpenQFallback && lower.length <= 45 && COMPLETED_CLOSE_REGEX_FALLBACK.test(lower)) ||
     lower.startsWith('để t thử') ||
     lower.startsWith('de t thu') ||
     lower.startsWith('để t test') ||
@@ -2985,6 +3003,8 @@ export function localResilientFallback(
     let replyText = 'okii';
     if (lower.includes('thử') || lower.includes('thu') || lower.includes('test')) {
       replyText = 'ok triển đi nhé';
+    } else if (lower.includes('xong')) {
+      replyText = 'ok xong việc nhé';
     } else if (lower.includes('thank') || lower.includes('cảm ơn') || lower.includes('cam on') || lower.includes('tks')) {
       replyText = 'ok cần gì cứ ới';
     } else if (lower.includes('ngủ') || lower.includes('nghỉ')) {

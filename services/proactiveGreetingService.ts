@@ -165,12 +165,36 @@ const CLOSING_PHRASES = [
 ];
 
 const FOLLOW_UP_QUESTION_WORDS_REGEX =
-  /\b(nhưng|còn|tiếp|sao|lỗi|bug|giải thích)\b/i;
+  /\b(nhưng|còn|tiếp|sao|lỗi|bug|giải thích|hỏi)\b/i;
+
+export const COMPLETED_SESSION_REGEX =
+  /^(?:(?:ok+|oke+|oki+|okii+|okie|okela|ừm*|ừa|ukm*|uhm?|rồi|thôi|được|dc|tks|thanks|cảm ơn|cam on|bye|tạm biệt|cook|sybau)[\s,!.…-]*)*(?:xong(?:\s*(?:hết|rồi|r|nha|nhé|luôn))?|ổn\s*(?:rồi|r)|được\s*(?:rồi|r)|dc\s*r|nghỉ|đi ngủ|ngủ đây|ngủ thôi|bye|tạm biệt|cook|sybau|ok+\s*(?:rồi|r|nhé|nha|đó)?|oke+\s*(?:rồi|r|nhé|nha)?|thôi\s*(?:nhé|nha|rồi)?|cảm ơn\s*(?:nhé|nha|nhiều)?|thanks|tks)[\s,!.…]*$/i;
 
 /**
- * HẠNG MỤC 1 (v4.10.2): Kiểm tra phiên trò chuyện đã được chốt xong chưa.
- * Trả về true nếu tin nhắn cuối cùng của user là câu chốt ngắn (<= 40 ký tự),
- * khớp tín hiệu STOP_SIGNAL / cụm chốt việc, và KHÔNG chứa dấu hỏi '?' hay từ hỏi tiếp.
+ * Quy tắc B (v4.10.3): Loại trừ các tiêu đề tán gẫu chung chung không phải đầu việc dang dở
+ */
+export function isGenericCasualTitle(title?: string): boolean {
+  if (isPlaceholderOrNoiseTitle(title)) return true;
+  const clean = (title || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[.!?,:;~_-]+$/g, '')
+    .trim();
+  if (
+    clean === 'trò chuyện ngắn' ||
+    clean === 'cuộc trò chuyện mới' ||
+    clean === 'trò chuyện' ||
+    clean.startsWith('trò chuyện ngày ')
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * HẠNG MỤC 1 (v4.10.2) & HẠNG MỤC 3 (v4.10.3): Kiểm tra phiên trò chuyện đã được chốt xong chưa.
+ * Chỉ kiểm tra tin nhắn cuối cùng của role === 'user' (bỏ qua việc AI có hỏi lại dấu '?' hay không),
+ * độ dài <= 45 ký tự, khớp COMPLETED_SESSION_REGEX / cụm chốt việc và KHÔNG chứa '?' hay từ mở tiếp.
  */
 export function isSessionCompleted(session?: ChatSession | null): boolean {
   if (!session || !Array.isArray(session.messages) || session.messages.length === 0) {
@@ -183,7 +207,7 @@ export function isSessionCompleted(session?: ChatSession | null): boolean {
   if (userMessages.length === 0) return false;
 
   const rawLastUserText = (userMessages[userMessages.length - 1]?.text || '').trim();
-  if (!rawLastUserText || rawLastUserText.length > 40) {
+  if (!rawLastUserText || rawLastUserText.length > 45) {
     return false;
   }
 
@@ -199,25 +223,33 @@ export function isSessionCompleted(session?: ChatSession | null): boolean {
     .trim();
 
   if (!normalized) return false;
+  if (COMPLETED_SESSION_REGEX.test(normalized)) return true;
   if (CLOSING_PHRASES.includes(normalized)) return true;
 
-  // Hỗ trợ cụm ghép bằng dấu phẩy / dấu gạch / khoảng trắng như "xong rồi, ok r"
+  // Hỗ trợ cụm ghép bằng dấu phẩy / dấu chấm phẩy như "xong rồi, ok r"
   const segments = normalized
     .split(/[,;/]+/)
     .map((part) => part.replace(/[.!?:;~…]+$/g, '').trim())
     .filter(Boolean);
 
-  if (segments.length > 0 && segments.every((seg) => CLOSING_PHRASES.includes(seg))) {
+  if (
+    segments.length > 0 &&
+    segments.every((seg) => COMPLETED_SESSION_REGEX.test(seg) || CLOSING_PHRASES.includes(seg))
+  ) {
     return true;
   }
 
   return false;
 }
 
+const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
+const THIRTY_MINUTES_MS = 30 * 60 * 1000;
+
 /**
  * Tín hiệu 2 — Quét phiên học/làm việc dang dở trong vòng 72 giờ
- * Bỏ qua hoàn toàn các phiên < 2 tin nhắn, tiêu đề rác (isPlaceholderOrNoiseTitle),
+ * Bỏ qua hoàn toàn các phiên < 2 tin nhắn, tiêu đề rác/tán gẫu (isGenericCasualTitle),
  * phiên đã chốt xong (isSessionCompleted) và các phiên đang mở ở tab khác (excludeSessionIds).
+ * Quy tắc A (v4.10.3): Nếu phiên mới nhất trong Sổ vừa được chốt xong (<= 4h), không đào ngược sang phiên cũ stale.
  */
 export function findResumableSession(
   sessions: ChatSession[] = [],
@@ -230,6 +262,32 @@ export function findResumableSession(
   const nowMs = now.getTime();
   const targetNb = activeNotebookId || DEFAULT_NOTEBOOK_ID;
   const excludeSet = new Set((excludeSessionIds || []).filter(Boolean));
+
+  // Quy tắc A: Tìm phiên có updatedAt mới nhất trong activeNotebookId (không nằm trong excludeSet, không phải tiêu đề rác/chung)
+  let latestActiveNbSession: ChatSession | null = null;
+  for (const s of sessions) {
+    if (!s || !Array.isArray(s.messages) || s.messages.length < 2) continue;
+    if (excludeSet.has(s.id)) continue;
+    if (isGenericCasualTitle(s.title)) continue;
+    const sNb = s.notebookId || DEFAULT_NOTEBOOK_ID;
+    if (sNb !== targetNb) continue;
+    if (!latestActiveNbSession || (s.updatedAt || 0) > (latestActiveNbSession.updatedAt || 0)) {
+      latestActiveNbSession = s;
+    }
+  }
+
+  const latestCompletedAgeMs =
+    latestActiveNbSession &&
+    isSessionCompleted(latestActiveNbSession) &&
+    typeof latestActiveNbSession.updatedAt === 'number'
+      ? Math.max(0, nowMs - latestActiveNbSession.updatedAt)
+      : null;
+
+  // Nếu người dùng vừa chốt xong phiên mới nhất (<= 30 phút) và bấm Cmd+N -> trả về null ngay
+  if (latestCompletedAgeMs !== null && latestCompletedAgeMs <= THIRTY_MINUTES_MS) {
+    return null;
+  }
+
   let bestMatch: ResumableSessionMatch | null = null;
 
   for (const session of sessions) {
@@ -239,7 +297,7 @@ export function findResumableSession(
     if (excludeSet.has(session.id)) {
       continue;
     }
-    if (isPlaceholderOrNoiseTitle(session.title)) {
+    if (isGenericCasualTitle(session.title)) {
       continue;
     }
     if (isSessionCompleted(session)) {
@@ -252,6 +310,11 @@ export function findResumableSession(
 
     const ageMs = Math.max(0, nowMs - updatedAt);
     const ageHours = ageMs / (60 * 60 * 1000);
+
+    // Nếu phiên mới nhất vừa chốt trong 4h gần nhất, không đào ngược các phiên stale (>= 16h / 1-2 ngày trước)
+    if (latestCompletedAgeMs !== null && latestCompletedAgeMs <= FOUR_HOURS_MS && ageHours >= 16) {
+      continue;
+    }
     const sessionNb = session.notebookId || DEFAULT_NOTEBOOK_ID;
     const inActiveNotebook = sessionNb === targetNb;
 

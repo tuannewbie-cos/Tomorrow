@@ -18,7 +18,7 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 - **Phía bên trái:**
   - **Duy nhất 1 nút `☰`** (Menu icon, 38x38 bo tròn) để đóng/mở Sidebar (`Cmd + B`).
 - **Chính giữa (Căn giữa tuyệt đối theo chiều ngang):**
-  - Cụm tiêu đề **`Tomorrow`** (`fontSize: 16.5`, `fontWeight: '700'`) đi kèm viên thuốc trạng thái **`Online • v4.10.2`** (chấm tròn xanh dịu + chữ xanh).
+  - Cụm tiêu đề **`Tomorrow`** (`fontSize: 16.5`, `fontWeight: '700'`) đi kèm viên thuốc trạng thái **`Online • v4.10.3`** (chấm tròn xanh dịu + chữ xanh).
   - Sử dụng bố cục căn giữa tuyệt đối (`position: 'absolute', left: 0, right: 0, alignItems: 'center', pointerEvents: 'none'`) để không bao giờ bị lệch tâm dù nhóm nút bên phải dài hơn bên trái.
   - **NGHIÊM CẤM:** Hiển thị thẻ tên Sổ ghi chú (VD: `📁 test`, `📁 Ghi chú chung`) hay dòng trạng thái `"Đang nhớ: ..."` trên Header.
 - **Phía bên phải:**

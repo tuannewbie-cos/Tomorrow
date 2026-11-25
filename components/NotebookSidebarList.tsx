@@ -47,6 +47,119 @@ export function formatSidebarSessionTitle(rawTitle?: string): string {
   return rawTitle?.trim() || 'Cuộc trò chuyện mới';
 }
 
+interface SidebarSessionRowProps {
+  session: ChatSession;
+  notebookId: string;
+  isActive: boolean;
+  isOpenInWorkspace: boolean;
+  isDark: boolean;
+  onSelectSession: (sessionId: string, notebookId: string) => void;
+  onDeleteSession: (sessionId: string) => void;
+  onCloseSidebarMobile?: () => void;
+}
+
+const SidebarSessionRow: React.FC<SidebarSessionRowProps> = React.memo(({
+  session,
+  notebookId,
+  isActive,
+  isOpenInWorkspace,
+  isDark,
+  onSelectSession,
+  onDeleteSession,
+  onCloseSidebarMobile,
+}) => {
+  const relativeTime = formatRelativeTime(session.updatedAt);
+
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.sessionRowContainer,
+        {
+          backgroundColor: isActive
+            ? (isDark ? '#242429' : '#EBEBED')
+            : 'transparent',
+          borderColor: isActive
+            ? (isDark ? 'rgba(255, 255, 255, 0.10)' : 'rgba(0, 0, 0, 0.09)')
+            : 'transparent',
+        },
+        pressed && { opacity: 0.78 },
+        Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+      ]}
+      onPress={() => {
+        onSelectSession(session.id, notebookId);
+        onCloseSidebarMobile?.();
+      }}
+      {...(Platform.OS === 'web' && ({
+        className: `tmr-sidebar-row${isActive ? ' is-active' : ''}`,
+      } as any))}
+    >
+      {/* Chấm tròn đơn sắc 5px trung tính cho pane phụ Split Screen */}
+      {isOpenInWorkspace && !isActive && (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.workspaceDotIndicator,
+            { backgroundColor: isDark ? '#E4E4E7' : '#18181B' },
+          ]}
+        />
+      )}
+
+      {/* Khu vực tiêu đề phiên giãn đầy 100% */}
+      <View style={styles.sessionMainArea}>
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          style={[
+            styles.sessionTitleText,
+            {
+              color: isActive
+                ? (isDark ? '#FFFFFF' : '#000000')
+                : (isDark ? '#E4E4E7' : '#1F1F23'),
+              fontWeight: isActive ? '600' : '500',
+            },
+          ]}
+          {...(Platform.OS === 'web' && ({ className: 'tmr-sb-row-title' } as any))}
+        >
+          {formatSidebarSessionTitle(session.title)}
+        </Text>
+      </View>
+
+      {/* Mốc thời gian & Nút Xóa: dùng CSS :hover thuần trên Web, nút xóa mặc định pointerEvents='none' */}
+      <View style={styles.sessionRightBox}>
+        <Text
+          pointerEvents="none"
+          style={[
+            styles.relativeTimeText,
+            { color: isDark ? '#8E8E93' : '#6B7280' },
+          ]}
+          {...(Platform.OS === 'web' && ({ className: 'tmr-row-time' } as any))}
+        >
+          {relativeTime}
+        </Text>
+        {Platform.OS === 'web' && (
+          <Pressable
+            pointerEvents="none"
+            style={({ pressed }) => [
+              styles.sessionDeleteIconBtn,
+              pressed && { opacity: 0.7 },
+              { cursor: 'pointer' } as any,
+            ]}
+            onPress={(e) => {
+              e.stopPropagation();
+              onDeleteSession(session.id);
+            }}
+            hitSlop={6}
+            accessibilityLabel="Xóa đoạn chat"
+            {...({ className: 'tmr-row-delete' } as any)}
+          >
+            <Trash2 size={14} color="#EF4444" />
+          </Pressable>
+        )}
+      </View>
+    </Pressable>
+  );
+});
+
 export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
   notebooks,
   activeNotebookId,
@@ -65,9 +178,6 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
 }) => {
   const isDark = theme.mode === 'dark';
 
-  // Trạng thái hover thanh nút trên cùng
-  const [hoveredTopAction, setHoveredTopAction] = useState<'chat' | 'notebook' | null>(null);
-
   // Trạng thái tạo Sổ mới inline
   const [isCreatingNotebook, setIsCreatingNotebook] = useState<boolean>(false);
   const [newNotebookName, setNewNotebookName] = useState<string>('');
@@ -79,11 +189,6 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
 
   // Trạng thái mở rộng danh sách phiên "See all (N)" theo từng notebook
   const [expandedNotebookIds, setExpandedNotebookIds] = useState<Record<string, boolean>>({});
-
-  // Trạng thái hover dòng sổ & dòng chat & nút See all trên Web
-  const [hoveredNotebookId, setHoveredNotebookId] = useState<string | null>(null);
-  const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
-  const [hoveredSeeAllNbId, setHoveredSeeAllNbId] = useState<string | null>(null);
 
   // Palette Antigravity Minimalist
   const dividerLineColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
@@ -148,12 +253,8 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
           style={({ pressed }) => [
             styles.newChatBtn,
             {
-              backgroundColor: isDark
-                ? (hoveredTopAction === 'chat' ? '#25252B' : '#1C1C20')
-                : (hoveredTopAction === 'chat' ? '#F1F1F4' : '#FFFFFF'),
-              borderColor: isDark
-                ? (hoveredTopAction === 'chat' ? 'rgba(255, 255, 255, 0.16)' : 'rgba(255, 255, 255, 0.10)')
-                : (hoveredTopAction === 'chat' ? 'rgba(0, 0, 0, 0.14)' : 'rgba(0, 0, 0, 0.10)'),
+              backgroundColor: isDark ? '#1C1C20' : '#FFFFFF',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.10)' : 'rgba(0, 0, 0, 0.10)',
             },
             pressed && { opacity: 0.8 },
             Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
@@ -162,9 +263,7 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
             onCreateSessionInNotebook(activeNotebookId);
             onCloseSidebarMobile?.();
           }}
-          onHoverIn={() => setHoveredTopAction('chat')}
-          onHoverOut={() => setHoveredTopAction(null)}
-          {...(Platform.OS === 'web' && ({ className: 'tmr-sb-btn' } as any))}
+          {...(Platform.OS === 'web' && ({ className: 'tmr-sb-btn tmr-sb-btn-chat' } as any))}
         >
           <Plus
             size={14}
@@ -187,12 +286,8 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
           style={({ pressed }) => [
             styles.newNotebookBtn,
             {
-              backgroundColor: isDark
-                ? (hoveredTopAction === 'notebook' ? '#222226' : 'transparent')
-                : (hoveredTopAction === 'notebook' ? 'rgba(0, 0, 0, 0.055)' : 'rgba(0, 0, 0, 0.025)'),
-              borderColor: isDark
-                ? (hoveredTopAction === 'notebook' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.07)')
-                : (hoveredTopAction === 'notebook' ? 'rgba(0, 0, 0, 0.12)' : 'rgba(0, 0, 0, 0.08)'),
+              backgroundColor: isDark ? 'transparent' : 'rgba(0, 0, 0, 0.025)',
+              borderColor: isDark ? 'rgba(255, 255, 255, 0.07)' : 'rgba(0, 0, 0, 0.08)',
             },
             pressed && { opacity: 0.8 },
             Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
@@ -201,15 +296,13 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
             setIsCreatingNotebook(true);
             setTimeout(() => newNotebookInputRef.current?.focus(), 50);
           }}
-          onHoverIn={() => setHoveredTopAction('notebook')}
-          onHoverOut={() => setHoveredTopAction(null)}
           hitSlop={6}
-          {...(Platform.OS === 'web' && ({ className: 'tmr-sb-btn' } as any))}
+          {...(Platform.OS === 'web' && ({ className: 'tmr-sb-btn tmr-sb-btn-nb' } as any))}
         >
           <Folder
             size={14}
             strokeWidth={1.85}
-            color={isDark ? (hoveredTopAction === 'notebook' ? '#F4F4F5' : '#E4E4E7') : (hoveredTopAction === 'notebook' ? '#111113' : '#111113')}
+            color={isDark ? '#E4E4E7' : '#111113'}
           />
           <Text
             style={[
@@ -285,7 +378,6 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
       <View style={styles.notebooksContainer}>
         {notebooks.map((nb) => {
           const isNotebookActive = nb.id === activeNotebookId;
-          const isNbHovered = hoveredNotebookId === nb.id;
           const isRenaming = renamingNotebookId === nb.id;
 
           // Lọc danh sách phiên thuộc notebook này
@@ -300,7 +392,7 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
 
           return (
             <View key={nb.id} style={styles.notebookGroup}>
-              {/* HÀNG TIÊU ĐỀ SỔ (Folder Row: 34px, Minimal Monochrome) */}
+              {/* HÀNG TIÊU ĐỀ SỔ (Folder Row: Flat Minimalist, 0 hover re-render) */}
               {isRenaming ? (
                 <View
                   style={[
@@ -351,15 +443,9 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                 <View
                   style={[
                     styles.folderRow,
-                    {
-                      backgroundColor: isNbHovered
-                        ? (isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)')
-                        : 'transparent',
-                    },
+                    { backgroundColor: 'transparent' },
                   ]}
-                  onPointerEnter={() => setHoveredNotebookId(nb.id)}
-                  onPointerLeave={() => setHoveredNotebookId(null)}
-                  {...(Platform.OS === 'web' && ({ className: 'tmr-sb-row tmr-folder-row' } as any))}
+                  {...(Platform.OS === 'web' && ({ className: 'tmr-folder-row' } as any))}
                 >
                   {/* Bấm vào tiêu đề sổ để chuyển sổ */}
                   <Pressable
@@ -374,7 +460,7 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                       size={16}
                       strokeWidth={1.75}
                       color={
-                        (isNotebookActive || isNbHovered)
+                        isNotebookActive
                           ? (isDark ? '#F4F4F5' : '#18181B')
                           : (isDark ? '#A1A1AA' : '#52525B')
                       }
@@ -385,25 +471,24 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                       style={[
                         styles.folderTitle,
                         {
-                          color: (isNotebookActive || isNbHovered)
+                          color: isNotebookActive
                             ? (isDark ? '#F4F4F5' : '#18181B')
                             : (isDark ? '#A1A1AA' : '#52525B'),
                           fontWeight: '600',
                         },
                       ]}
-                      {...(Platform.OS === 'web' && ({ className: 'tmr-sb-row-title' } as any))}
+                      {...(Platform.OS === 'web' && ({ className: 'tmr-folder-title' } as any))}
                     >
                       {nb.name}
                     </Text>
                   </Pressable>
 
-                  {/* Nút hành động góc phải của Folder: Ẩn khi nghỉ, chỉ hiện mượt khi hover */}
+                  {/* Nút hành động góc phải của Folder: Ẩn khi nghỉ (CSS :hover reveal trên Web) */}
                   <View
-                    pointerEvents={isNbHovered ? 'auto' : 'none'}
+                    pointerEvents={Platform.OS === 'web' ? 'none' : 'auto'}
                     style={[
                       styles.folderActionsRight,
-                      { opacity: isNbHovered ? 1 : 0 },
-                      Platform.OS === 'web' && ({ transition: 'opacity 140ms ease' } as any),
+                      Platform.OS === 'web' && ({ opacity: 0 } as any),
                     ]}
                     {...(Platform.OS === 'web' && ({ className: 'tmr-folder-actions' } as any))}
                   >
@@ -465,108 +550,19 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                     Chưa có đoạn chat nào
                   </Text>
                 ) : (
-                  displayedSessions.map((sess) => {
-                    const isActive = sess.id === activeSessionId;
-                    const isOpenInWorkspace = openSessionIdsInWorkspace.includes(sess.id);
-                    const isHovered = hoveredSessionId === sess.id;
-                    const relativeTime = formatRelativeTime(sess.updatedAt);
-
-                    return (
-                      <View
-                        key={sess.id}
-                        style={[
-                          styles.sessionRowContainer,
-                          {
-                            backgroundColor: isActive
-                              ? (isDark ? '#242429' : '#EBEBED')
-                              : isHovered
-                              ? (isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)')
-                              : 'transparent',
-                            borderColor: isActive
-                              ? (isDark ? 'rgba(255, 255, 255, 0.10)' : 'rgba(0, 0, 0, 0.09)')
-                              : 'transparent',
-                          },
-                        ]}
-                        onPointerEnter={() => setHoveredSessionId(sess.id)}
-                        onPointerLeave={() => setHoveredSessionId(null)}
-                        {...(Platform.OS === 'web' && ({ className: 'tmr-sb-row' } as any))}
-                      >
-                        {/* Chấm tròn đơn sắc 5px trung tính cho pane phụ Split Screen */}
-                        {isOpenInWorkspace && !isActive && (
-                          <View
-                            style={[
-                              styles.workspaceDotIndicator,
-                              { backgroundColor: isDark ? '#E4E4E7' : '#18181B' },
-                            ]}
-                          />
-                        )}
-
-                        {/* Khu vực bấm chọn phiên */}
-                        <Pressable
-                          style={({ pressed }) => [
-                            styles.sessionMainArea,
-                            pressed && { opacity: 0.8 },
-                            Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
-                          ]}
-                          onPress={() => {
-                            onSelectSession(sess.id, nb.id);
-                            onCloseSidebarMobile?.();
-                          }}
-                        >
-                          <Text
-                            numberOfLines={1}
-                            ellipsizeMode="tail"
-                            style={[
-                              styles.sessionTitleText,
-                              {
-                                color: isActive
-                                  ? (isDark ? '#FFFFFF' : '#000000')
-                                  : isHovered
-                                  ? (isDark ? '#FFFFFF' : '#000000')
-                                  : (isDark ? '#E4E4E7' : '#1F1F23'),
-                                fontWeight: isActive ? '600' : '500',
-                              },
-                            ]}
-                            {...(Platform.OS === 'web' && ({ className: 'tmr-sb-row-title' } as any))}
-                          >
-                            {formatSidebarSessionTitle(sess.title)}
-                          </Text>
-                        </Pressable>
-
-                        {/* Mặc định (kể cả active) luôn hiện mốc thời gian; CHỈ khi hover mới trượt hiện nút xóa */}
-                        <View style={styles.sessionRightBox}>
-                          {isHovered && Platform.OS === 'web' ? (
-                            <Pressable
-                              style={({ pressed }) => [
-                                styles.sessionDeleteIconBtn,
-                                pressed && { opacity: 0.7 },
-                                Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
-                              ]}
-                              onPress={(e) => {
-                                e.stopPropagation();
-                                onDeleteSession(sess.id);
-                              }}
-                              hitSlop={6}
-                              accessibilityLabel="Xóa đoạn chat"
-                              {...(Platform.OS === 'web' && ({ className: 'tmr-sb-trash' } as any))}
-                            >
-                              <Trash2 size={14} color="#EF4444" />
-                            </Pressable>
-                          ) : (
-                            <Text
-                              style={[
-                                styles.relativeTimeText,
-                                { color: isDark ? '#8E8E93' : '#6B7280' },
-                              ]}
-                              {...(Platform.OS === 'web' && ({ className: 'tmr-sb-time' } as any))}
-                            >
-                              {relativeTime}
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                    );
-                  })
+                  displayedSessions.map((sess) => (
+                    <SidebarSessionRow
+                      key={sess.id}
+                      session={sess}
+                      notebookId={nb.id}
+                      isActive={sess.id === activeSessionId}
+                      isOpenInWorkspace={openSessionIdsInWorkspace.includes(sess.id)}
+                      isDark={isDark}
+                      onSelectSession={onSelectSession}
+                      onDeleteSession={onDeleteSession}
+                      onCloseSidebarMobile={onCloseSidebarMobile}
+                    />
+                  ))
                 )}
 
                 {/* Nút See all (N) / Thu gọn căn thẳng mép chữ 32px */}
@@ -578,32 +574,28 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                       Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
                     ]}
                     onPress={() => toggleSeeAll(nb.id)}
-                    onHoverIn={() => setHoveredSeeAllNbId(nb.id)}
-                    onHoverOut={() => setHoveredSeeAllNbId(null)}
                     hitSlop={4}
+                    {...(Platform.OS === 'web' && ({ className: 'tmr-see-all-btn' } as any))}
                   >
                     <Text
                       style={[
                         styles.seeAllText,
-                        {
-                          color: hoveredSeeAllNbId === nb.id
-                            ? (isDark ? '#E4E4E7' : '#18181B')
-                            : (isDark ? '#8E8E93' : '#71717A'),
-                        },
+                        { color: isDark ? '#8E8E93' : '#71717A' },
                       ]}
+                      {...(Platform.OS === 'web' && ({ className: 'tmr-see-all-text' } as any))}
                     >
                       {isExpanded ? 'Thu gọn' : `See all (${nbSessions.length})`}
                     </Text>
                     {isExpanded ? (
                       <ChevronDown
                         size={13}
-                        color={hoveredSeeAllNbId === nb.id ? (isDark ? '#E4E4E7' : '#18181B') : (isDark ? '#8E8E93' : '#71717A')}
+                        color={isDark ? '#8E8E93' : '#71717A'}
                         style={{ marginLeft: 4 }}
                       />
                     ) : (
                       <ChevronRight
                         size={13}
-                        color={hoveredSeeAllNbId === nb.id ? (isDark ? '#E4E4E7' : '#18181B') : (isDark ? '#8E8E93' : '#71717A')}
+                        color={isDark ? '#8E8E93' : '#71717A'}
                         style={{ marginLeft: 4 }}
                       />
                     )}
@@ -725,6 +717,7 @@ const styles = StyleSheet.create({
   },
   folderMainClick: {
     flex: 1,
+    height: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     minWidth: 0,
@@ -794,9 +787,11 @@ const styles = StyleSheet.create({
         : undefined,
   },
   sessionRightBox: {
+    position: 'relative',
     alignItems: 'flex-end',
     justifyContent: 'center',
     minWidth: 32,
+    height: 20,
   },
   relativeTimeText: {
     fontSize: 13,

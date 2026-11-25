@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.10.2` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.10.3` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -459,6 +459,12 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
   - **Né phiên đang mở ở Split Screen (`excludeSessionIds`):** Gom toàn bộ `pane.sessionId` đang mở ở các tab khác để gợi ý `Tiếp tục ↗` mở phiên dang dở kế tiếp chưa hiển thị trên màn hình (hoặc fallback êm sang Memory Vault).
   - **Hydration Fade-In Gate (`isStorageHydrated` trong `App.tsx`):** Giữ sẵn chiều cao khối text (`minHeight`) ở `opacity: 0` trước khi `AsyncStorage` đọc xong, sau đó fade-in mượt `opacity: 0 -> 1` trong `150ms ease-out` (CLS = 0, không giật chữ mặc định, không xung đột `Cmd + R`).
   - **Bộ kiểm thử `train_simulator.js`:** Bổ sung +3 test Ngày 14.2 (`Test_Day14_2_Skip_Completed_StopSignal_Session`, `Test_Day14_2_Exclude_Open_SplitPane_Sessions`, `Test_Day14_2_Keep_Question_Ending_Resumable`), đạt **64/64 PASS (640/640 điểm)**. Header cập nhật **`Online • v4.10.2`**.
+
+- [x] **Bản vá Dứt Điểm Sidebar & Chốt Phiên (`Online • v4.10.3`):**
+  - **Khóa giữ Sidebar trên Desktop (`App.tsx`, `components/SidebarDrawer.tsx`):** Không truyền `onCloseSidebarMobile` khi `isDesktop === true`; dùng `isDesktopRef.current` trong `handleSelectSession` / `handleSelectNotebook`, đảm bảo Sidebar Desktop chỉ đóng khi bấm `☰`, `PanelLeftClose`, hoặc `Cmd + B`.
+  - **Bấm 1 phát ăn ngay & 0 re-render khi hover (`components/NotebookSidebarList.tsx`, `App.tsx`):** Xóa hoàn toàn hover `useState` và `transform` lệch hitbox, bọc `SidebarSessionRow` bằng `React.memo`, mở rộng vùng bấm 100% chiều rộng/cao của hàng chat, chuyển sang CSS `:hover` thuần (`.tmr-sidebar-row:hover .tmr-row-time/.tmr-row-delete`), thêm `keyboardShouldPersistTaps="always"` trên `ScrollView`, và debounce `saveNotebookWorkspace` 150ms trong `handleSelectSession`.
+  - **Sửa tận gốc `"ok xong rồi"` + `Cmd + N` (`services/proactiveGreetingService.ts`, `services/aiService.ts`):** Bổ sung `COMPLETED_SESSION_REGEX` nhận diện cụm chốt ghép và đồng bộ vào `STOP_SIGNAL` (1 bong bóng gọn, 0 câu hỏi ngược); bổ sung Quy tắc A chặn đào ngược phiên stale khi phiên mới nhất vừa chốt xong (<= 4h / <= 30m) và Quy tắc B lọc tiêu đề tán gẫu (`isGenericCasualTitle`).
+  - **Bộ kiểm thử `train_simulator.js`:** Bổ sung +3 test Ngày 14.3 (`Test_Day14_3_Combined_StopPhrase_OkXongRoi`, `Test_Day14_3_Recent_Completed_Blocks_Stale_Fallback`, `Test_Day14_3_Filter_Generic_Chat_Titles`), đạt **67/67 PASS (670/670 điểm)**. Header cập nhật **`Online • v4.10.3`**.
 
 - [ ] **Ngày 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.

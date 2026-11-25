@@ -102,21 +102,38 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           background: rgba(120, 120, 128, 0.5);
         }
         .tmr-sb-btn {
-          transition: background-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
-                      border-color 150ms cubic-bezier(0.22, 1, 0.36, 1),
-                      box-shadow 150ms cubic-bezier(0.22, 1, 0.36, 1),
-                      transform 120ms ease;
+          transition: border-color 140ms ease, transform 120ms ease;
         }
         .tmr-sb-btn:active {
           transform: scale(0.985);
         }
-        .tmr-sb-row {
-          transition: background-color 140ms ease,
-                      border-color 140ms ease,
-                      box-shadow 140ms ease;
+        .tmr-sb-dark .tmr-sb-btn-chat:hover {
+          background-color: #25252B !important;
+          border-color: rgba(255, 255, 255, 0.16) !important;
         }
-        .tmr-sb-row:hover .tmr-sb-row-title {
-          transform: translate3d(2px, 0, 0);
+        .tmr-sb-light .tmr-sb-btn-chat:hover {
+          background-color: #F1F1F4 !important;
+          border-color: rgba(0, 0, 0, 0.14) !important;
+        }
+        .tmr-sb-dark .tmr-sb-btn-nb:hover {
+          background-color: #222226 !important;
+          border-color: rgba(255, 255, 255, 0.12) !important;
+        }
+        .tmr-sb-light .tmr-sb-btn-nb:hover {
+          background-color: rgba(0, 0, 0, 0.055) !important;
+          border-color: rgba(0, 0, 0, 0.12) !important;
+        }
+        .tmr-sb-dark .tmr-folder-row:hover {
+          background-color: rgba(255, 255, 255, 0.05) !important;
+        }
+        .tmr-sb-light .tmr-folder-row:hover {
+          background-color: rgba(0, 0, 0, 0.04) !important;
+        }
+        .tmr-sb-dark .tmr-folder-row:hover .tmr-folder-title {
+          color: #F4F4F5 !important;
+        }
+        .tmr-sb-light .tmr-folder-row:hover .tmr-folder-title {
+          color: #18181B !important;
         }
         .tmr-folder-actions {
           opacity: 0;
@@ -127,14 +144,43 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           opacity: 1 !important;
           pointer-events: auto !important;
         }
-        .tmr-sb-row-title {
-          transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+        .tmr-sb-dark .tmr-sidebar-row:not(.is-active):hover {
+          background-color: rgba(255, 255, 255, 0.05) !important;
         }
-        .tmr-sb-time {
-          transition: opacity 140ms ease, transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+        .tmr-sb-light .tmr-sidebar-row:not(.is-active):hover {
+          background-color: rgba(0, 0, 0, 0.04) !important;
         }
-        .tmr-sb-trash {
-          transition: opacity 140ms ease, transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+        .tmr-sb-dark .tmr-sidebar-row:hover .tmr-sb-row-title {
+          color: #FFFFFF !important;
+        }
+        .tmr-sb-light .tmr-sidebar-row:hover .tmr-sb-row-title {
+          color: #000000 !important;
+        }
+        .tmr-sidebar-row .tmr-row-time {
+          opacity: 1;
+          pointer-events: auto;
+          transition: opacity 120ms ease;
+        }
+        .tmr-sidebar-row .tmr-row-delete {
+          opacity: 0;
+          pointer-events: none;
+          position: absolute;
+          right: 0;
+          transition: opacity 120ms ease;
+        }
+        .tmr-sidebar-row:hover .tmr-row-time {
+          opacity: 0 !important;
+          pointer-events: none !important;
+        }
+        .tmr-sidebar-row:hover .tmr-row-delete {
+          opacity: 1 !important;
+          pointer-events: auto !important;
+        }
+        .tmr-sb-dark .tmr-see-all-btn:hover .tmr-see-all-text {
+          color: #E4E4E7 !important;
+        }
+        .tmr-sb-light .tmr-see-all-btn:hover .tmr-see-all-text {
+          color: #18181B !important;
         }
       `;
       document.head.appendChild(styleEl);
@@ -188,6 +234,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           borderRightColor: borderRightColor,
         },
       ]}
+      {...(Platform.OS === 'web' && ({ className: isDark ? 'tmr-sb-dark' : 'tmr-sb-light' } as any))}
     >
       {/* Brand Bar Header Sidebar: 52px trục chuẩn */}
       <View style={[styles.drawerHeader, { borderBottomColor: borderDivider }]}>
@@ -215,6 +262,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
         style={styles.scrollContent}
         contentContainerStyle={styles.scrollContentInner}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="always"
         {...(Platform.OS === 'web' && ({ className: 'tmr-sidebar-scroll' } as any))}
       >
         {/* Danh sách phân nhóm Sổ ghi chú Antigravity */}
@@ -238,7 +286,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
             if (!isDesktop) onClose();
           }}
           onDeleteSession={onDeleteSession}
-          onCloseSidebarMobile={onClose}
+          onCloseSidebarMobile={isDesktop ? undefined : onClose}
         />
       </ScrollView>
 

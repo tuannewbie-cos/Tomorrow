@@ -1,4 +1,4 @@
-# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.10.2)
+# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.10.3)
 
 ## 1. MÔI TRƯỜNG, NỀN TẢNG CỐT LÕI & CÁC KHÓA LƯU TRỮ
 - **Hệ điều hành phát triển & vận hành:** macOS (Ứng dụng đích chạy tại `/Applications/Tomorrow.app` kết nối Vercel Production). Mọi script/shell dùng chuẩn Unix/macOS, không dùng cú pháp Windows.
@@ -45,7 +45,10 @@
   + Công thức Toán học LaTeX Unicode (`$$...$$` hộp căn giữa viền Indigo `#6366F1`, `$...$` nội dòng).
   + Nút Quick Copy phản hồi ở góc dưới bên phải cho tin nhắn >120 ký tự hoặc có rich block.
 - **Thanh Nhập Liệu Prompt Box Lucian #452 1 Hàng Ngang (`components/PromptBox.tsx` — `v4.9.4`):** Thiết kế 1 hàng ngang thẳng tâm tuyệt đối bo góc `28px` (`[+]` — `Ô nhập chữ 34px` — `[↑]`), textarea tự giãn từ `34px` đến `106px` (tối đa 4 dòng); hiệu ứng chữ bay mờ `flyTextAnimation` khi gửi; viền `conic-gradient` xoay sáng khi đang sinh phản hồi; triệt tiêu hoàn toàn độ khựng nút `+` nhờ GPU SVG rotation, keep-mounted popover `📎 Tệp` và `pointerdown` dismiss; nút tròn Gửi / Dừng biến hình; đo đạc nhịp gõ ẩn `KeystrokeTelemetry` bằng `useRef` (zero re-render); TUYỆT ĐỐI CẤM nút chọn model, emote, icon quả cầu.
-- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.10.2`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.10.3`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Quy chuẩn Sidebar Desktop Lock & Instant Click (`v4.10.3`):**
+  + Trên Desktop (`width >= 768`), TUYỆT ĐỐI KHÔNG đóng Sidebar khi chọn đoạn chat/sổ; chỉ đóng khi ở Mobile (`< 768`) hoặc người dùng bấm `☰` / `PanelLeftClose` / `Cmd + B`.
+  + Dùng CSS `:hover` thuần (`.tmr-sidebar-row`, `.tmr-folder-row`) và `React.memo` cho từng dòng chat (0 re-render khi di chuột, `keyboardShouldPersistTaps="always"` trên `ScrollView`, debounce `saveNotebookWorkspace` 150ms).
 - **Quy chuẩn Màn hình Chào Chủ động Chuẩn Ember Monochrome (`v4.10.2`):**
   + Tối giản tuyệt đối: giữ `TomorrowGlyph` căn giữa + 1 dòng `headline` (`Plus Jakarta Sans`, `<= 58` ký tự) + tối đa 1 dòng `subline` dịu (`<= 96` ký tự) + inline text link `Tiếp tục ↗` đơn sắc khi có `targetSessionId`, cấm tuyệt đối Card Grid hay nút gợi ý rác.
   + Hydration Gate (`isStorageHydrated`): Giữ chiều cao ổn định `opacity: 0` đến khi `AsyncStorage` nạp xong, fade-in `150ms ease-out` chỉ trên `opacity` khối text chào; lọc phiên đã chốt (`isSessionCompleted`) và né trùng phiên đang mở (`excludeSessionIds`).
@@ -143,5 +146,5 @@
 - Mọi bản cập nhật phải vượt qua:
   1. `npm run typecheck`
   2. `npx expo export -p web` (đảm bảo 0 lỗi biên dịch web)
-  3. `node train_simulator.js` (đảm bảo 64/64 kịch bản PASS tuyệt đối 640/640 điểm)
+  3. `node train_simulator.js` (đảm bảo 67/67 kịch bản PASS tuyệt đối 670/670 điểm)
 - Chỉ chạy `npx vercel --prod --yes` sau khi đã kiểm tra đầy đủ và được người dùng phê duyệt.

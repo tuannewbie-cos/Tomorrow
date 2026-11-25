@@ -643,6 +643,8 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
 export default function App() {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 768;
+  const isDesktopRef = useRef<boolean>(isDesktop);
+  isDesktopRef.current = isDesktop;
 
   const [themeMode, setThemeMode] = useState<ThemeMode>('dark');
   const themeModeRef = useRef<ThemeMode>(themeMode);
@@ -1530,10 +1532,10 @@ export default function App() {
       activePaneIdRef.current = newPanes[0].id;
     }
 
-    if (!isDesktop) {
+    if (!isDesktopRef.current) {
       setIsSidebarOpen(false);
     }
-  }, [isDesktop]);
+  }, []);
 
   const handleCreateNotebook = useCallback(async (name: string) => {
     const newNb = await createNotebook(name);
@@ -1683,7 +1685,9 @@ export default function App() {
   const handleClosePaneRef = useRef(handleClosePane);
   handleClosePaneRef.current = handleClosePane;
 
-  // 4. CHỌN 1 PHIÊN TRÒ CHUYỆN CŨ TỪ SIDEBAR HOẶC COMMAND PALETTE (mở trong active pane)
+  const saveWorkspaceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 4. CHỌN 1 PHIÊN TRÒ CHUYỆN CŨ TỪ SIDEBAR HOẶC COMMAND PALETTE (mở trong active pane, < 16ms, giữ Sidebar mở trên Desktop)
   const handleSelectSession = useCallback((sessionId: string, targetNotebookId?: string) => {
     // Nếu session thuộc notebook khác, chuyển active notebook trước
     const foundSession = sessionsRef.current.find((s) => s.id === sessionId);
@@ -1693,20 +1697,29 @@ export default function App() {
       activeNotebookIdRef.current = sessionNbId;
     }
 
-    // 1. Nếu sessionId đã đang mở ở active pane hiện tại -> chỉ đóng mobile drawer nếu cần và return
+    // 1. Nếu sessionId đã đang mở ở active pane hiện tại -> chỉ đóng mobile drawer nếu màn hình nhỏ
     const curActivePane = panesRef.current.find((p) => p.id === activePaneIdRef.current);
     if (curActivePane?.sessionId === sessionId) {
-      if (!isDesktop) setIsSidebarOpen(false);
+      if (!isDesktopRef.current) setIsSidebarOpen(false);
       return;
     }
 
-    // 2. Cập nhật panes ngay lập tức trong 1 batch gọn
+    // 2. Cập nhật panes ngay lập tức trong 1 batch gọn (< 16ms)
     const nextPanes = panesRef.current.map((p) =>
       p.id === activePaneIdRef.current ? { ...p, sessionId } : p
     );
     panesRef.current = nextPanes;
     setPanes(nextPanes);
-    saveNotebookWorkspace(activeNotebookIdRef.current, nextPanes, activePaneIdRef.current);
+
+    // Debounce lưu savedPanes xuống AsyncStorage chạy ngầm sau 150ms (không chặn UI thread)
+    if (saveWorkspaceTimerRef.current) {
+      clearTimeout(saveWorkspaceTimerRef.current);
+    }
+    const targetNbSnapshot = activeNotebookIdRef.current;
+    const targetPaneSnapshot = activePaneIdRef.current;
+    saveWorkspaceTimerRef.current = setTimeout(() => {
+      saveNotebookWorkspace(targetNbSnapshot, nextPanes, targetPaneSnapshot);
+    }, 150);
 
     // 3. Xóa ảnh tạm đang soạn nếu chưa gửi
     inputBarRef.current?.setSelectedImage?.(null);
@@ -1715,8 +1728,8 @@ export default function App() {
     // 4. Đóng Command Palette nếu đang mở
     setIsCommandPaletteOpen(false);
 
-    // 5. Đóng drawer trên mobile nếu đang mở
-    if (!isDesktop) {
+    // 5. CHỈ đóng drawer trên màn hình di động hẹp (< 768px); TUYỆT ĐỐI giữ nguyên Sidebar trên Desktop/macOS
+    if (!isDesktopRef.current) {
       setIsSidebarOpen(false);
     }
 
@@ -1724,7 +1737,7 @@ export default function App() {
     setTimeout(() => {
       flatListRefs.current[activePaneIdRef.current]?.scrollToEnd({ animated: false });
     }, 40);
-  }, [isDesktop]);
+  }, []);
 
   // 5. XÓA 1 PHIÊN TRÒ CHUYỆN
   const handleDeleteSession = async (sessionId: string) => {
@@ -2112,7 +2125,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: themeMode === 'dark' ? '#FFFFFF' : '#09090B' }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.10.2</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.10.3</Text>
               </View>
             </View>
           </View>
