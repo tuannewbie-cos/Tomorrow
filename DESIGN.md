@@ -18,7 +18,7 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 - **Phía bên trái:**
   - **Duy nhất 1 nút `☰`** (Menu icon, 38x38 bo tròn) để đóng/mở Sidebar (`Cmd + B`).
 - **Chính giữa (Căn giữa tuyệt đối theo chiều ngang):**
-  - Cụm tiêu đề **`Tomorrow`** (`fontSize: 16.5`, `fontWeight: '700'`) đi kèm viên thuốc trạng thái **`Online • v4.10.3`** (chấm tròn xanh dịu + chữ xanh).
+  - Cụm tiêu đề **`Tomorrow`** (`fontSize: 16.5`, `fontWeight: '700'`) đi kèm viên thuốc trạng thái **`Online • v4.10.4`** (chấm tròn xanh dịu + chữ xanh).
   - Sử dụng bố cục căn giữa tuyệt đối (`position: 'absolute', left: 0, right: 0, alignItems: 'center', pointerEvents: 'none'`) để không bao giờ bị lệch tâm dù nhóm nút bên phải dài hơn bên trái.
   - **NGHIÊM CẤM:** Hiển thị thẻ tên Sổ ghi chú (VD: `📁 test`, `📁 Ghi chú chung`) hay dòng trạng thái `"Đang nhớ: ..."` trên Header.
 - **Phía bên phải:**
@@ -105,7 +105,7 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
 
 ---
 
-### E. Thanh Bên Lịch Sử (Sidebar Drawer) Chuẩn Antigravity Minimalist (`Online • v4.10.1`)
+### E. Thanh Bên Lịch Sử (Sidebar Drawer) Chuẩn Antigravity Minimalist (`Online • v4.10.4`)
 - **Thiết kế Đơn sắc Tối giản (Antigravity Minimalist Monochrome — Loại bỏ AI Slop):**
   + Tuyệt đối thanh trừng khung hộp trắng dày quanh tiêu đề sổ, bỏ icon `💬` (`MessageSquare`) và bỏ đường kẻ guide line dọc trước danh sách đoạn chat.
   + **Nền Tối (Ember Matte Obsidian):** Nền `#141416` (sâu hơn khung chat chính `#171717`, viền phải `1px solid rgba(255, 255, 255, 0.07)`). Đường phân tách `1px solid rgba(255, 255, 255, 0.06)`. Mục đang chọn (Active Pill) nền `#242429`, viền `1px solid rgba(255, 255, 255, 0.10)`, chữ `#FFFFFF` (`fontWeight: '600'`). Item hover nền `rgba(255, 255, 255, 0.05)`, chữ `#FFFFFF`. Item thường chữ `#E4E4E7` (`fontWeight: '500'`).
@@ -120,10 +120,10 @@ Tài liệu này là **Nguồn Sự Thật Duy Nhất (Single Source of Truth - 
      - Bố cục 2 nút ngang: Nút chính **`+ Trò chuyện mới`** (`flex: 1`, `minWidth: 0`, icon `Plus` `14x14`, chữ `14px`, `fontWeight: '600'`, `#F4F4F5` Dark / `#111113` Light).
      - Nút phụ **`Sổ mới`** (`flexShrink: 0`, padding `11px`, icon `Folder` `14x14`, chữ `14px`, `fontWeight: '600'`).
      - Bên dưới có đường kẻ tóc (Hairline Divider) kèm khoảng thở sạch `10px` dẫn thẳng vào danh sách Sổ (bỏ nhãn phụ `SỔ GHI CHÚ` thừa).
-  3. **Hàng Sổ Ghi Chú Phẳng & Danh sách Pure Typography:**
-     - **Hàng tiêu đề Sổ (`36px`, `paddingHorizontal: 10px`, `borderRadius: 9px`):** Thiết kế phẳng hoàn toàn (KHÔNG nền trắng, KHÔNG viền hộp, KHÔNG `boxShadow`). Icon `Folder` nét mảnh (`16x16`, `strokeWidth={1.75}`) + tên sổ (`14.5px`, `fontWeight: '600'`, `gap: 9px`). Mặc định cụm nút thao tác (`+`, sửa `✎`, xóa `🗑`) ẩn (`opacity: 0; pointer-events: none;`), chỉ hiện mượt `140ms` khi hover vào hàng Sổ.
-     - **Danh sách đoạn chat (`height: 38px`, `borderRadius: 10px`, `gap: 2px`):** Pure Typography — **KHÔNG** icon `💬` và **KHÔNG** đường kẻ dọc; căn lề trái đồng nhất thẳng trục chữ tên Sổ (`paddingLeft: 32px`, `paddingRight: 12px`). Tiêu đề đoạn chat `14.5px` (`letterSpacing: -0.2`, `500` mặc định / `600` active). Chỉ báo phiên phụ mở ở pane Split Screen là chấm tròn đơn sắc `5px` đặt gọn ở lề trái `left: 15px`.
-     - **Mốc thời gian & Nút Xóa:** Mặc định (kể cả dòng active) bên phải luôn hiển thị mốc thời gian `tabular-nums` (`13px`, `fontWeight: '500'`, `#8E8E93` Dark / `#6B7280` Light). CHỈ khi hover vào dòng chat mới trượt hiện nút thùng rác xóa (`e.stopPropagation()`).
+  3. **Hàng Sổ Ghi Chú Phẳng & Danh sách Pure Typography (Pure DOM trên Web):**
+     - **Hàng tiêu đề Sổ (`36px`, `padding: 0 8px 0 10px`, `borderRadius: 9px`):** Thiết kế phẳng hoàn toàn (KHÔNG nền trắng, KHÔNG viền hộp, KHÔNG `boxShadow`). Icon `Folder` nét mảnh (`16x16`, `strokeWidth={1.75}`) + tên sổ (`14.5px`, `fontWeight: '600'`). Mặc định cụm nút góc phải (`+` tạo chat trong sổ, `⋮` tùy chọn sổ) ẩn (`opacity: 0; pointer-events: none;`), chỉ hiện mượt `140ms` khi hover hoặc khi menu đang mở (`.is-menu-open`).
+     - **Danh sách đoạn chat (`height: 38px`, `borderRadius: 10px`, `padding: 0 8px 0 32px`):** Trên Web dựng bằng thẻ DOM thuần (`<div>`, `<span>`, `<button type="button">`, `<input>`) để kích hoạt chuẩn CSS `:hover` và click không bị `react-native-web` chặn. Pure Typography — **KHÔNG** icon `💬` và **KHÔNG** đường kẻ dọc; căn lề trái đồng nhất thẳng trục chữ tên Sổ. Tiêu đề đoạn chat `14.5px` (`letterSpacing: -0.2`, `500` mặc định / `600` active). Chỉ báo phiên phụ mở ở pane Split Screen là chấm tròn đơn sắc `5px` đặt gọn ở lề trái `left: 15px`.
+     - **Mốc thời gian & Menu nổi `⋮` via React Portal (`createPortal`):** Mặc định (kể cả dòng active) hộp bên phải cố định `32×28px` hiển thị mốc thời gian `tabular-nums` (`13px`, `fontWeight: '500'`, `#8E8E93` Dark / `#6B7280` Light). Khi hover hoặc `.is-menu-open`, mốc thời gian ẩn và hiện nút tròn `28×28px` chứa icon `MoreVertical` (`15px`). Bấm `⋮` bung menu nổi qua `createPortal(..., document.body)` (`position: fixed; z-index: 9999`), neo tọa độ `getBoundingClientRect()` tràn mép phải Sidebar và tự lật lên trên gần đáy viewport, tự đóng khi bấm ngoài / cuộn / `Esc`. Menu tối giản **chỉ có đúng 2 mục** (`Rename` inline `<input autoFocus>` và `Delete` xóa trực tiếp xuống `CHAT_SESSIONS_V2`, đóng pane đang mở, không `window.confirm`; Sổ mặc định chỉ hiện `Rename`).
      - **`See all (N)` / Trạng thái sổ trống:** Căn thẳng trục chữ `paddingLeft: 32px`, `height: 34px`, cỡ chữ `14px` `fontWeight: '500'`.
   4. **Chân trang Cố định (Sticky Footer Ghost Reset):**
      - Nút **`Xóa toàn bộ lịch sử & Reset`** thiết kế phong cách Ghost (`height: 34px`, `borderRadius: 8px`, chữ `13px`), nền trong suốt, chỉ chuyển nền/viền/chữ đỏ dịu khi hover.

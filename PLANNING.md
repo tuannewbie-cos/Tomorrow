@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.10.3` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.10.4` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -465,6 +465,10 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
   - **Bấm 1 phát ăn ngay & 0 re-render khi hover (`components/NotebookSidebarList.tsx`, `App.tsx`):** Xóa hoàn toàn hover `useState` và `transform` lệch hitbox, bọc `SidebarSessionRow` bằng `React.memo`, mở rộng vùng bấm 100% chiều rộng/cao của hàng chat, chuyển sang CSS `:hover` thuần (`.tmr-sidebar-row:hover .tmr-row-time/.tmr-row-delete`), thêm `keyboardShouldPersistTaps="always"` trên `ScrollView`, và debounce `saveNotebookWorkspace` 150ms trong `handleSelectSession`.
   - **Sửa tận gốc `"ok xong rồi"` + `Cmd + N` (`services/proactiveGreetingService.ts`, `services/aiService.ts`):** Bổ sung `COMPLETED_SESSION_REGEX` nhận diện cụm chốt ghép và đồng bộ vào `STOP_SIGNAL` (1 bong bóng gọn, 0 câu hỏi ngược); bổ sung Quy tắc A chặn đào ngược phiên stale khi phiên mới nhất vừa chốt xong (<= 4h / <= 30m) và Quy tắc B lọc tiêu đề tán gẫu (`isGenericCasualTitle`).
   - **Bộ kiểm thử `train_simulator.js`:** Bổ sung +3 test Ngày 14.3 (`Test_Day14_3_Combined_StopPhrase_OkXongRoi`, `Test_Day14_3_Recent_Completed_Blocks_Stale_Fallback`, `Test_Day14_3_Filter_Generic_Chat_Titles`), đạt **67/67 PASS (670/670 điểm)**. Header cập nhật **`Online • v4.10.3`**.
+- [x] **Ngày 14.4 (`Online • v4.10.4`): UI Sidebar chuẩn Antigravity (`⋮` Context Menu Rename & Delete) & Sửa dứt điểm lỗi xóa chat**
+  - **Hàng chat & hàng sổ Pure DOM trên Web (`components/NotebookSidebarList.tsx`):** Thay `<Pressable>` / `pointerEvents="none"` lồng nhau trên Web bằng thẻ DOM thuần (`<div>`, `<button type="button">`, `<span>`, `<input>`) để kích hoạt chuẩn CSS `:hover` (`.tmr-chat-row`, `.tmr-folder-row`) ẩn mốc thời gian / hiện nút tròn `⋮` (`MoreVertical`) ở góc phải.
+  - **Context Menu nổi qua React Portal (`createPortal` vào `document.body`):** Neo tọa độ từ `getBoundingClientRect()`, tự lật lên trên khi gần đáy màn hình, tràn qua mép phải Sidebar, tự đóng khi bấm ngoài / cuộn / `Esc`. Chỉ chứa đúng 2 mục: **`Rename`** (sửa inline trực tiếp bằng `<input autoFocus>`) và **`Delete`** (xóa trực tiếp vào `CHAT_SESSIONS_V2`, dọn sạch mọi `panes` & `savedPanes`, hủy stream đang chạy mà không bật `window.confirm`).
+  - **Header & Tài liệu:** Đồng bộ `Online • v4.10.4` trên `App.tsx`, `DESIGN.md`, `PLANNING.md` và `.antigravity/rules.md`.
 
 - [ ] **Ngày 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.

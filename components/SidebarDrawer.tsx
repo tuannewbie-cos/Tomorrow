@@ -29,6 +29,7 @@ interface SidebarDrawerProps {
   onSelectSession: (id: string, notebookId?: string) => void;
   onCreateNewSession: () => void;
   onDeleteSession: (id: string) => void;
+  onRenameSession?: (id: string, newTitle: string) => void;
   onClearAll: () => void;
   userMemory: UserMemoryProfile;
   theme?: ThemeColors;
@@ -57,6 +58,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
   onSelectSession,
   onCreateNewSession,
   onDeleteSession,
+  onRenameSession,
   onClearAll,
   userMemory,
   theme = DARK_THEME,
@@ -123,58 +125,102 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           background-color: rgba(0, 0, 0, 0.055) !important;
           border-color: rgba(0, 0, 0, 0.12) !important;
         }
-        .tmr-sb-dark .tmr-folder-row:hover {
+        .tmr-sb-dark .tmr-folder-row:hover,
+        .tmr-sb-dark .tmr-folder-row.is-menu-open {
           background-color: rgba(255, 255, 255, 0.05) !important;
         }
-        .tmr-sb-light .tmr-folder-row:hover {
+        .tmr-sb-light .tmr-folder-row:hover,
+        .tmr-sb-light .tmr-folder-row.is-menu-open {
           background-color: rgba(0, 0, 0, 0.04) !important;
         }
-        .tmr-sb-dark .tmr-folder-row:hover .tmr-folder-title {
+        .tmr-sb-dark .tmr-folder-row:hover .tmr-folder-title,
+        .tmr-sb-dark .tmr-folder-row.is-menu-open .tmr-folder-title {
           color: #F4F4F5 !important;
         }
-        .tmr-sb-light .tmr-folder-row:hover .tmr-folder-title {
+        .tmr-sb-light .tmr-folder-row:hover .tmr-folder-title,
+        .tmr-sb-light .tmr-folder-row.is-menu-open .tmr-folder-title {
           color: #18181B !important;
         }
         .tmr-folder-actions {
           opacity: 0;
+          visibility: hidden;
           pointer-events: none;
           transition: opacity 140ms ease;
         }
-        .tmr-folder-row:hover .tmr-folder-actions {
+        .tmr-folder-row:hover .tmr-folder-actions,
+        .tmr-folder-row.is-menu-open .tmr-folder-actions {
           opacity: 1 !important;
+          visibility: visible !important;
           pointer-events: auto !important;
         }
-        .tmr-sb-dark .tmr-sidebar-row:not(.is-active):hover {
+        .tmr-sb-dark .tmr-folder-icon-btn:hover {
+          background-color: rgba(255, 255, 255, 0.10) !important;
+        }
+        .tmr-sb-light .tmr-folder-icon-btn:hover {
+          background-color: rgba(0, 0, 0, 0.08) !important;
+        }
+        .tmr-chat-row {
+          transition: background-color 120ms ease;
+        }
+        .tmr-sb-dark .tmr-chat-row:not(.is-active):hover,
+        .tmr-sb-dark .tmr-chat-row.is-menu-open:not(.is-active) {
           background-color: rgba(255, 255, 255, 0.05) !important;
         }
-        .tmr-sb-light .tmr-sidebar-row:not(.is-active):hover {
+        .tmr-sb-light .tmr-chat-row:not(.is-active):hover,
+        .tmr-sb-light .tmr-chat-row.is-menu-open:not(.is-active) {
           background-color: rgba(0, 0, 0, 0.04) !important;
         }
-        .tmr-sb-dark .tmr-sidebar-row:hover .tmr-sb-row-title {
+        .tmr-sb-dark .tmr-chat-row:hover .tmr-chat-title,
+        .tmr-sb-dark .tmr-chat-row.is-menu-open .tmr-chat-title {
           color: #FFFFFF !important;
         }
-        .tmr-sb-light .tmr-sidebar-row:hover .tmr-sb-row-title {
+        .tmr-sb-light .tmr-chat-row:hover .tmr-chat-title,
+        .tmr-sb-light .tmr-chat-row.is-menu-open .tmr-chat-title {
           color: #000000 !important;
         }
-        .tmr-sidebar-row .tmr-row-time {
+        .tmr-chat-row .tmr-row-time {
           opacity: 1;
+          visibility: visible;
           pointer-events: auto;
           transition: opacity 120ms ease;
         }
-        .tmr-sidebar-row .tmr-row-delete {
+        .tmr-chat-row .tmr-row-more-btn {
           opacity: 0;
+          visibility: hidden;
           pointer-events: none;
           position: absolute;
           right: 0;
-          transition: opacity 120ms ease;
+          top: 50%;
+          transform: translateY(-50%);
+          transition: opacity 120ms ease, background-color 120ms ease;
         }
-        .tmr-sidebar-row:hover .tmr-row-time {
+        .tmr-chat-row:hover .tmr-row-time,
+        .tmr-chat-row.is-menu-open .tmr-row-time {
           opacity: 0 !important;
+          visibility: hidden !important;
           pointer-events: none !important;
         }
-        .tmr-sidebar-row:hover .tmr-row-delete {
+        .tmr-chat-row:hover .tmr-row-more-btn,
+        .tmr-chat-row.is-menu-open .tmr-row-more-btn {
           opacity: 1 !important;
+          visibility: visible !important;
           pointer-events: auto !important;
+        }
+        .tmr-sb-light .tmr-row-more-btn:hover {
+          background-color: rgba(0, 0, 0, 0.08) !important;
+        }
+        .tmr-sb-dark .tmr-row-more-btn:hover {
+          background-color: rgba(255, 255, 255, 0.12) !important;
+        }
+        .tmr-menu-item-rename:hover {
+          background-color: var(--tmr-menu-hover-bg) !important;
+        }
+        .tmr-menu-item-delete:hover {
+          background-color: rgba(239, 68, 68, 0.09) !important;
+          color: var(--tmr-menu-danger-color) !important;
+        }
+        .tmr-menu-item-delete:hover svg {
+          color: var(--tmr-menu-danger-color) !important;
         }
         .tmr-sb-dark .tmr-see-all-btn:hover .tmr-see-all-text {
           color: #E4E4E7 !important;
@@ -286,6 +332,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
             if (!isDesktop) onClose();
           }}
           onDeleteSession={onDeleteSession}
+          onRenameSession={onRenameSession}
           onCloseSidebarMobile={isDesktop ? undefined : onClose}
         />
       </ScrollView>

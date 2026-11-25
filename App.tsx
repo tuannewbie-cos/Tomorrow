@@ -1739,17 +1739,79 @@ export default function App() {
     }, 40);
   }, []);
 
-  // 5. XÓA 1 PHIÊN TRÒ CHUYỆN
-  const handleDeleteSession = async (sessionId: string) => {
-    const updated = await deleteSession(sessionId);
-    sessionsRef.current = updated;
-    setSessions(updated);
+  // 5. XÓA 1 PHIÊN TRÒ CHUYỆN (tức thì, không confirm chặn, đồng bộ CHAT_SESSIONS_V2 & mọi Split Panes)
+  const handleDeleteSession = useCallback((sessionId: string) => {
+    // 1. Ngắt luồng AI / stream nếu phiên bị xóa đang sinh phản hồi
+    for (const p of panesRef.current) {
+      if (p.sessionId === sessionId) {
+        cancelSequenceRef.current[p.id] = true;
+        if (abortControllersByPaneRef.current[p.id]) {
+          try {
+            abortControllersByPaneRef.current[p.id]?.abort();
+          } catch {}
+          abortControllersByPaneRef.current[p.id] = null;
+        }
+        setGeneratingPanes((prev) => {
+          if (!prev[p.id]) return prev;
+          const next = { ...prev, [p.id]: false };
+          generatingPanesRef.current = next;
+          return next;
+        });
+      }
+    }
+    clearSessionTimers(sessionId);
+    inFlightSessionsRef.current.delete(sessionId);
+    setTypingSessionIds((prev) => {
+      if (!prev[sessionId]) return prev;
+      const copy = { ...prev };
+      delete copy[sessionId];
+      return copy;
+    });
+    setTypingStatusBySession((prev) => ({ ...prev, [sessionId]: undefined }));
+    setSearchingWebBySession((prev) => ({ ...prev, [sessionId]: false }));
+
+    // 2. Xóa tức thì trong state sessions (functional update) & ghi đè xuống CHAT_SESSIONS_V2
+    setSessions((prev) => {
+      const next = prev.filter((s) => s.id !== sessionId);
+      sessionsRef.current = next;
+      void saveSessions(next);
+      return next;
+    });
+
+    // 3. Đặt lại sessionId = null trên tất cả các tab Split Screen đang mở phiên này
     const nextPanes = panesRef.current.map((p) =>
       p.sessionId === sessionId ? { ...p, sessionId: null } : p
     );
     panesRef.current = nextPanes;
     setPanes(nextPanes);
-  };
+
+    // 4. Dọn sạch sessionId khỏi savedPanes của toàn bộ Sổ trong TOMORROW_NOTEBOOKS_V1
+    setNotebooks((prevNotebooks) => {
+      const cleanedNotebooks = prevNotebooks.map((nb) => ({
+        ...nb,
+        savedPanes: nb.savedPanes?.map((sp) =>
+          sp.sessionId === sessionId ? { ...sp, sessionId: null } : sp
+        ),
+      }));
+      notebooksRef.current = cleanedNotebooks;
+      void saveNotebooks(cleanedNotebooks);
+      return cleanedNotebooks;
+    });
+  }, [clearSessionTimers]);
+
+  // 5.5. ĐỔI TÊN INLINE 1 PHIÊN TRÒ CHUYỆN & LƯU NGAY XUỐNG CHAT_SESSIONS_V2
+  const handleRenameSession = useCallback((sessionId: string, newTitle: string) => {
+    const cleanTitle = (newTitle || '').trim();
+    if (!cleanTitle) return;
+    setSessions((prev) => {
+      const next = prev.map((s) =>
+        s.id === sessionId ? { ...s, title: cleanTitle, updatedAt: Date.now() } : s
+      );
+      sessionsRef.current = next;
+      void saveSessions(next);
+      return next;
+    });
+  }, []);
 
   // 6. XÓA TOÀN BỘ LỊCH SỬ & RESET
   const handleClearAll = async () => {
@@ -2125,7 +2187,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: themeMode === 'dark' ? '#FFFFFF' : '#09090B' }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.10.3</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.10.4</Text>
               </View>
             </View>
           </View>
@@ -2169,6 +2231,7 @@ export default function App() {
             onSelectSession={handleSelectSession}
             onCreateNewSession={handleCreateNewSession}
             onDeleteSession={handleDeleteSession}
+            onRenameSession={handleRenameSession}
             onClearAll={handleClearAll}
             userMemory={userMemory}
             theme={theme}

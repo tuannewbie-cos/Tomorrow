@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -17,11 +17,55 @@ import {
   X,
   ChevronDown,
   ChevronRight,
+  MoreVertical,
 } from 'lucide-react-native';
 import { ChatSession } from '../types/chat';
 import { Notebook, DEFAULT_NOTEBOOK_ID, formatRelativeTime } from '../storage/notebookStorage';
 import { ThemeColors } from '../constants/theme';
 import { isPlaceholderOrNoiseTitle } from '../storage/chatStorage';
+
+const WEB_FONT_STACK =
+  'Be Vietnam Pro, Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+
+const getWebCreatePortal = ():
+  | ((children: React.ReactNode, container: Element) => React.ReactPortal)
+  | null => {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const reactDom = require('react-dom') as {
+      createPortal?: (children: React.ReactNode, container: Element) => React.ReactPortal;
+    };
+    return reactDom.createPortal ?? null;
+  } catch {
+    return null;
+  }
+};
+
+interface AnchorRect {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+  width: number;
+  height: number;
+}
+
+type ContextMenuState =
+  | {
+      kind: 'session';
+      id: string;
+      notebookId: string;
+      title: string;
+      anchorRect: AnchorRect;
+    }
+  | {
+      kind: 'notebook';
+      id: string;
+      title: string;
+      canDelete: boolean;
+      anchorRect: AnchorRect;
+    };
 
 export interface NotebookSidebarListProps {
   notebooks: Notebook[];
@@ -36,6 +80,7 @@ export interface NotebookSidebarListProps {
   onDeleteNotebook: (notebookId: string) => Promise<void> | void;
   onSelectSession: (sessionId: string, notebookId: string) => void;
   onCreateSessionInNotebook: (notebookId: string) => void;
+  onRenameSession?: (sessionId: string, newTitle: string) => Promise<void> | void;
   onDeleteSession: (sessionId: string) => void;
   onCloseSidebarMobile?: () => void;
 }
@@ -53,7 +98,14 @@ interface SidebarSessionRowProps {
   isActive: boolean;
   isOpenInWorkspace: boolean;
   isDark: boolean;
+  isMenuOpen: boolean;
+  isRenaming: boolean;
+  renameValue: string;
+  onChangeRenameValue: (value: string) => void;
+  onCommitRename: () => void;
+  onCancelRename: () => void;
   onSelectSession: (sessionId: string, notebookId: string) => void;
+  onToggleMenu: (session: ChatSession, notebookId: string, rect: AnchorRect) => void;
   onDeleteSession: (sessionId: string) => void;
   onCloseSidebarMobile?: () => void;
 }
@@ -64,11 +116,247 @@ const SidebarSessionRow: React.FC<SidebarSessionRowProps> = React.memo(({
   isActive,
   isOpenInWorkspace,
   isDark,
+  isMenuOpen,
+  isRenaming,
+  renameValue,
+  onChangeRenameValue,
+  onCommitRename,
+  onCancelRename,
   onSelectSession,
+  onToggleMenu,
   onDeleteSession,
   onCloseSidebarMobile,
 }) => {
   const relativeTime = formatRelativeTime(session.updatedAt);
+  const displayTitle = formatSidebarSessionTitle(session.title);
+  const webRenameInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' && isRenaming && webRenameInputRef.current) {
+      const input = webRenameInputRef.current;
+      input.focus();
+      input.select();
+    }
+  }, [isRenaming]);
+
+  if (Platform.OS === 'web') {
+    if (isRenaming) {
+      return (
+        <div
+          className="tmr-chat-row is-active"
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: 'relative',
+            display: 'flex',
+            alignItems: 'center',
+            height: 38,
+            padding: '0 8px 0 32px',
+            borderRadius: 10,
+            border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.22)' : 'rgba(0, 0, 0, 0.20)'}`,
+            backgroundColor: isDark ? '#242429' : '#FFFFFF',
+            boxSizing: 'border-box',
+            minWidth: 0,
+          }}
+        >
+          <input
+            ref={webRenameInputRef}
+            type="text"
+            value={renameValue}
+            onChange={(e) => onChangeRenameValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                onCommitRename();
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                onCancelRename();
+              }
+            }}
+            onBlur={() => {
+              if (renameValue.trim()) {
+                onCommitRename();
+              } else {
+                onCancelRename();
+              }
+            }}
+            aria-label="Đổi tên đoạn chat"
+            style={{
+              width: '100%',
+              minWidth: 0,
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              padding: 0,
+              margin: 0,
+              fontSize: 14.5,
+              fontWeight: 500,
+              letterSpacing: '-0.2px',
+              fontFamily: WEB_FONT_STACK,
+              color: isDark ? '#FFFFFF' : '#111113',
+            }}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        className={`tmr-chat-row${isActive ? ' is-active' : ''}${isMenuOpen ? ' is-menu-open' : ''}`}
+        onClick={() => {
+          onSelectSession(session.id, notebookId);
+          onCloseSidebarMobile?.();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelectSession(session.id, notebookId);
+            onCloseSidebarMobile?.();
+          }
+        }}
+        style={{
+          position: 'relative',
+          display: 'flex',
+          alignItems: 'center',
+          height: 38,
+          padding: '0 8px 0 32px',
+          borderRadius: 10,
+          border: `1px solid ${
+            isActive
+              ? isDark
+                ? 'rgba(255, 255, 255, 0.10)'
+                : 'rgba(0, 0, 0, 0.09)'
+              : 'transparent'
+          }`,
+          backgroundColor: isActive
+            ? isDark
+              ? '#242429'
+              : '#EBEBED'
+            : 'transparent',
+          cursor: 'pointer',
+          userSelect: 'none',
+          boxSizing: 'border-box',
+          minWidth: 0,
+        }}
+      >
+        {isOpenInWorkspace && !isActive && (
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              left: 15,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: 5,
+              height: 5,
+              borderRadius: '9999px',
+              backgroundColor: isDark ? '#E4E4E7' : '#18181B',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+
+        <span
+          className="tmr-chat-title"
+          title={displayTitle}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            fontSize: 14.5,
+            lineHeight: '20px',
+            letterSpacing: '-0.2px',
+            fontFamily: WEB_FONT_STACK,
+            fontWeight: isActive ? 600 : 500,
+            color: isActive
+              ? isDark
+                ? '#FFFFFF'
+                : '#000000'
+              : isDark
+              ? '#E4E4E7'
+              : '#1F1F23',
+          }}
+        >
+          {displayTitle}
+        </span>
+
+        <div
+          style={{
+            position: 'relative',
+            width: 32,
+            height: 28,
+            flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            marginLeft: 6,
+          }}
+        >
+          <span
+            className="tmr-row-time"
+            style={{
+              fontSize: 13,
+              fontWeight: 500,
+              fontVariantNumeric: 'tabular-nums',
+              letterSpacing: '-0.1px',
+              fontFamily: WEB_FONT_STACK,
+              color: isDark ? '#8E8E93' : '#6B7280',
+              whiteSpace: 'nowrap',
+              pointerEvents: 'none',
+            }}
+          >
+            {relativeTime}
+          </span>
+
+          <button
+            type="button"
+            className="tmr-row-more-btn"
+            data-tmr-more-trigger={`session:${session.id}`}
+            aria-label="Tùy chọn đoạn chat"
+            title="Tùy chọn"
+            onClick={(e) => {
+              e.stopPropagation();
+              const rect = e.currentTarget.getBoundingClientRect();
+              onToggleMenu(session, notebookId, {
+                top: rect.top,
+                bottom: rect.bottom,
+                left: rect.left,
+                right: rect.right,
+                width: rect.width,
+                height: rect.height,
+              });
+            }}
+            style={{
+              position: 'absolute',
+              right: 0,
+              top: '50%',
+              transform: 'translateY(-50%)',
+              width: 28,
+              height: 28,
+              borderRadius: '9999px',
+              border: 'none',
+              background: 'transparent',
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              opacity: isMenuOpen ? 1 : 0,
+              pointerEvents: isMenuOpen ? 'auto' : 'none',
+              color: isDark ? '#E4E4E7' : '#27272A',
+            }}
+          >
+            <MoreVertical size={15} strokeWidth={2} color={isDark ? '#E4E4E7' : '#27272A'} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Pressable
@@ -83,17 +371,12 @@ const SidebarSessionRow: React.FC<SidebarSessionRowProps> = React.memo(({
             : 'transparent',
         },
         pressed && { opacity: 0.78 },
-        Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
       ]}
       onPress={() => {
         onSelectSession(session.id, notebookId);
         onCloseSidebarMobile?.();
       }}
-      {...(Platform.OS === 'web' && ({
-        className: `tmr-sidebar-row${isActive ? ' is-active' : ''}`,
-      } as any))}
     >
-      {/* Chấm tròn đơn sắc 5px trung tính cho pane phụ Split Screen */}
       {isOpenInWorkspace && !isActive && (
         <View
           pointerEvents="none"
@@ -104,7 +387,6 @@ const SidebarSessionRow: React.FC<SidebarSessionRowProps> = React.memo(({
         />
       )}
 
-      {/* Khu vực tiêu đề phiên giãn đầy 100% */}
       <View style={styles.sessionMainArea}>
         <Text
           numberOfLines={1}
@@ -118,43 +400,34 @@ const SidebarSessionRow: React.FC<SidebarSessionRowProps> = React.memo(({
               fontWeight: isActive ? '600' : '500',
             },
           ]}
-          {...(Platform.OS === 'web' && ({ className: 'tmr-sb-row-title' } as any))}
         >
-          {formatSidebarSessionTitle(session.title)}
+          {displayTitle}
         </Text>
       </View>
 
-      {/* Mốc thời gian & Nút Xóa: dùng CSS :hover thuần trên Web, nút xóa mặc định pointerEvents='none' */}
       <View style={styles.sessionRightBox}>
         <Text
-          pointerEvents="none"
           style={[
             styles.relativeTimeText,
             { color: isDark ? '#8E8E93' : '#6B7280' },
           ]}
-          {...(Platform.OS === 'web' && ({ className: 'tmr-row-time' } as any))}
         >
           {relativeTime}
         </Text>
-        {Platform.OS === 'web' && (
-          <Pressable
-            pointerEvents="none"
-            style={({ pressed }) => [
-              styles.sessionDeleteIconBtn,
-              pressed && { opacity: 0.7 },
-              { cursor: 'pointer' } as any,
-            ]}
-            onPress={(e) => {
-              e.stopPropagation();
-              onDeleteSession(session.id);
-            }}
-            hitSlop={6}
-            accessibilityLabel="Xóa đoạn chat"
-            {...({ className: 'tmr-row-delete' } as any)}
-          >
-            <Trash2 size={14} color="#EF4444" />
-          </Pressable>
-        )}
+        <Pressable
+          onPress={(e) => {
+            e.stopPropagation();
+            onDeleteSession(session.id);
+          }}
+          hitSlop={6}
+          accessibilityLabel="Xóa đoạn chat"
+          style={({ pressed }) => [
+            styles.sessionDeleteIconBtn,
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Trash2 size={14} color="#EF4444" />
+        </Pressable>
       </View>
     </Pressable>
   );
@@ -173,6 +446,7 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
   onDeleteNotebook,
   onSelectSession,
   onCreateSessionInNotebook,
+  onRenameSession,
   onDeleteSession,
   onCloseSidebarMobile,
 }) => {
@@ -186,12 +460,70 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
   // Trạng thái đổi tên Sổ inline
   const [renamingNotebookId, setRenamingNotebookId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState<string>('');
+  const webNotebookRenameInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Trạng thái đổi tên Đoạn chat inline
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [renameSessionValue, setRenameSessionValue] = useState<string>('');
+
+  // Trạng thái menu 3 chấm nổi kiểu Antigravity (Portal)
+  const [openMenu, setOpenMenu] = useState<ContextMenuState | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   // Trạng thái mở rộng danh sách phiên "See all (N)" theo từng notebook
   const [expandedNotebookIds, setExpandedNotebookIds] = useState<Record<string, boolean>>({});
 
   // Palette Antigravity Minimalist
   const dividerLineColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
+
+  useEffect(() => {
+    if (Platform.OS === 'web' && renamingNotebookId && webNotebookRenameInputRef.current) {
+      webNotebookRenameInputRef.current.focus();
+      webNotebookRenameInputRef.current.select();
+    }
+  }, [renamingNotebookId]);
+
+  // Đóng menu 3 chấm khi bấm ra ngoài, cuộn trang hoặc bấm Esc
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !openMenu || typeof document === 'undefined') return;
+
+    const handlePointerDown = (ev: PointerEvent) => {
+      const target = ev.target as Element | null;
+      if (!target) {
+        setOpenMenu(null);
+        return;
+      }
+      if (menuRef.current && menuRef.current.contains(target)) {
+        return;
+      }
+      if (target.closest('[data-tmr-more-trigger]')) {
+        return;
+      }
+      setOpenMenu(null);
+    };
+
+    const handleScrollOrResize = () => {
+      setOpenMenu(null);
+    };
+
+    const handleKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') {
+        setOpenMenu(null);
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('scroll', handleScrollOrResize, true);
+    window.addEventListener('resize', handleScrollOrResize);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('scroll', handleScrollOrResize, true);
+      window.removeEventListener('resize', handleScrollOrResize);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [openMenu]);
 
   // Xử lý tạo sổ mới
   const handleConfirmCreateNotebook = async () => {
@@ -209,11 +541,12 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
   };
 
   // Xử lý đổi tên sổ
-  const handleStartRename = (nb: Notebook, e?: any) => {
+  const handleStartRename = useCallback((nb: Notebook, e?: any) => {
     if (e) e.stopPropagation();
+    setRenamingSessionId(null);
     setRenamingNotebookId(nb.id);
     setRenameValue(nb.name);
-  };
+  }, []);
 
   const handleConfirmRename = async (nbId: string) => {
     const trimmed = renameValue.trim();
@@ -228,6 +561,56 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
     setRenamingNotebookId(null);
     setRenameValue('');
   };
+
+  // Xử lý đổi tên đoạn chat inline
+  const handleCommitSessionRename = useCallback(async () => {
+    if (!renamingSessionId) return;
+    const trimmed = renameSessionValue.trim();
+    const targetId = renamingSessionId;
+    setRenamingSessionId(null);
+    setRenameSessionValue('');
+    if (trimmed && onRenameSession) {
+      await onRenameSession(targetId, trimmed);
+    }
+  }, [renamingSessionId, renameSessionValue, onRenameSession]);
+
+  const handleCancelSessionRename = useCallback(() => {
+    setRenamingSessionId(null);
+    setRenameSessionValue('');
+  }, []);
+
+  // Mở / đóng menu 3 chấm của đoạn chat
+  const handleToggleSessionMenu = useCallback(
+    (session: ChatSession, notebookId: string, rect: AnchorRect) => {
+      setOpenMenu((prev) =>
+        prev?.kind === 'session' && prev.id === session.id
+          ? null
+          : {
+              kind: 'session',
+              id: session.id,
+              notebookId,
+              title: session.title || formatSidebarSessionTitle(session.title),
+              anchorRect: rect,
+            }
+      );
+    },
+    []
+  );
+
+  // Mở / đóng menu 3 chấm của Sổ
+  const handleToggleNotebookMenu = useCallback((nb: Notebook, rect: AnchorRect) => {
+    setOpenMenu((prev) =>
+      prev?.kind === 'notebook' && prev.id === nb.id
+        ? null
+        : {
+            kind: 'notebook',
+            id: nb.id,
+            title: nb.name,
+            canDelete: nb.id !== DEFAULT_NOTEBOOK_ID,
+            anchorRect: rect,
+          }
+    );
+  }, []);
 
   // Xử lý xóa sổ
   const handleDeleteNotebookClick = async (nbId: string, e?: any) => {
@@ -379,6 +762,7 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
         {notebooks.map((nb) => {
           const isNotebookActive = nb.id === activeNotebookId;
           const isRenaming = renamingNotebookId === nb.id;
+          const isFolderMenuOpen = openMenu?.kind === 'notebook' && openMenu.id === nb.id;
 
           // Lọc danh sách phiên thuộc notebook này
           const nbSessions = sessions.filter(
@@ -392,67 +776,265 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
 
           return (
             <View key={nb.id} style={styles.notebookGroup}>
-              {/* HÀNG TIÊU ĐỀ SỔ (Folder Row: Flat Minimalist, 0 hover re-render) */}
+              {/* HÀNG TIÊU ĐỀ SỔ (Folder Row: Flat Minimalist) */}
               {isRenaming ? (
-                <View
-                  style={[
-                    styles.inlineRenameBox,
-                    {
+                Platform.OS === 'web' ? (
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      height: 36,
+                      padding: '0 8px 0 10px',
+                      borderRadius: 9,
+                      marginBottom: 4,
+                      border: `1px solid ${
+                        isDark ? 'rgba(255, 255, 255, 0.22)' : 'rgba(0, 0, 0, 0.18)'
+                      }`,
                       backgroundColor: isDark ? '#1C1C20' : '#FFFFFF',
-                      borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.14)',
-                    },
-                  ]}
-                >
-                  <Folder size={13} color={isDark ? '#F4F4F5' : '#111113'} style={{ marginRight: 6 }} />
-                  <TextInput
-                    autoFocus
-                    style={[styles.inlineInput, { color: isDark ? '#F4F4F5' : '#111113' }]}
-                    value={renameValue}
-                    onChangeText={setRenameValue}
-                    onKeyPress={(e) => {
-                      if (Platform.OS === 'web') {
-                        const key = (e.nativeEvent as any).key;
-                        if (key === 'Enter') {
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    <Folder
+                      size={16}
+                      strokeWidth={1.75}
+                      color={isDark ? '#F4F4F5' : '#111113'}
+                      style={{ marginRight: 9, flexShrink: 0 }}
+                    />
+                    <input
+                      ref={webNotebookRenameInputRef}
+                      type="text"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
                           e.preventDefault();
-                          handleConfirmRename(nb.id);
-                        } else if (key === 'Escape') {
+                          e.stopPropagation();
+                          void handleConfirmRename(nb.id);
+                        } else if (e.key === 'Escape') {
                           e.preventDefault();
+                          e.stopPropagation();
                           handleCancelRename();
                         }
-                      }
-                    }}
-                    onSubmitEditing={() => handleConfirmRename(nb.id)}
-                    returnKeyType="done"
-                  />
-                  <Pressable
-                    style={styles.inlineActionBtn}
-                    onPress={() => handleConfirmRename(nb.id)}
-                    hitSlop={4}
+                      }}
+                      onBlur={() => {
+                        if (renameValue.trim()) {
+                          void handleConfirmRename(nb.id);
+                        } else {
+                          handleCancelRename();
+                        }
+                      }}
+                      aria-label="Đổi tên sổ"
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        border: 'none',
+                        outline: 'none',
+                        background: 'transparent',
+                        padding: 0,
+                        margin: 0,
+                        fontSize: 14.5,
+                        fontWeight: 600,
+                        letterSpacing: '-0.15px',
+                        fontFamily: WEB_FONT_STACK,
+                        color: isDark ? '#F4F4F5' : '#111113',
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <View
+                    style={[
+                      styles.inlineRenameBox,
+                      {
+                        backgroundColor: isDark ? '#1C1C20' : '#FFFFFF',
+                        borderColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.14)',
+                      },
+                    ]}
                   >
-                    <Check size={14} color="#10B981" />
-                  </Pressable>
-                  <Pressable
-                    style={styles.inlineActionBtn}
-                    onPress={handleCancelRename}
-                    hitSlop={4}
-                  >
-                    <X size={14} color="#EF4444" />
-                  </Pressable>
-                </View>
-              ) : (
-                <View
-                  style={[
-                    styles.folderRow,
-                    { backgroundColor: 'transparent' },
-                  ]}
-                  {...(Platform.OS === 'web' && ({ className: 'tmr-folder-row' } as any))}
+                    <Folder size={13} color={isDark ? '#F4F4F5' : '#111113'} style={{ marginRight: 6 }} />
+                    <TextInput
+                      autoFocus
+                      style={[styles.inlineInput, { color: isDark ? '#F4F4F5' : '#111113' }]}
+                      value={renameValue}
+                      onChangeText={setRenameValue}
+                      onSubmitEditing={() => handleConfirmRename(nb.id)}
+                      returnKeyType="done"
+                    />
+                    <Pressable
+                      style={styles.inlineActionBtn}
+                      onPress={() => handleConfirmRename(nb.id)}
+                      hitSlop={4}
+                    >
+                      <Check size={14} color="#10B981" />
+                    </Pressable>
+                    <Pressable
+                      style={styles.inlineActionBtn}
+                      onPress={handleCancelRename}
+                      hitSlop={4}
+                    >
+                      <X size={14} color="#EF4444" />
+                    </Pressable>
+                  </View>
+                )
+              ) : Platform.OS === 'web' ? (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className={`tmr-folder-row${isFolderMenuOpen ? ' is-menu-open' : ''}`}
+                  onClick={() => onSelectNotebook(nb.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelectNotebook(nb.id);
+                    }
+                  }}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    height: 36,
+                    padding: '0 8px 0 10px',
+                    borderRadius: 9,
+                    marginBottom: 4,
+                    backgroundColor: 'transparent',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    boxSizing: 'border-box',
+                  }}
                 >
-                  {/* Bấm vào tiêu đề sổ để chuyển sổ */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      flex: 1,
+                      minWidth: 0,
+                    }}
+                  >
+                    <Folder
+                      size={16}
+                      strokeWidth={1.75}
+                      color={
+                        isNotebookActive
+                          ? isDark
+                            ? '#F4F4F5'
+                            : '#18181B'
+                          : isDark
+                          ? '#A1A1AA'
+                          : '#52525B'
+                      }
+                      style={{ marginRight: 9, flexShrink: 0 }}
+                    />
+                    <span
+                      className="tmr-folder-title"
+                      title={nb.name}
+                      style={{
+                        fontSize: 14.5,
+                        fontWeight: 600,
+                        letterSpacing: '-0.15px',
+                        fontFamily: WEB_FONT_STACK,
+                        color: isNotebookActive
+                          ? isDark
+                            ? '#F4F4F5'
+                            : '#18181B'
+                          : isDark
+                          ? '#A1A1AA'
+                          : '#52525B',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {nb.name}
+                    </span>
+                  </div>
+
+                  <div
+                    className="tmr-folder-actions"
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 2,
+                      flexShrink: 0,
+                      marginLeft: 4,
+                      opacity: isFolderMenuOpen ? 1 : 0,
+                      pointerEvents: isFolderMenuOpen ? 'auto' : 'none',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="tmr-folder-icon-btn"
+                      aria-label="Tạo đoạn chat trong sổ này"
+                      title="Tạo đoạn chat mới trong sổ này"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onCreateSessionInNotebook(nb.id);
+                        onCloseSidebarMobile?.();
+                      }}
+                      style={{
+                        width: 26,
+                        height: 26,
+                        borderRadius: '9999px',
+                        border: 'none',
+                        background: 'transparent',
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <Plus size={14} strokeWidth={2} color={isDark ? '#E4E4E7' : '#27272A'} />
+                    </button>
+
+                    <button
+                      type="button"
+                      className="tmr-folder-icon-btn"
+                      data-tmr-more-trigger={`notebook:${nb.id}`}
+                      aria-label="Tùy chọn sổ"
+                      title="Tùy chọn sổ"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        handleToggleNotebookMenu(nb, {
+                          top: rect.top,
+                          bottom: rect.bottom,
+                          left: rect.left,
+                          right: rect.right,
+                          width: rect.width,
+                          height: rect.height,
+                        });
+                      }}
+                      style={{
+                        width: 26,
+                        height: 26,
+                        borderRadius: '9999px',
+                        border: 'none',
+                        background: 'transparent',
+                        padding: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <MoreVertical
+                        size={14}
+                        strokeWidth={2}
+                        color={isDark ? '#E4E4E7' : '#27272A'}
+                      />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <View style={[styles.folderRow, { backgroundColor: 'transparent' }]}>
                   <Pressable
                     style={({ pressed }) => [
                       styles.folderMainClick,
                       pressed && { opacity: 0.8 },
-                      Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
                     ]}
                     onPress={() => onSelectNotebook(nb.id)}
                   >
@@ -477,27 +1059,16 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                           fontWeight: '600',
                         },
                       ]}
-                      {...(Platform.OS === 'web' && ({ className: 'tmr-folder-title' } as any))}
                     >
                       {nb.name}
                     </Text>
                   </Pressable>
 
-                  {/* Nút hành động góc phải của Folder: Ẩn khi nghỉ (CSS :hover reveal trên Web) */}
-                  <View
-                    pointerEvents={Platform.OS === 'web' ? 'none' : 'auto'}
-                    style={[
-                      styles.folderActionsRight,
-                      Platform.OS === 'web' && ({ opacity: 0 } as any),
-                    ]}
-                    {...(Platform.OS === 'web' && ({ className: 'tmr-folder-actions' } as any))}
-                  >
-                    {/* Nút + tạo chat trực tiếp trong sổ này */}
+                  <View style={styles.folderActionsRight}>
                     <Pressable
                       style={({ pressed }) => [
                         styles.folderActionIconBtn,
                         pressed && { opacity: 0.7 },
-                        Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
                       ]}
                       onPress={(e) => {
                         e.stopPropagation();
@@ -510,12 +1081,10 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                       <Plus size={14} color={isDark ? '#E4E4E7' : '#27272A'} />
                     </Pressable>
 
-                    {/* Nút Sửa tên */}
                     <Pressable
                       style={({ pressed }) => [
                         styles.folderActionIconBtn,
                         pressed && { opacity: 0.7 },
-                        Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
                       ]}
                       onPress={(e) => handleStartRename(nb, e)}
                       hitSlop={6}
@@ -524,13 +1093,11 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                       <Pencil size={13} color={isDark ? '#E4E4E7' : '#27272A'} />
                     </Pressable>
 
-                    {/* Nút Xóa sổ (chỉ hiển thị với sổ tùy chỉnh, không hiển thị default-notebook) */}
                     {nb.id !== DEFAULT_NOTEBOOK_ID && (
                       <Pressable
                         style={({ pressed }) => [
                           styles.folderActionIconBtn,
                           pressed && { opacity: 0.7 },
-                          Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
                         ]}
                         onPress={(e) => handleDeleteNotebookClick(nb.id, e)}
                         hitSlop={6}
@@ -550,19 +1117,32 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
                     Chưa có đoạn chat nào
                   </Text>
                 ) : (
-                  displayedSessions.map((sess) => (
-                    <SidebarSessionRow
-                      key={sess.id}
-                      session={sess}
-                      notebookId={nb.id}
-                      isActive={sess.id === activeSessionId}
-                      isOpenInWorkspace={openSessionIdsInWorkspace.includes(sess.id)}
-                      isDark={isDark}
-                      onSelectSession={onSelectSession}
-                      onDeleteSession={onDeleteSession}
-                      onCloseSidebarMobile={onCloseSidebarMobile}
-                    />
-                  ))
+                  displayedSessions.map((sess) => {
+                    const isSessionRenaming = renamingSessionId === sess.id;
+                    const isSessionMenuOpen =
+                      openMenu?.kind === 'session' && openMenu.id === sess.id;
+
+                    return (
+                      <SidebarSessionRow
+                        key={sess.id}
+                        session={sess}
+                        notebookId={nb.id}
+                        isActive={sess.id === activeSessionId}
+                        isOpenInWorkspace={openSessionIdsInWorkspace.includes(sess.id)}
+                        isDark={isDark}
+                        isMenuOpen={isSessionMenuOpen}
+                        isRenaming={isSessionRenaming}
+                        renameValue={isSessionRenaming ? renameSessionValue : ''}
+                        onChangeRenameValue={setRenameSessionValue}
+                        onCommitRename={() => void handleCommitSessionRename()}
+                        onCancelRename={handleCancelSessionRename}
+                        onSelectSession={onSelectSession}
+                        onToggleMenu={handleToggleSessionMenu}
+                        onDeleteSession={onDeleteSession}
+                        onCloseSidebarMobile={onCloseSidebarMobile}
+                      />
+                    );
+                  })
                 )}
 
                 {/* Nút See all (N) / Thu gọn căn thẳng mép chữ 32px */}
@@ -606,6 +1186,161 @@ export const NotebookSidebarList: React.FC<NotebookSidebarListProps> = ({
           );
         })}
       </View>
+
+      {/* 3. CONTEXT MENU NỔI KIỂU ANTIGRAVITY QUA PORTAL (CHỈ RENAME & DELETE) */}
+      {(() => {
+        if (Platform.OS !== 'web' || !openMenu || typeof document === 'undefined') {
+          return null;
+        }
+        const createPortalFn = getWebCreatePortal();
+        if (!createPortalFn) return null;
+
+        const showDelete =
+          openMenu.kind === 'session' || (openMenu.kind === 'notebook' && openMenu.canDelete);
+        const MENU_WIDTH = 172;
+        const estimatedHeight = showDelete ? 94 : 48;
+        const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1200;
+        const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800;
+
+        const shouldFlipUp =
+          openMenu.anchorRect.bottom + 6 + estimatedHeight > viewportH - 12 &&
+          openMenu.anchorRect.top - 6 - estimatedHeight >= 12;
+
+        const topPos = shouldFlipUp
+          ? Math.max(12, openMenu.anchorRect.top - 6 - estimatedHeight)
+          : Math.min(viewportH - estimatedHeight - 12, openMenu.anchorRect.bottom + 6);
+
+        const leftPos = Math.max(
+          12,
+          Math.min(viewportW - MENU_WIDTH - 12, openMenu.anchorRect.left)
+        );
+
+        const menuCssVars = {
+          '--tmr-menu-hover-bg': isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
+          '--tmr-menu-danger-color': isDark ? '#F87171' : '#DC2626',
+        } as React.CSSProperties;
+
+        return createPortalFn(
+          <div
+            ref={menuRef}
+            role="menu"
+            aria-label="Menu tùy chọn"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            style={{
+              ...menuCssVars,
+              position: 'fixed',
+              top: topPos,
+              left: leftPos,
+              width: MENU_WIDTH,
+              padding: 6,
+              borderRadius: 12,
+              backgroundColor: isDark ? '#1E1E22' : '#FFFFFF',
+              border: `1px solid ${
+                isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.10)'
+              }`,
+              boxShadow: isDark
+                ? '0 12px 32px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35)'
+                : '0 10px 30px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06)',
+              zIndex: 9999,
+              boxSizing: 'border-box',
+              fontFamily: WEB_FONT_STACK,
+            }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="tmr-menu-item-rename"
+              onClick={(e) => {
+                e.stopPropagation();
+                const current = openMenu;
+                setOpenMenu(null);
+                if (current.kind === 'session') {
+                  setRenamingNotebookId(null);
+                  setRenamingSessionId(current.id);
+                  setRenameSessionValue(formatSidebarSessionTitle(current.title));
+                } else {
+                  setRenamingSessionId(null);
+                  setRenamingNotebookId(current.id);
+                  setRenameValue(current.title);
+                }
+              }}
+              style={{
+                width: '100%',
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                padding: '8px 10px',
+                borderRadius: 8,
+                border: 'none',
+                background: 'transparent',
+                color: isDark ? '#F4F4F5' : '#18181B',
+                fontSize: 13.5,
+                fontWeight: 500,
+                fontFamily: WEB_FONT_STACK,
+                textAlign: 'left',
+                cursor: 'pointer',
+                boxSizing: 'border-box',
+              }}
+            >
+              <Pencil size={15} strokeWidth={1.85} />
+              <span>Rename</span>
+            </button>
+
+            {showDelete && (
+              <>
+                <div
+                  style={{
+                    height: 1,
+                    margin: '4px 6px',
+                    backgroundColor: isDark
+                      ? 'rgba(255, 255, 255, 0.08)'
+                      : 'rgba(0, 0, 0, 0.08)',
+                  }}
+                />
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="tmr-menu-item-delete"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const current = openMenu;
+                    setOpenMenu(null);
+                    if (current.kind === 'session') {
+                      onDeleteSession(current.id);
+                    } else if (current.kind === 'notebook' && current.canDelete) {
+                      void handleDeleteNotebookClick(current.id);
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '8px 10px',
+                    borderRadius: 8,
+                    border: 'none',
+                    background: 'transparent',
+                    color: isDark ? '#F4F4F5' : '#18181B',
+                    fontSize: 13.5,
+                    fontWeight: 500,
+                    fontFamily: WEB_FONT_STACK,
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  <Trash2 size={15} strokeWidth={1.85} />
+                  <span>Delete</span>
+                </button>
+              </>
+            )}
+          </div>,
+          document.body
+        );
+      })()}
     </View>
   );
 };
