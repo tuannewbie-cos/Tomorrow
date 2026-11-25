@@ -39,6 +39,7 @@ export interface GenerateProactiveGreetingInput {
   activeNotebookId?: string;
   memoryVault?: StructuredMemoryVault | UserMemoryVault | UserMemoryProfile | null;
   now?: Date;
+  excludeSessionIds?: string[];
 }
 
 export interface ResumableSessionMatch {
@@ -151,26 +152,97 @@ function formatGreetingRelativeTime(updatedAt: number, nowMs: number): string {
 const TECHNICAL_SIGNAL_REGEX =
   /(\?|code|bug|lỗi|fix|tích phân|đạo hàm|giải tích|đại số|ma trận|vật lý|hóa|mạch|led|c\+\+|cpp|python|typescript|javascript|react|sql|api|tài chính|đầu tư|etf|tiết kiệm|ngân sách|hàm|thuật toán|oop|con trỏ)/i;
 
+const CLOSING_PHRASES = [
+  'ok', 'okk', 'okkk', 'okii', 'oki', 'okie', 'okela', 'ok nha', 'ok nhé', 'ok nhe',
+  'ok r', 'ok rồi', 'ok roi', 'ok r đó', 'ok rồi đó',
+  'oke', 'oke r', 'oke rồi', 'oke nha', 'oke nhé',
+  'thôi', 'thôi nhé', 'thôi nha', 'nghỉ', 'nghỉ thôi', 'đi ngủ', 'ngủ đây', 'ngủ thôi',
+  'bye', 'bye nhé', 'pp', 'tạm biệt', 'g9', 'cook', 'sybau', 'cút', 'im', 'im đi',
+  'được rồi', 'duoc roi', 'dc r', 'đc r', 'ổn rồi', 'on roi', 'ổn r',
+  'xong', 'xong rồi', 'xong roi', 'xong r', 'đã xong', 'da xong', 'đã xong rồi',
+  'cảm ơn', 'cam on', 'cảm ơn nhé', 'cảm ơn nha', 'cảm ơn nhiều',
+  'thanks', 'tks', 'thank you', 'thank kiu', 'cảm ơn nha xong rồi',
+];
+
+const FOLLOW_UP_QUESTION_WORDS_REGEX =
+  /\b(nhưng|còn|tiếp|sao|lỗi|bug|giải thích)\b/i;
+
+/**
+ * HẠNG MỤC 1 (v4.10.2): Kiểm tra phiên trò chuyện đã được chốt xong chưa.
+ * Trả về true nếu tin nhắn cuối cùng của user là câu chốt ngắn (<= 40 ký tự),
+ * khớp tín hiệu STOP_SIGNAL / cụm chốt việc, và KHÔNG chứa dấu hỏi '?' hay từ hỏi tiếp.
+ */
+export function isSessionCompleted(session?: ChatSession | null): boolean {
+  if (!session || !Array.isArray(session.messages) || session.messages.length === 0) {
+    return false;
+  }
+
+  const userMessages = session.messages.filter(
+    (m) => m && (m.role === 'user' || m.sender === 'user')
+  );
+  if (userMessages.length === 0) return false;
+
+  const rawLastUserText = (userMessages[userMessages.length - 1]?.text || '').trim();
+  if (!rawLastUserText || rawLastUserText.length > 40) {
+    return false;
+  }
+
+  // Không lọc nếu có dấu hỏi hoặc từ hỏi tiếp / báo lỗi
+  if (rawLastUserText.includes('?') || FOLLOW_UP_QUESTION_WORDS_REGEX.test(rawLastUserText)) {
+    return false;
+  }
+
+  const normalized = rawLastUserText
+    .toLowerCase()
+    .replace(/[.!?:;~…]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) return false;
+  if (CLOSING_PHRASES.includes(normalized)) return true;
+
+  // Hỗ trợ cụm ghép bằng dấu phẩy / dấu gạch / khoảng trắng như "xong rồi, ok r"
+  const segments = normalized
+    .split(/[,;/]+/)
+    .map((part) => part.replace(/[.!?:;~…]+$/g, '').trim())
+    .filter(Boolean);
+
+  if (segments.length > 0 && segments.every((seg) => CLOSING_PHRASES.includes(seg))) {
+    return true;
+  }
+
+  return false;
+}
+
 /**
  * Tín hiệu 2 — Quét phiên học/làm việc dang dở trong vòng 72 giờ
- * Bỏ qua hoàn toàn các phiên < 2 tin nhắn hoặc tiêu đề rác (isPlaceholderOrNoiseTitle).
+ * Bỏ qua hoàn toàn các phiên < 2 tin nhắn, tiêu đề rác (isPlaceholderOrNoiseTitle),
+ * phiên đã chốt xong (isSessionCompleted) và các phiên đang mở ở tab khác (excludeSessionIds).
  */
 export function findResumableSession(
   sessions: ChatSession[] = [],
   activeNotebookId?: string,
-  now: Date = new Date()
+  now: Date = new Date(),
+  excludeSessionIds: string[] = []
 ): ResumableSessionMatch | null {
   if (!Array.isArray(sessions) || sessions.length === 0) return null;
 
   const nowMs = now.getTime();
   const targetNb = activeNotebookId || DEFAULT_NOTEBOOK_ID;
+  const excludeSet = new Set((excludeSessionIds || []).filter(Boolean));
   let bestMatch: ResumableSessionMatch | null = null;
 
   for (const session of sessions) {
     if (!session || !Array.isArray(session.messages) || session.messages.length < 2) {
       continue;
     }
+    if (excludeSet.has(session.id)) {
+      continue;
+    }
     if (isPlaceholderOrNoiseTitle(session.title)) {
+      continue;
+    }
+    if (isSessionCompleted(session)) {
       continue;
     }
     const updatedAt = typeof session.updatedAt === 'number' ? session.updatedAt : 0;
@@ -314,6 +386,7 @@ export function generateProactiveGreeting(
     activeNotebookId = DEFAULT_NOTEBOOK_ID,
     memoryVault,
     now = new Date(),
+    excludeSessionIds = [],
   } = input;
 
   const chrono: ChronoContext = buildChronoContext(now);
@@ -322,8 +395,8 @@ export function generateProactiveGreeting(
 
   const normalizedVault: StructuredMemoryVault = migrateAndNormalizeVault(memoryVault, chrono);
 
-  // Tín hiệu 2: Tìm phiên dang dở (ưu tiên sổ đang active)
-  const resumable = findResumableSession(sessions, activeNotebookId, now);
+  // Tín hiệu 2: Tìm phiên dang dở (ưu tiên sổ đang active, lọc phiên đã chốt & né tab đang mở)
+  const resumable = findResumableSession(sessions, activeNotebookId, now, excludeSessionIds);
   const activeNotebookMatch = resumable && resumable.inActiveNotebook ? resumable : null;
 
   // Tín hiệu 3 & 4: Kiểm tra Empathy Override từ moodHistory trong 24h

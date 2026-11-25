@@ -1,4 +1,4 @@
-# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.10)
+# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.10.2)
 
 ## 1. MÔI TRƯỜNG, NỀN TẢNG CỐT LÕI & CÁC KHÓA LƯU TRỮ
 - **Hệ điều hành phát triển & vận hành:** macOS (Ứng dụng đích chạy tại `/Applications/Tomorrow.app` kết nối Vercel Production). Mọi script/shell dùng chuẩn Unix/macOS, không dùng cú pháp Windows.
@@ -19,7 +19,7 @@
   - `types/providers.ts`: Cổng định nghĩa trừu tượng sẵn sàng mở rộng đa nhà cung cấp (OpenAI, Gemini, Claude, DeepSeek, Local Ollama).
   - `services/microPsychProfiler.ts`: Bộ giải mã DNA phong cách gõ & 7 trạng thái tâm lý ngầm của người dùng.
   - `services/chronoService.ts`: Đồng hồ thời gian thực & 6 khung nhịp sinh học (`buildChronoContext`), khóa rào chắn chống nhắc thức khuya vào ban ngày.
-  - `services/proactiveGreetingService.ts`: Động cơ chào chủ động cục bộ 0-token (`< 2ms`), quét phiên dang dở theo Sổ ghi chú, Empathy Override, và First-Turn Context Bridge (`[PROACTIVE_GREETING]` <= 180 ký tự).
+  - `services/proactiveGreetingService.ts`: Động cơ chào chủ động cục bộ 0-token (`< 2ms`), lọc phiên đã chốt xong (`isSessionCompleted`), né các phiên đang mở ở Split Panes (`excludeSessionIds`), Empathy Override, và First-Turn Context Bridge (`[PROACTIVE_GREETING]` <= 180 ký tự).
 
 ## 2. LUẬT BẢO TOÀN GIAO DIỆN DESKTOP & MOBILE (`DESIGN.md`, `App.tsx`, `SidebarDrawer.tsx`, `ChatBubble.tsx`, `RichMarkdownView.tsx`, `TypingIndicator.tsx`)
 - **LUẬT THIẾT KẾ CỨNG (`DESIGN.md`):** Trước mọi thay đổi liên quan đến giao diện, bố cục, nút bấm, phím tắt hay hoạt ảnh, BẮT BUỘC đọc và tuân thủ nghiêm ngặt `DESIGN.md`. Cấm tự ý thêm lại các nút/thẻ đã loại bỏ (nhãn sổ trên Header, nút Split Screen, nút Mặt trăng Sáng/Tối, icon Emote/Ngôn ngữ, Footer `Cmd+K`, thẻ gợi ý màn hình trống).
@@ -45,9 +45,10 @@
   + Công thức Toán học LaTeX Unicode (`$$...$$` hộp căn giữa viền Indigo `#6366F1`, `$...$` nội dòng).
   + Nút Quick Copy phản hồi ở góc dưới bên phải cho tin nhắn >120 ký tự hoặc có rich block.
 - **Thanh Nhập Liệu Prompt Box Lucian #452 1 Hàng Ngang (`components/PromptBox.tsx` — `v4.9.4`):** Thiết kế 1 hàng ngang thẳng tâm tuyệt đối bo góc `28px` (`[+]` — `Ô nhập chữ 34px` — `[↑]`), textarea tự giãn từ `34px` đến `106px` (tối đa 4 dòng); hiệu ứng chữ bay mờ `flyTextAnimation` khi gửi; viền `conic-gradient` xoay sáng khi đang sinh phản hồi; triệt tiêu hoàn toàn độ khựng nút `+` nhờ GPU SVG rotation, keep-mounted popover `📎 Tệp` và `pointerdown` dismiss; nút tròn Gửi / Dừng biến hình; đo đạc nhịp gõ ẩn `KeystrokeTelemetry` bằng `useRef` (zero re-render); TUYỆT ĐỐI CẤM nút chọn model, emote, icon quả cầu.
-- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.10.1`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
-- **Quy chuẩn Màn hình Chào Chủ động Chuẩn Ember Monochrome (`v4.10`):**
+- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.10.2`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Quy chuẩn Màn hình Chào Chủ động Chuẩn Ember Monochrome (`v4.10.2`):**
   + Tối giản tuyệt đối: giữ `TomorrowGlyph` căn giữa + 1 dòng `headline` (`Plus Jakarta Sans`, `<= 58` ký tự) + tối đa 1 dòng `subline` dịu (`<= 96` ký tự) + inline text link `Tiếp tục ↗` đơn sắc khi có `targetSessionId`, cấm tuyệt đối Card Grid hay nút gợi ý rác.
+  + Hydration Gate (`isStorageHydrated`): Giữ chiều cao ổn định `opacity: 0` đến khi `AsyncStorage` nạp xong, fade-in `150ms ease-out` chỉ trên `opacity` khối text chào; lọc phiên đã chốt (`isSessionCompleted`) và né trùng phiên đang mở (`excludeSessionIds`).
   + Cầu nối lượt 1 (`buildProactiveBridgeTag`): Chỉ tiêm `[PROACTIVE_GREETING: ...]` (`<= 180` ký tự) khi `history.length === 0` và `intentMode !== 'STOP_SIGNAL' && intentMode !== 'PING'`, đồng bộ OpenAI & Gemini.
 - **Quy chuẩn Thanh Bên Lịch Sử Ember Obsidian Minimal Monochrome (`v4.9.6`):**
   + Tái thiết kế toàn bộ Sidebar bên trái đồng bộ Split-View Desktop và Mobile Drawer theo phong cách Ember Obsidian mờ sâu (Dark `#141416`, viền phải `1px solid rgba(255, 255, 255, 0.07)`) và Architectural Alabaster (Light `#F7F7F8`, viền phải `1px solid #E6E6EA`), loại bỏ hoàn toàn các mảng màu tím/xanh AI slop.
@@ -142,5 +143,5 @@
 - Mọi bản cập nhật phải vượt qua:
   1. `npm run typecheck`
   2. `npx expo export -p web` (đảm bảo 0 lỗi biên dịch web)
-  3. `node train_simulator.js` (đảm bảo 61/61 kịch bản PASS tuyệt đối 610/610 điểm)
+  3. `node train_simulator.js` (đảm bảo 64/64 kịch bản PASS tuyệt đối 640/640 điểm)
 - Chỉ chạy `npx vercel --prod --yes` sau khi đã kiểm tra đầy đủ và được người dùng phê duyệt.

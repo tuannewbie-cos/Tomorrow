@@ -135,6 +135,7 @@ interface ChatPaneViewProps {
   isGenerating?: boolean;
   onStopGeneration?: () => void;
   proactiveGreeting?: ProactiveGreetingPayload;
+  isStorageHydrated?: boolean;
   onResumeSession?: (paneId: string, targetSessionId: string) => void;
   onScroll: (e: any) => void;
   onScrollDownPress: () => void;
@@ -162,6 +163,7 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
   isGenerating = false,
   onStopGeneration,
   proactiveGreeting,
+  isStorageHydrated = true,
   onResumeSession,
   statusText,
   isDropdownOpen,
@@ -457,69 +459,87 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
                   />
                 </View>
 
-                <Text
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                  adjustsFontSizeToFit
+                <View
                   style={[
-                    styles.proactiveHeadlineText,
+                    styles.proactiveTextGateWrapper,
                     {
-                      fontSize: totalPanes === 4 ? 17 : totalPanes === 3 ? 20 : (isSplitMode ? 22 : 26),
-                      lineHeight: totalPanes === 4 ? 22 : totalPanes === 3 ? 26 : (isSplitMode ? 28 : 34),
-                      color: theme.mode === 'dark' ? '#F4F4F5' : '#111113',
+                      minHeight: isQuadOrDenseSplit ? 46 : 62,
+                      opacity: isStorageHydrated ? 1 : 0,
                     },
+                    Platform.OS === 'web' && ({
+                      transition: 'opacity 150ms ease-out',
+                      animation: isStorageHydrated ? 'macosFadeIn 150ms ease-out' : undefined,
+                    } as any),
                   ]}
                 >
-                  {proactiveGreeting?.headline || getTimeBasedGreeting()}
-                </Text>
-
-                {!!proactiveGreeting?.subline && (
-                  <View style={styles.proactiveSublineRow}>
-                    <Text
-                      numberOfLines={isQuadOrDenseSplit ? 2 : 1}
-                      ellipsizeMode="tail"
-                      style={[
-                        styles.proactiveSublineText,
-                        {
-                          fontSize: isQuadOrDenseSplit ? 12 : (isSplitMode ? 12.5 : 13.5),
-                          lineHeight: isQuadOrDenseSplit ? 17 : 19,
-                          color: theme.mode === 'dark' ? '#A1A1AA' : '#52525B',
-                        },
-                      ]}
-                    >
-                      {proactiveGreeting.subline}
-                    </Text>
-                    {!!(proactiveGreeting.targetSessionId && proactiveGreeting.actionLabel) && (
-                      <Pressable
-                        onPress={() => onResumeSession?.(pane.id, proactiveGreeting.targetSessionId!)}
-                        hitSlop={6}
-                        style={({ hovered, pressed }: any) => [
-                          styles.proactiveActionLink,
+                  {isStorageHydrated && (
+                    <>
+                      <Text
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                        adjustsFontSizeToFit
+                        style={[
+                          styles.proactiveHeadlineText,
                           {
-                            opacity: pressed ? 0.6 : hovered ? 1 : 0.88,
+                            fontSize: totalPanes === 4 ? 17 : totalPanes === 3 ? 20 : (isSplitMode ? 22 : 26),
+                            lineHeight: totalPanes === 4 ? 22 : totalPanes === 3 ? 26 : (isSplitMode ? 28 : 34),
+                            color: theme.mode === 'dark' ? '#F4F4F5' : '#111113',
                           },
-                          Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
                         ]}
                       >
-                        {({ hovered }: any) => (
+                        {proactiveGreeting?.headline || getTimeBasedGreeting()}
+                      </Text>
+
+                      {!!proactiveGreeting?.subline && (
+                        <View style={styles.proactiveSublineRow}>
                           <Text
+                            numberOfLines={isQuadOrDenseSplit ? 2 : 1}
+                            ellipsizeMode="tail"
                             style={[
-                              styles.proactiveActionLinkText,
+                              styles.proactiveSublineText,
                               {
                                 fontSize: isQuadOrDenseSplit ? 12 : (isSplitMode ? 12.5 : 13.5),
                                 lineHeight: isQuadOrDenseSplit ? 17 : 19,
-                                color: theme.mode === 'dark' ? '#F4F4F5' : '#111113',
-                                textDecorationLine: hovered ? 'underline' : 'none',
+                                color: theme.mode === 'dark' ? '#A1A1AA' : '#52525B',
                               },
                             ]}
                           >
-                            {proactiveGreeting.actionLabel}
+                            {proactiveGreeting.subline}
                           </Text>
-                        )}
-                      </Pressable>
-                    )}
-                  </View>
-                )}
+                          {!!(proactiveGreeting.targetSessionId && proactiveGreeting.actionLabel) && (
+                            <Pressable
+                              onPress={() => onResumeSession?.(pane.id, proactiveGreeting.targetSessionId!)}
+                              hitSlop={6}
+                              style={({ hovered, pressed }: any) => [
+                                styles.proactiveActionLink,
+                                {
+                                  opacity: pressed ? 0.6 : hovered ? 1 : 0.88,
+                                },
+                                Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+                              ]}
+                            >
+                              {({ hovered }: any) => (
+                                <Text
+                                  style={[
+                                    styles.proactiveActionLinkText,
+                                    {
+                                      fontSize: isQuadOrDenseSplit ? 12 : (isSplitMode ? 12.5 : 13.5),
+                                      lineHeight: isQuadOrDenseSplit ? 17 : 19,
+                                      color: theme.mode === 'dark' ? '#F4F4F5' : '#111113',
+                                      textDecorationLine: hovered ? 'underline' : 'none',
+                                    },
+                                  ]}
+                                >
+                                  {proactiveGreeting.actionLabel}
+                                </Text>
+                              )}
+                            </Pressable>
+                          )}
+                        </View>
+                      )}
+                    </>
+                  )}
+                </View>
               </View>
 
               {/* Khung nhập liệu PromptBox Lucian #452 đặt NGAY DƯỚI dòng chào ở chính giữa màn hình */}
@@ -631,6 +651,7 @@ export default function App() {
   const [userMemory, setUserMemory] = useState<UserMemoryProfile>(DEFAULT_USER_MEMORY);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isReady, setIsReady] = useState<boolean>(false);
+  const [isStorageHydrated, setIsStorageHydrated] = useState<boolean>(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(width >= 768);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
   const [isMemoryVaultOpen, setIsMemoryVaultOpen] = useState<boolean>(false);
@@ -731,16 +752,24 @@ export default function App() {
   const greetingClockNowRef = useRef<Date>(greetingClockNow);
   greetingClockNowRef.current = greetingClockNow;
 
-  const proactiveGreeting = useMemo(() => {
-    return generateProactiveGreeting({
-      sessions,
-      activeNotebookId,
-      memoryVault: userMemory.vault || userMemory,
-      now: greetingClockNow,
-    });
-  }, [sessions, activeNotebookId, userMemory, greetingClockNow]);
-  const proactiveGreetingRef = useRef<ProactiveGreetingPayload>(proactiveGreeting);
-  proactiveGreetingRef.current = proactiveGreeting;
+  const proactiveGreetingByPane = useMemo(() => {
+    const map: Record<string, ProactiveGreetingPayload> = {};
+    for (const p of panes) {
+      const otherOpenSessionIds = panes
+        .filter((other) => other.id !== p.id && other.sessionId !== null)
+        .map((other) => other.sessionId as string);
+      map[p.id] = generateProactiveGreeting({
+        sessions,
+        activeNotebookId,
+        memoryVault: userMemory.vault || userMemory,
+        now: greetingClockNow,
+        excludeSessionIds: otherOpenSessionIds,
+      });
+    }
+    return map;
+  }, [panes, sessions, activeNotebookId, userMemory, greetingClockNow]);
+  const proactiveGreetingByPaneRef = useRef<Record<string, ProactiveGreetingPayload>>(proactiveGreetingByPane);
+  proactiveGreetingByPaneRef.current = proactiveGreetingByPane;
 
   const refreshGreetingClockIfPeriodChanged = useCallback(() => {
     const now = new Date();
@@ -920,6 +949,7 @@ export default function App() {
       } catch (err) {
         console.error('[Bootstrap] Lỗi khi nạp dữ liệu:', err);
       } finally {
+        setIsStorageHydrated(true);
         setIsReady(true);
       }
     }
@@ -1169,7 +1199,7 @@ export default function App() {
       // HẠNG MỤC 3 (Ngày 14): First-Turn Proactive Bridge — chỉ truyền ở lượt đầu (messages.length === 0)
       const firstTurnProactiveTag =
         existingMessages.length === 0
-          ? (proactiveGreetingRef.current?.contextTag || '').slice(0, 180)
+          ? (proactiveGreetingByPaneRef.current[targetPaneId]?.contextTag || '').slice(0, 180)
           : undefined;
 
       const aiResponsePromise = sendMessageToTomorrow(
@@ -2082,7 +2112,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: themeMode === 'dark' ? '#FFFFFF' : '#09090B' }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.10.1</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.10.2</Text>
               </View>
             </View>
           </View>
@@ -2226,7 +2256,8 @@ export default function App() {
                     isSearching={isSearching}
                     isGenerating={generatingPanes[pane.id] || false}
                     onStopGeneration={() => handleStopGenerationInPane(pane.id)}
-                    proactiveGreeting={proactiveGreeting}
+                    proactiveGreeting={proactiveGreetingByPane[pane.id]}
+                    isStorageHydrated={isStorageHydrated}
                     onResumeSession={(pId, targetSessId) => handleSwitchSessionInPane(pId, targetSessId)}
                     statusText={statusText}
                     isDropdownOpen={openDropdownPaneId === pane.id}
@@ -2655,6 +2686,12 @@ const styles = StyleSheet.create({
     width: '100%',
     minWidth: 0,
     paddingHorizontal: 8,
+  },
+  proactiveTextGateWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    minWidth: 0,
   },
   proactiveHeadlineText: {
     fontFamily:

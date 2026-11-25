@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.10` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.10.2` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -452,6 +452,13 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
     + Bổ sung +5 unit test Ngày 14 (`Test_Day14_Chrono_Daytime_Guard`, `Test_Day14_LateNight_Calm_Tone`, `Test_Day14_Notebook_Scoped_Resume_And_NoiseFilter`, `Test_Day14_Empathy_Override_LowMood`, `Test_Day14_FirstTurn_Bridge_And_PromptBudget`).
     + Đạt 61/61 kịch bản PASS (610/610 điểm 100% hoàn hảo).
   - Header cập nhật: **`Online • v4.10`**.
+
+- [x] **Bản nâng cấp UI/UX `v4.10.1` & Bản vá Hoàn thiện Ngày 14 (`Online • v4.10.2`):**
+  - **Sidebar Antigravity Minimalist & Retina Typography (`v4.10.1`):** Hàng Sổ phẳng không hộp trắng dày, ẩn cụm nút thao tác sổ khi nghỉ, danh sách Pure Typography bỏ icon `💬` & vạch dọc (căn thẳng `32px`), active pill `#EBEBED` / `#242429` viền `1px`, luôn hiện mốc thời gian và trượt nút xóa khi hover; nâng cỡ chữ Sidebar (`14.5px` `500/600`), nội dung chat (`16px` `500`), `PromptBox` (`15.5px` `500`).
+  - **Lọc phiên đã chốt xong (`isSessionCompleted` trong `services/proactiveGreetingService.ts`):** Loại bỏ phiên có tin nhắn user cuối <= 40 ký tự khớp cụm chốt (`ok`, `xong rồi, ok r`, `cảm ơn nhé`, `sybau`...) và không chứa `?` hay từ hỏi tiếp (`nhưng`, `còn`, `tiếp`, `sao`, `lỗi`, `bug`, `giải thích`).
+  - **Né phiên đang mở ở Split Screen (`excludeSessionIds`):** Gom toàn bộ `pane.sessionId` đang mở ở các tab khác để gợi ý `Tiếp tục ↗` mở phiên dang dở kế tiếp chưa hiển thị trên màn hình (hoặc fallback êm sang Memory Vault).
+  - **Hydration Fade-In Gate (`isStorageHydrated` trong `App.tsx`):** Giữ sẵn chiều cao khối text (`minHeight`) ở `opacity: 0` trước khi `AsyncStorage` đọc xong, sau đó fade-in mượt `opacity: 0 -> 1` trong `150ms ease-out` (CLS = 0, không giật chữ mặc định, không xung đột `Cmd + R`).
+  - **Bộ kiểm thử `train_simulator.js`:** Bổ sung +3 test Ngày 14.2 (`Test_Day14_2_Skip_Completed_StopSignal_Session`, `Test_Day14_2_Exclude_Open_SplitPane_Sessions`, `Test_Day14_2_Keep_Question_Ending_Resumable`), đạt **64/64 PASS (640/640 điểm)**. Header cập nhật **`Online • v4.10.2`**.
 
 - [ ] **Ngày 15: Hoàn thiện Phase 1**
   - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.

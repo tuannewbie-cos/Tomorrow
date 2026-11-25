@@ -3351,8 +3351,186 @@ async function runAllTests() {
     });
   }
 
+  // ==================== NGÀY 14.2 (v4.10.2): BẢN VÁ HOÀN THIỆN PROACTIVE GREETING (TESTS 62-64) ====================
+
+  // TEST 62: Test_Day14_2_Skip_Completed_StopSignal_Session
+  {
+    const nowDate = new Date(2026, 10, 25, 10, 0, 0);
+    const nowMs = nowDate.getTime();
+    const mockSessions = [
+      {
+        id: 'sess-completed-2h',
+        title: 'Sửa lỗi CSS Header',
+        notebookId: 'default-notebook',
+        updatedAt: nowMs - 2 * 3600 * 1000,
+        messages: [
+          { id: 'm1', role: 'user', text: 'Sửa lỗi căn giữa header giúp mình', timestamp: nowMs - 2 * 3600000 },
+          { id: 'm2', role: 'model', text: 'Bạn dùng position absolute...', timestamp: nowMs - 2 * 3600000 + 2000 },
+          { id: 'm3', role: 'user', text: 'xong rồi, ok r', timestamp: nowMs - 2 * 3600000 + 4000 },
+        ],
+      },
+      {
+        id: 'sess-resumable-10h',
+        title: 'Gỡ bug AsyncRaceCondition TypeScript',
+        notebookId: 'default-notebook',
+        updatedAt: nowMs - 10 * 3600 * 1000,
+        messages: [
+          { id: 'm4', role: 'user', text: 'Làm sao tránh race condition trong useEffect?', timestamp: nowMs - 10 * 3600000 },
+          { id: 'm5', role: 'model', text: 'Dùng AbortController hoặc cờ isMounted...', timestamp: nowMs - 10 * 3600000 + 2000 },
+        ],
+      },
+    ];
+
+    const completedCheck = proactiveGreeting.isSessionCompleted(mockSessions[0]);
+    const resumableCheck = proactiveGreeting.isSessionCompleted(mockSessions[1]);
+    const g = proactiveGreeting.generateProactiveGreeting({
+      sessions: mockSessions,
+      activeNotebookId: 'default-notebook',
+      memoryVault: null,
+      now: nowDate,
+    });
+
+    const passed =
+      completedCheck === true &&
+      resumableCheck === false &&
+      g.targetSessionId === 'sess-resumable-10h' &&
+      g.subline.includes('AsyncRaceCondition');
+
+    results.push({
+      name: 'Test_Day14_2_Skip_Completed_StopSignal_Session',
+      input: 'Phiên 2h trước chốt "xong rồi, ok r" + Phiên 10h trước đang dở code',
+      mode: 'DAY14_2_SKIP_COMPLETED',
+      output: [
+        `isSessionCompleted(2h)=${completedCheck}, (10h)=${resumableCheck}`,
+        `targetSessionId=${g.targetSessionId}`,
+        `subline="${g.subline}"`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Bỏ qua chuẩn xác phiên đã chốt "xong rồi, ok r" (2h trước), tự động chọn phiên đang dở 10h trước'
+        : 'Thất bại: Vẫn gợi ý phiên đã chốt xong hoặc chọn sai phiên kế tiếp',
+    });
+  }
+
+  // TEST 63: Test_Day14_2_Exclude_Open_SplitPane_Sessions
+  {
+    const nowDate = new Date(2026, 10, 25, 10, 15, 0);
+    const nowMs = nowDate.getTime();
+    const mockSessions = [
+      {
+        id: 'session-active-pane-1',
+        title: 'Phân tích bài toán Con lắc vật lý',
+        notebookId: 'default-notebook',
+        updatedAt: nowMs - 1 * 3600 * 1000,
+        messages: [
+          { id: 'm1', role: 'user', text: 'Tính chu kỳ con lắc đơn?', timestamp: nowMs - 3600000 },
+          { id: 'm2', role: 'model', text: 'T = 2*pi*sqrt(l/g)', timestamp: nowMs - 3590000 },
+        ],
+      },
+      {
+        id: 'session-next-resumable',
+        title: 'Thiết kế API Supabase cho Tomorrow',
+        notebookId: 'default-notebook',
+        updatedAt: nowMs - 5 * 3600 * 1000,
+        messages: [
+          { id: 'm3', role: 'user', text: 'Tối ưu indexing bảng sessions?', timestamp: nowMs - 5 * 3600000 },
+          { id: 'm4', role: 'model', text: 'Tạo composite index trên user_id và updated_at...', timestamp: nowMs - 5 * 3600000 + 2000 },
+        ],
+      },
+    ];
+
+    const gPane2 = proactiveGreeting.generateProactiveGreeting({
+      sessions: mockSessions,
+      activeNotebookId: 'default-notebook',
+      memoryVault: null,
+      now: nowDate,
+      excludeSessionIds: ['session-active-pane-1'],
+    });
+
+    const gAllExcluded = proactiveGreeting.generateProactiveGreeting({
+      sessions: mockSessions,
+      activeNotebookId: 'default-notebook',
+      memoryVault: {
+        schemaVersion: 2,
+        favorites: [],
+        activeProjects: ['Tomorrow Desktop'],
+        habits: [],
+        recentContext: [],
+        studySubjects: [],
+        financeGoals: [],
+        moodHistory: [],
+        updatedAt: nowMs,
+      },
+      now: nowDate,
+      excludeSessionIds: ['session-active-pane-1', 'session-next-resumable'],
+    });
+
+    const passed =
+      gPane2.targetSessionId === 'session-next-resumable' &&
+      !gAllExcluded.targetSessionId &&
+      gAllExcluded.subline.includes('Tomorrow Desktop');
+
+    results.push({
+      name: 'Test_Day14_2_Exclude_Open_SplitPane_Sessions',
+      input: 'excludeSessionIds=["session-active-pane-1"] & trường hợp mọi phiên đang mở',
+      mode: 'DAY14_2_EXCLUDE_OPEN_PANES',
+      output: [
+        `Pane2 target=${gPane2.targetSessionId}`,
+        `AllExcluded target=${gAllExcluded.targetSessionId || 'none'}, subline="${gAllExcluded.subline}"`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Né trùng session đang mở ở Tab 1, đẩy đúng phiên dang dở kế tiếp lên Tab 2 và fallback êm sang Memory Vault khi hết phiên'
+        : 'Thất bại: Gợi ý trùng session đang mở hoặc không fallback mượt',
+    });
+  }
+
+  // TEST 64: Test_Day14_2_Keep_Question_Ending_Resumable
+  {
+    const nowDate = new Date(2026, 10, 25, 10, 30, 0);
+    const nowMs = nowDate.getTime();
+    const mockSession = {
+      id: 'sess-question-after-ok',
+      title: 'Giải tích 2 Tích phân bội',
+      notebookId: 'default-notebook',
+      updatedAt: nowMs - 3 * 3600 * 1000,
+      messages: [
+        { id: 'm1', role: 'user', text: 'Nhắc lại định lý Fubini', timestamp: nowMs - 3 * 3600000 - 10000 },
+        { id: 'm2', role: 'model', text: 'Định lý Fubini cho phép đổi thứ tự tích phân...', timestamp: nowMs - 3 * 3600000 - 5000 },
+        { id: 'm3', role: 'user', text: 'ok nhưng phần tích phân này giải sao?', timestamp: nowMs - 3 * 3600000 },
+      ],
+    };
+
+    const completed = proactiveGreeting.isSessionCompleted(mockSession);
+    const g = proactiveGreeting.generateProactiveGreeting({
+      sessions: [mockSession],
+      activeNotebookId: 'default-notebook',
+      memoryVault: null,
+      now: nowDate,
+    });
+
+    const passed = completed === false && g.targetSessionId === 'sess-question-after-ok' && g.actionLabel === 'Tiếp tục ↗';
+    results.push({
+      name: 'Test_Day14_2_Keep_Question_Ending_Resumable',
+      input: '"ok nhưng phần tích phân này giải sao?"',
+      mode: 'DAY14_2_KEEP_QUESTION',
+      output: [
+        `isSessionCompleted=${completed}`,
+        `targetSessionId=${g.targetSessionId}`,
+        `subline="${g.subline}"`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Giữ nguyên phiên có từ hỏi tiếp / dấu "?" ("ok nhưng phần tích phân này giải sao?"), không lọc nhầm là đã xong'
+        : 'Thất bại: Lọc nhầm câu hỏi có "ok" ở đầu thành phiên đã chốt',
+    });
+  }
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 61 SCENARIOS (TOMORROW V4.10 — ONLINE • V4.10):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 64 SCENARIOS (TOMORROW V4.10.2 — ONLINE • V4.10.2):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
@@ -3373,7 +3551,7 @@ day13Results.forEach((r, idx) => {
 });
 console.log('='.repeat(75));
 
-console.log('\n📊 BẢNG ĐIỂM 5 KỊCH BẢN NGÀY 14 (PROACTIVE GREETING ENGINE):');
+console.log('\n📊 BẢNG ĐIỂM 8 KỊCH BẢN NGÀY 14 & V4.10.2 (PROACTIVE GREETING ENGINE):');
 console.log('='.repeat(75));
 const day14Results = results.slice(56);
 day14Results.forEach((r, idx) => {
@@ -3392,9 +3570,9 @@ console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.10',
+  version: 'v4.10.2',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.10 — Proactive Greeting Engine, Ember Monochrome Welcome Cue & First-Turn Bridge (< 450 words)',
+  architecture: 'Tomorrow v4.10.2 — Completed Session Filter, Exclude Open Split Panes, Hydration Fade-In Gate & Antigravity Minimalist Sidebar (< 450 words)',
   totalScore,
   maxScore,
   allPassed,
