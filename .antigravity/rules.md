@@ -1,3 +1,18 @@
+## 0. LUẬT BẢO VỆ HỆ THỐNG & PHẠM VI REPO (ƯU TIÊN TUYỆT ĐỐI — CẤM VI PHẠM)
+
+1. **KHÓA PHẠM VI THAO TÁC (STRICT WORKSPACE BOUNDARY):**
+   - CHỈ được phép đọc, ghi, chỉnh sửa trong duy nhất thư mục gốc của repo dự án **Tomorrow** (thư mục hiện tại chứa `package.json` và `.git`).
+   - **TUYỆT ĐỐI CẤM** truy cập, liệt kê, di chuyển, đổi tên hoặc xóa bất kỳ tệp tin/thư mục nào nằm ngoài repo (đặc biệt là `~/Desktop`, `~/Documents`, `~/Downloads`, `~/Pictures`, `~/Movies`, `~/Music` hoặc bất kỳ đường dẫn tuyệt đối nào bên ngoài thư mục dự án).
+   - Ngoại lệ duy nhất được phép chạm ngoài repo là thao tác cập nhật/khởi động lại `/Applications/Tomorrow.app` khi người dùng yêu cầu rõ ràng bằng văn bản.
+
+2. **CẤM TỰ Ý XÓA FILE & LỆNH NGUY HIỂM (ZERO-DELETE POLICY):**
+   - **TUYỆT ĐỐI CẤM** tự ý chạy các lệnh xóa hoặc ghi đè phá hủy dữ liệu như: `rm`, `rm -rf`, `unlink`, `rmdir`, `find ... -delete`, `git clean -fd`, `git reset --hard`, `git checkout -- .` (kể cả khi đang bật chế độ Turbo / Auto-run).
+   - Nếu thật sự cần xóa bất kỳ file rác hoặc file cũ nào **bên trong repo**, BẮT BUỘC phải dừng lại, liệt kê rõ đường dẫn từng file và chờ người dùng xác nhận đồng ý trước khi thực thi.
+   - Không bao giờ suy diễn hoặc tự ý xóa các file ảnh (`.png`, `.jpg`, `.jpeg`, `.webp`, `.heic`) hay tài liệu (`.docx`, `.pdf`, `.txt`, `.md`) chưa rõ nguồn gốc.
+
+3. **KIỂM TRA ĐƯỜNG DẪN TRƯỚC MỌI LỆNH TERMINAL:**
+   - Mọi lệnh thao tác tệp trong Terminal phải dùng đường dẫn tương đối (`./...`) xuất phát từ thư mục gốc repo, không dùng `cd ..` thoát ra khỏi thư mục dự án.
+
 # TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.10.5)
 
 ## 1. MÔI TRƯỜNG, NỀN TẢNG CỐT LÕI & CÁC KHÓA LƯU TRỮ
