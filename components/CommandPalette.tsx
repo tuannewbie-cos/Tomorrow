@@ -24,6 +24,9 @@ import {
   RefreshCw,
   Brain,
   FolderPlus,
+  Download,
+  Upload,
+  CheckCircle2,
 } from 'lucide-react-native';
 import { ChatSession, UserMemoryProfile } from '../types/chat';
 import { ThemeColors, ThemeMode } from '../constants/theme';
@@ -32,6 +35,11 @@ import { Notebook, formatRelativeTime } from '../storage/notebookStorage';
 import { searchLocalSemanticRecall } from '../services/semanticRecallService';
 import { getQuotaSummarySync, resetOpenAICircuitBreaker } from '../services/quotaShield';
 import { resetOpenAICircuitBreaker as resetAiBreaker } from '../services/aiService';
+import {
+  buildBackupBundle,
+  triggerJsonDownload,
+  CURRENT_APP_VERSION,
+} from '../services/backupService';
 
 export interface CommandPaletteProps {
   visible: boolean;
@@ -48,6 +56,7 @@ export interface CommandPaletteProps {
   onToggleTheme: () => void;
   onToggleSplitPanes?: () => void;
   onOpenMemoryVault?: () => void;
+  onOpenBackupRestore?: () => void;
   isSplitPanes?: boolean;
   theme: ThemeColors;
   themeMode: ThemeMode;
@@ -73,6 +82,8 @@ export interface PaletteItem {
     | 'reset_circuit_breaker'
     | 'memory_vault'
     | 'new_notebook'
+    | 'export_backup'
+    | 'import_backup'
     | 'recall_turn';
   sessionId?: string;
   notebookId?: string;
@@ -148,6 +159,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onToggleTheme,
   onToggleSplitPanes,
   onOpenMemoryVault,
+  onOpenBackupRestore,
   isSplitPanes = false,
   theme,
   themeMode,
@@ -156,6 +168,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [quotaSummary, setQuotaSummary] = useState(getQuotaSummarySync());
+  const [backupNotice, setBackupNotice] = useState<string | null>(null);
   const inputRef = useRef<TextInputInstance>(null);
 
   // Focus ô tìm kiếm khi mở Modal và đồng bộ Quota Shield
@@ -164,6 +177,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       setSearchQuery('');
       setDebouncedSearchQuery('');
       setSelectedIndex(0);
+      setBackupNotice(null);
       setQuotaSummary(getQuotaSummarySync());
       const timer = setTimeout(() => {
         inputRef.current?.focus();
@@ -290,8 +304,41 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           onClose();
         },
       },
+      {
+        id: 'act-export-backup',
+        type: 'action',
+        title: '💾 Xuất bản sao lưu JSON (Export Backup)',
+        subtitle: 'Tải toàn bộ lịch sử chat, sổ ghi chú và trí nhớ ra tệp .json',
+        badge: 'JSON',
+        iconType: 'export_backup',
+        group: 'actions',
+        action: async () => {
+          const bundle = await buildBackupBundle(CURRENT_APP_VERSION);
+          const { ok, filename } = triggerJsonDownload(bundle);
+          const sessCount = bundle.data.CHAT_SESSIONS_V2.length;
+          const nbCount = bundle.data.TOMORROW_NOTEBOOKS_V1.length;
+          setBackupNotice(
+            ok
+              ? `Đã xuất ${filename} (${sessCount} đoạn chat, ${nbCount} sổ)`
+              : `Đã tạo gói sao lưu ${filename} (${sessCount} đoạn chat, ${nbCount} sổ)`
+          );
+        },
+      },
+      {
+        id: 'act-import-backup',
+        type: 'action',
+        title: '📥 Khôi phục dữ liệu từ JSON (Import Backup)',
+        subtitle: 'Xem trước, kiểm tra checksum và gộp/khôi phục dữ liệu từ tệp .json',
+        badge: 'JSON',
+        iconType: 'import_backup',
+        group: 'actions',
+        action: () => {
+          onClose();
+          onOpenBackupRestore?.();
+        },
+      },
     ],
-    [themeMode, isSplitPanes, handleTriggerNewChat, onCreateNewNotebook, onToggleSidebar, onToggleTheme, onToggleSplitPanes, onOpenMemoryVault, onClose]
+    [themeMode, isSplitPanes, handleTriggerNewChat, onCreateNewNotebook, onToggleSidebar, onToggleTheme, onToggleSplitPanes, onOpenMemoryVault, onOpenBackupRestore, onClose]
   );
 
   // Nhóm Các Phiên Gần Đây (hiển thị khi chưa tìm kiếm)
@@ -393,6 +440,32 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       const memoryAction = quickActions.find((a) => a.id === 'act-memory-vault');
       if (memoryAction && !matchedActions.includes(memoryAction)) {
         matchedActions.push(memoryAction);
+      }
+    }
+    if (
+      'xuất bản sao lưu json export backup tải xuống'.includes(q) ||
+      'backup'.includes(q) ||
+      'sao lưu'.includes(q) ||
+      'export'.includes(q) ||
+      'xuất'.includes(q) ||
+      'json'.includes(q)
+    ) {
+      const exportAction = quickActions.find((a) => a.id === 'act-export-backup');
+      if (exportAction && !matchedActions.includes(exportAction)) {
+        matchedActions.push(exportAction);
+      }
+    }
+    if (
+      'khôi phục dữ liệu từ json import backup restore nạp'.includes(q) ||
+      'import'.includes(q) ||
+      'khôi phục'.includes(q) ||
+      'restore'.includes(q) ||
+      'nạp'.includes(q) ||
+      'json'.includes(q)
+    ) {
+      const importAction = quickActions.find((a) => a.id === 'act-import-backup');
+      if (importAction && !matchedActions.includes(importAction)) {
+        matchedActions.push(importAction);
       }
     }
 
@@ -567,6 +640,10 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         return <Brain size={16} color={isSelected ? activeColor : '#A855F7'} />;
       case 'new_notebook':
         return <FolderPlus size={16} color={isSelected ? activeColor : '#F59E0B'} />;
+      case 'export_backup':
+        return <Download size={16} color={isSelected ? activeColor : '#10B981'} />;
+      case 'import_backup':
+        return <Upload size={16} color={isSelected ? activeColor : '#3B82F6'} />;
       case 'recall_turn':
         return <Clock size={15} color={isSelected ? activeColor : theme.textSecondary} />;
       case 'session':
@@ -672,6 +749,38 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
           </View>
 
           {/* 2. Danh sách kết quả & Thao tác nhanh */}
+          {backupNotice && (
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                marginHorizontal: 12,
+                marginTop: 10,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 8,
+                backgroundColor:
+                  theme.mode === 'dark'
+                    ? 'rgba(16, 185, 129, 0.14)'
+                    : 'rgba(16, 185, 129, 0.10)',
+                borderWidth: 1,
+                borderColor: 'rgba(16, 185, 129, 0.35)',
+              }}
+            >
+              <CheckCircle2 size={15} color="#10B981" />
+              <Text
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: '600',
+                  color: theme.mode === 'dark' ? '#6EE7B7' : '#047857',
+                  flex: 1,
+                }}
+              >
+                {backupNotice}
+              </Text>
+            </View>
+          )}
           <ScrollView
             style={[styles.listScroll, { paddingBottom: 10 }]}
             contentContainerStyle={{ paddingBottom: 10 }}

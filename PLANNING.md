@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.10.5` | **Trạng thái:** Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.11` | **Trạng thái:** HOÀN THÀNH 100% GIAI ĐOẠN 1 (Ngày 1 – Ngày 15) — Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -17,7 +17,7 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
 
 | Giai đoạn | Nội dung trọng tâm | Thời gian | Trạng thái |
 | :--- | :--- | :--- | :--- |
-| **Phase 1** | **Core Foundation, 3-Layer Reflex, Quota Shield & Vision Lab** | Ngày 1 – 15 | 🟡 Đang hoàn thiện (Ngày 1-14 Xong, v4.10 Xong) |
+| **Phase 1** | **Core Foundation, 3-Layer Reflex, Quota Shield & Vision Lab** | Ngày 1 – 15 | ✅ HOÀN THÀNH 100% (Mốc `Online • v4.11`) |
 | **Phase 2** | **Tri thức Chuyên sâu, Khoa học & Thị trường** | Ngày 16 – 30 | ⚪ Chưa bắt đầu |
 | **Phase 3** | **Voice HUD, Realtime Waveform & Voiceprint** | Ngày 31 – 45 | ⚪ Chưa bắt đầu |
 | **Phase 4** | **Camera MediaPipe Nội bộ (100% Private RAM)** | Ngày 46 – 60 | ⚪ Chưa bắt đầu |
@@ -474,10 +474,17 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
   - **Ghim / Bỏ ghim phiên (`types/chat.ts`, `App.tsx`, `components/SidebarDrawer.tsx`, `components/NotebookSidebarList.tsx`):** Bổ sung `isPinned` & `pinnedAt` vào `ChatSession` (lưu trong `CHAT_SESSIONS_V2`), sắp xếp phiên ghim lên đầu sổ (`pinnedAt` giảm dần), hiển thị icon `Pin` `12px` gọn trong lề trái `32px`, và bổ sung mục `Pin`/`Unpin` thành đủ 3 mục (`Rename`, `Pin`/`Unpin`, `Delete`) trong menu Portal `⋮`.
   - **Thanh Header sạch (`App.tsx`, `DESIGN.md`):** Xóa bỏ hoàn toàn nút `SquarePen` bên phải nút `Tìm kiếm ⌘K`, chỉ giữ duy nhất cụm phím cơ 3D `Tìm kiếm ⌘K` ở góc phải; cập nhật Header `Online • v4.10.5`.
 
-- [ ] **Ngày 15: Hoàn thiện Phase 1**
-  - Tối ưu bộ nhớ đệm `UserMemoryVault` tự động nén khi vượt quá 30 ngày.
-  - Tìm kiếm toàn văn (Full-text search) trên danh sách phiên trò chuyện trong Sidebar.
-  - Đóng gói chuẩn ứng dụng Desktop macOS thông qua WebKit / Electron / PWA Wrapper nâng cao.
+- [x] **Ngày 15 (`milestone/phase1-audit-backup` — Phiên bản `Online • v4.11`): HOÀN THÀNH 100% GIAI ĐOẠN 1 (Ngày 1 – Ngày 15) — Sao lưu/Khôi phục JSON cục bộ & Tổng duyệt Hệ thống**
+  - **Dịch vụ Sao lưu & Khôi phục JSON 100% cục bộ (`services/backupService.ts`):**
+    + Định nghĩa gói `TomorrowBackupBundleV1` (`app: 'Tomorrow'`, `schemaVersion: 1`, `exportedAt`, `appVersion`, `checksum` FNV-1a + DJB2 từ `JSON.stringify(data)`) chứa trọn vẹn 5 khóa `AsyncStorage` bất biến (`CHAT_SESSIONS_V2`, `USER_MEMORY_PROFILE_V1`, `TOMORROW_THEME_MODE`, `TOMORROW_QUOTA_STATS_V1`, `TOMORROW_NOTEBOOKS_V1`). Tuyệt đối không đính kèm `.env` hay bất kỳ khóa API nào.
+    + `buildBackupBundle` & `triggerJsonDownload`: Xuất tệp `tomorrow-backup-YYYY-MM-DD-HHmm.json` định dạng đẹp và dọn `revokeObjectURL` an toàn.
+    + `validateAndPreviewBackup`: Bắt lỗi JSON/schema, kiểm định checksum và trả về thống kê xem trước (`BackupPreviewStats`).
+    + `restoreBackupBundle`: Hỗ trợ 2 chế độ **`MERGE`** (mặc định: gộp sổ theo `id`, gộp phiên giữ bản nhiều tin nhắn hơn / mới hơn qua `isPlaceholderOrNoiseTitle`, gộp kho trí nhớ qua `migrateAndNormalizeVault` đúng trần 5/6 mục, bảo toàn `TOMORROW_QUOTA_STATS_V1` hôm nay) và **`REPLACE`** (ghi đè sạch 5 khóa chuẩn schema mới nhất), cập nhật thẳng vào state `App.tsx` không cần khởi động lại app.
+  - **Tích hợp gọn trong `Cmd + K` & Modal khôi phục (`components/CommandPalette.tsx`, `components/BackupRestoreModal.tsx`):**
+    + Bổ sung 2 lệnh `💾 Xuất bản sao lưu JSON (Export Backup)` và `📥 Khôi phục dữ liệu từ JSON (Import Backup)` trong `CommandPalette` (bảo toàn giao diện KHÔNG Footer).
+    + `BackupRestoreModal.tsx` chuẩn Ember Monochrome Dark/Light (`maxWidth: 560`, Esc/backdrop đóng), hỗ trợ chọn tệp & kéo-thả `.json`, hiển thị bảng thống kê + trạng thái Checksum và chọn chế độ `Merge` / `Replace`.
+  - **Kiến trúc nền bắt buộc bảo toàn trước khi bước sang Giai đoạn 2 (Ngày 16):** `services/backupService.ts`, `components/BackupRestoreModal.tsx` cùng toàn bộ lõi Ngày 1–14 (`proactiveGreetingService.ts`, `fewShotBank.ts`, `semanticRecallService.ts`, `memoryVaultService.ts`, `personaRouter.ts`, `microPsychProfiler.ts`, `chronoService.ts`, `quotaShield.ts`, `utils/imageOptimizer.ts`, `SYSTEM_INSTRUCTION` < 450 từ).
+  - **Tổng kiểm thử Giai đoạn 1 (`train_simulator.js`):** Bổ sung +5 kịch bản Ngày 15 (`Test_Day15_Backup_Export_Schema_And_Checksum`, `Test_Day15_Backup_Import_Merge_Dedupe`, `Test_Day15_Backup_Validation_Corrupt_Guard`, `Test_Day15_Phase1_Full_Integration_Audit`, `Test_Day15_SystemPrompt_Budget_And_StorageKeys`), đạt **72/72 PASS (720/720 điểm)**. Header cập nhật **`Online • v4.11`**.
 
 ---
 

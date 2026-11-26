@@ -53,6 +53,8 @@ import { TypingIndicator } from './components/TypingIndicator';
 import { CommandPalette } from './components/CommandPalette';
 import { CommandTriggerButton, CommandTriggerButtonRef } from './components/CommandTriggerButton';
 import { MemoryVaultModal } from './components/MemoryVaultModal';
+import { BackupRestoreModal } from './components/BackupRestoreModal';
+import { RestoreBackupResult } from './services/backupService';
 import { StructuredMemoryVault } from './types/chat';
 import {
   Notebook,
@@ -657,6 +659,7 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(width >= 768);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
   const [isMemoryVaultOpen, setIsMemoryVaultOpen] = useState<boolean>(false);
+  const [isBackupRestoreOpen, setIsBackupRestoreOpen] = useState<boolean>(false);
 
   // HỆ THỐNG SỔ GHI CHÚ (NOTEBOOKS) VÀ WORKSPACE ĐA TAB
   const [notebooks, setNotebooks] = useState<Notebook[]>([DEFAULT_NOTEBOOK]);
@@ -1845,6 +1848,45 @@ export default function App() {
     userMemoryRef.current = DEFAULT_USER_MEMORY;
   };
 
+  // 6.5. ĐỒNG BỘ STATE NGAY SAU KHI KHÔI PHỤC TỪ JSON BACKUP (NGÀY 15)
+  const handleBackupRestoreComplete = useCallback((restored: RestoreBackupResult) => {
+    setSessions(restored.sessions);
+    sessionsRef.current = restored.sessions;
+
+    setNotebooks(restored.notebooks);
+    notebooksRef.current = restored.notebooks;
+
+    setUserMemory(restored.memoryProfile);
+    userMemoryRef.current = restored.memoryProfile;
+
+    setThemeMode(restored.themeMode);
+    themeModeRef.current = restored.themeMode;
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      document.documentElement.dataset.theme = restored.themeMode;
+      document.documentElement.style.colorScheme = restored.themeMode;
+      const bg = restored.themeMode === 'dark' ? '#171717' : '#FFFFFF';
+      document.body.style.backgroundColor = bg;
+      document.documentElement.style.backgroundColor = bg;
+    }
+
+    const nbExists = restored.notebooks.some((n) => n.id === activeNotebookIdRef.current);
+    const nextNbId = nbExists
+      ? activeNotebookIdRef.current
+      : restored.notebooks[0]?.id || DEFAULT_NOTEBOOK_ID;
+    setActiveNotebookId(nextNbId);
+    activeNotebookIdRef.current = nextNbId;
+
+    const validSessionIds = new Set(restored.sessions.map((s) => s.id));
+    const cleanedPanes = panesRef.current.map((p) =>
+      p.sessionId && !validSessionIds.has(p.sessionId) ? { ...p, sessionId: null } : p
+    );
+    panesRef.current = cleanedPanes;
+    setPanes(cleanedPanes);
+
+    // Làm mới lời chào chủ động Ngày 14 ngay lập tức theo dữ liệu vừa khôi phục
+    setGreetingClockNow(new Date());
+  }, []);
+
   // 7. LẮNG NGHE PHÍM TẮT TOÀN CỤC CHUẨN MACOS TRÊN WEB (Cmd+K, Cmd+N, Cmd+B, Cmd+ArrowUp, Escape)
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') return;
@@ -2205,7 +2247,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: themeMode === 'dark' ? '#FFFFFF' : '#09090B' }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.10.5</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.11</Text>
               </View>
             </View>
           </View>
@@ -2406,9 +2448,19 @@ export default function App() {
           onToggleTheme={handleToggleTheme}
           onToggleSplitPanes={handleToggleSplitPanes}
           onOpenMemoryVault={() => setIsMemoryVaultOpen(true)}
+          onOpenBackupRestore={() => setIsBackupRestoreOpen(true)}
           isSplitPanes={panes.length > 1}
           theme={theme}
           themeMode={themeMode}
+        />
+
+        {/* Modal Khôi phục Dữ liệu từ JSON (Ngày 15) */}
+        <BackupRestoreModal
+          visible={isBackupRestoreOpen}
+          onClose={() => setIsBackupRestoreOpen(false)}
+          theme={theme}
+          themeMode={themeMode}
+          onRestoreComplete={handleBackupRestoreComplete}
         />
 
         {/* Modal Quản lý Hồ sơ Tri thức Đa chiều (Memory Vault) */}

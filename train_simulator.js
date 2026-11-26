@@ -88,6 +88,10 @@ const richMarkdownView = loadTsModule(path.resolve(__dirname, 'components/RichMa
 const notebookStorage = loadTsModule(path.resolve(__dirname, 'storage/notebookStorage.ts'));
 const semanticRecall = loadTsModule(path.resolve(__dirname, 'services/semanticRecallService.ts'));
 const proactiveGreeting = loadTsModule(path.resolve(__dirname, 'services/proactiveGreetingService.ts'));
+const backupService = loadTsModule(path.resolve(__dirname, 'services/backupService.ts'));
+const chronoService = loadTsModule(path.resolve(__dirname, 'services/chronoService.ts'));
+const personaRouter = loadTsModule(path.resolve(__dirname, 'services/personaRouter.ts'));
+const fewShotBank = loadTsModule(path.resolve(__dirname, 'services/fewShotBank.ts'));
 
 // 1. BỘ LỌC TIÊU ĐỀ RÁC (Đồng bộ storage/chatStorage.ts)
 function isPlaceholderOrNoiseTitle(title) {
@@ -3684,8 +3688,425 @@ async function runAllTests() {
     });
   }
 
+  // ==================== NGÀY 15 (v4.11): SAO LƯU JSON & TỔNG DUYỆT GIAI ĐOẠN 1 (TESTS 68-72) ====================
+
+  // TEST 68: Test_Day15_Backup_Export_Schema_And_Checksum
+  {
+    const nowMs = Date.now();
+    Object.keys(asyncStorageMap).forEach((k) => delete asyncStorageMap[k]);
+
+    asyncStorageMap['CHAT_SESSIONS_V2'] = JSON.stringify([
+      {
+        id: 'sess-day15-1',
+        title: 'Ôn tập Giải tích 2',
+        notebookId: 'default-notebook',
+        updatedAt: nowMs - 10000,
+        messages: [
+          { id: 'm1', role: 'user', text: 'Giải tích phân bội hai giúp t', timestamp: nowMs - 10000 },
+          { id: 'm2', role: 'model', text: 'Dùng định lý Fubini đổi cận...', timestamp: nowMs - 8000 },
+        ],
+      },
+    ]);
+    asyncStorageMap['USER_MEMORY_PROFILE_V1'] = JSON.stringify({
+      userName: 'Tuấn',
+      nickname: 'm',
+      vault: {
+        schemaVersion: 2,
+        pronouns: 't - m',
+        favorites: ['CR7'],
+        activeProjects: ['Tomorrow'],
+        habits: ['Code tập trung'],
+        recentContext: [],
+        studySubjects: [{ id: 's1', subject: 'Giải tích 2', level: 'weak', updatedAt: new Date(nowMs).toISOString() }],
+        financeGoals: [{ id: 'f1', goal: 'Quỹ dự phòng', targetAmount: '10 triệu', horizon: 'mid', updatedAt: new Date(nowMs).toISOString() }],
+        moodHistory: [],
+        updatedAt: nowMs,
+      },
+    });
+    asyncStorageMap['TOMORROW_THEME_MODE'] = 'dark';
+    asyncStorageMap['TOMORROW_QUOTA_STATS_V1'] = JSON.stringify({
+      date: '2026-11-26',
+      openai: { requestsToday: 2, estimatedTokensToday: 300, fallbackCount: 0, isAvailable: true, modelsUsage: {} },
+      gemini: { requestsToday: 1, estimatedTokensToday: 150, fallbackCount: 0, isAvailable: true, modelsUsage: {} },
+      circuitBreakerTripped: false,
+      lastUpdated: nowMs,
+    });
+    asyncStorageMap['TOMORROW_NOTEBOOKS_V1'] = JSON.stringify([
+      { id: 'default-notebook', name: 'Ghi chú chung', createdAt: nowMs, updatedAt: nowMs },
+    ]);
+
+    const bundle = await backupService.buildBackupBundle('v4.11');
+    const serialized = JSON.stringify(bundle);
+    const previewRes = backupService.validateAndPreviewBackup(serialized);
+    const expectedChecksum = backupService.computeBackupChecksum(bundle.data);
+
+    const hasAll5Keys =
+      Array.isArray(bundle.data.CHAT_SESSIONS_V2) &&
+      bundle.data.USER_MEMORY_PROFILE_V1 !== undefined &&
+      bundle.data.TOMORROW_THEME_MODE === 'dark' &&
+      bundle.data.TOMORROW_QUOTA_STATS_V1 !== undefined &&
+      Array.isArray(bundle.data.TOMORROW_NOTEBOOKS_V1);
+
+    const noApiLeak = !/(EXPO_PUBLIC_|sk-proj-|AIzaSy|AQ\.Ab)/i.test(serialized);
+    const checksumOk = bundle.checksum === expectedChecksum && previewRes.valid && previewRes.checksumValid;
+    const schemaOk = bundle.app === 'Tomorrow' && bundle.schemaVersion === 1 && bundle.appVersion === 'v4.11';
+
+    const passed = hasAll5Keys && noApiLeak && checksumOk && schemaOk;
+    results.push({
+      name: 'Test_Day15_Backup_Export_Schema_And_Checksum',
+      input: '5 khóa AsyncStorage đầy đủ -> buildBackupBundle("v4.11")',
+      mode: 'DAY15_BACKUP_EXPORT',
+      output: [
+        `app=${bundle.app}, schema=${bundle.schemaVersion}, ver=${bundle.appVersion}`,
+        `checksum=${bundle.checksum}, checksumValid=${previewRes.checksumValid}`,
+        `noApiLeak=${noApiLeak}, keys=5`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Xuất gói JSON chuẩn schema v1 đủ 5 khóa AsyncStorage, checksum khớp 100%, 0% rò rỉ khóa API/.env'
+        : 'Thất bại: Thiếu khóa sao lưu, sai checksum hoặc rò rỉ khóa nhạy cảm',
+    });
+  }
+
+  // TEST 69: Test_Day15_Backup_Import_Merge_Dedupe
+  {
+    const nowMs = Date.now();
+    Object.keys(asyncStorageMap).forEach((k) => delete asyncStorageMap[k]);
+
+    // Dữ liệu hiện tại trên máy
+    asyncStorageMap['CHAT_SESSIONS_V2'] = JSON.stringify([
+      {
+        id: 'sess-shared-1',
+        title: 'hello',
+        notebookId: 'default-notebook',
+        updatedAt: nowMs - 50000,
+        messages: [
+          { id: 'm1', role: 'user', text: 'Tính tích phân bội', timestamp: nowMs - 50000 },
+          { id: 'm2', role: 'model', text: 'Ok...', timestamp: nowMs - 49000 },
+        ],
+      },
+    ]);
+    asyncStorageMap['TOMORROW_NOTEBOOKS_V1'] = JSON.stringify([
+      { id: 'default-notebook', name: 'Ghi chú chung', createdAt: nowMs - 100000, updatedAt: nowMs - 50000 },
+    ]);
+    asyncStorageMap['USER_MEMORY_PROFILE_V1'] = JSON.stringify({
+      vault: {
+        schemaVersion: 2,
+        pronouns: 't - m',
+        favorites: ['CR7', 'Dark Mode', 'Lo-fi', 'Cà phê', 'React Native'],
+        activeProjects: ['Tomorrow'],
+        habits: ['Học tối'],
+        recentContext: [],
+        studySubjects: [
+          { id: 's-phys', subject: 'Vật lý', level: 'learning', updatedAt: new Date(nowMs - 50000).toISOString() },
+        ],
+        financeGoals: [],
+        moodHistory: [],
+        updatedAt: nowMs - 50000,
+      },
+    });
+    const currentQuotaJson = JSON.stringify({
+      date: '2026-11-26',
+      openai: { requestsToday: 7, estimatedTokensToday: 999, fallbackCount: 0, isAvailable: true, modelsUsage: {} },
+      gemini: { requestsToday: 3, estimatedTokensToday: 300, fallbackCount: 0, isAvailable: true, modelsUsage: {} },
+      circuitBreakerTripped: false,
+      lastUpdated: nowMs,
+    });
+    asyncStorageMap['TOMORROW_QUOTA_STATS_V1'] = currentQuotaJson;
+    asyncStorageMap['TOMORROW_THEME_MODE'] = 'dark';
+
+    // Gói sao lưu nhập vào có 1 phiên trùng id (nhiều tin hơn), 1 phiên mới, 1 sổ mới, 2 môn học (+1 trùng)
+    const backupData = {
+      CHAT_SESSIONS_V2: [
+        {
+          id: 'sess-shared-1',
+          title: 'Tích phân bội hai',
+          notebookId: 'default-notebook',
+          updatedAt: nowMs - 10000,
+          messages: [
+            { id: 'm1', role: 'user', text: 'Tính tích phân bội', timestamp: nowMs - 50000 },
+            { id: 'm2', role: 'model', text: 'Ok...', timestamp: nowMs - 49000 },
+            { id: 'm3', role: 'user', text: 'Cho ví dụ miền D tròn', timestamp: nowMs - 20000 },
+            { id: 'm4', role: 'model', text: 'Đổi sang tọa độ cực r, theta...', timestamp: nowMs - 10000 },
+          ],
+        },
+        {
+          id: 'sess-new-2',
+          title: 'Con trỏ C++',
+          notebookId: 'nb-study',
+          updatedAt: nowMs - 5000,
+          messages: [
+            { id: 'm5', role: 'user', text: 'Fix dangling pointer C++', timestamp: nowMs - 5000 },
+          ],
+        },
+      ],
+      USER_MEMORY_PROFILE_V1: {
+        vault: {
+          schemaVersion: 2,
+          pronouns: 'bạn bè tự nhiên',
+          favorites: ['CR7', 'TypeScript', 'AI'],
+          activeProjects: ['Tomorrow', 'Lab AI'],
+          habits: [],
+          recentContext: [],
+          studySubjects: [
+            { id: 's-phys-dup', subject: 'Vật lý', level: 'strong', updatedAt: new Date(nowMs).toISOString() },
+            { id: 's-calc2', subject: 'Giải tích 2', level: 'weak', updatedAt: new Date(nowMs).toISOString() },
+            { id: 's-ctdl', subject: 'CTDL & GT', level: 'learning', updatedAt: new Date(nowMs).toISOString() },
+          ],
+          financeGoals: [],
+          moodHistory: [],
+          updatedAt: nowMs,
+        },
+      },
+      TOMORROW_THEME_MODE: 'light',
+      TOMORROW_QUOTA_STATS_V1: { date: '2026-11-20', openai: { requestsToday: 99 } },
+      TOMORROW_NOTEBOOKS_V1: [
+        { id: 'default-notebook', name: 'Ghi chú chung', createdAt: nowMs - 100000, updatedAt: nowMs - 90000 },
+        { id: 'nb-study', name: 'Học tập', createdAt: nowMs - 10000, updatedAt: nowMs - 5000 },
+      ],
+    };
+
+    const bundle = {
+      app: 'Tomorrow',
+      schemaVersion: 1,
+      exportedAt: new Date(nowMs).toISOString(),
+      appVersion: 'v4.11',
+      checksum: backupService.computeBackupChecksum(backupData),
+      data: backupData,
+    };
+
+    const restored = await backupService.restoreBackupBundle(bundle, 'MERGE');
+    const sharedSess = restored.sessions.find((s) => s.id === 'sess-shared-1');
+    const hasNewSess = restored.sessions.some((s) => s.id === 'sess-new-2');
+    const hasNewNb = restored.notebooks.some((n) => n.id === 'nb-study');
+    const noDupSess = restored.sessions.length === 2;
+    const noDupNb = restored.notebooks.length === 2;
+    const subjectCapOk = restored.memoryVault.studySubjects.length === 3 && restored.memoryVault.studySubjects.length <= 6;
+    const favCapOk = restored.memoryVault.favorites.length <= 5;
+    const quotaPreserved = asyncStorageMap['TOMORROW_QUOTA_STATS_V1'] === currentQuotaJson;
+
+    const passed =
+      sharedSess &&
+      sharedSess.messages.length === 4 &&
+      sharedSess.title === 'Tích phân bội hai' &&
+      hasNewSess &&
+      hasNewNb &&
+      noDupSess &&
+      noDupNb &&
+      subjectCapOk &&
+      favCapOk &&
+      quotaPreserved;
+
+    results.push({
+      name: 'Test_Day15_Backup_Import_Merge_Dedupe',
+      input: 'MERGE: 1 phiên trùng (bản backup dài hơn 4 msg) + 1 phiên mới + 1 sổ mới + 2 môn học',
+      mode: 'DAY15_BACKUP_MERGE',
+      output: [
+        `sessions=${restored.sessions.length} (sharedLen=${sharedSess?.messages.length})`,
+        `notebooks=${restored.notebooks.length}, subjects=${restored.memoryVault.studySubjects.length}`,
+        `favs=${restored.memoryVault.favorites.length} (<=5), quotaPreserved=${quotaPreserved}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'MERGE giữ đúng bản 4 tin nhắn dài hơn, gộp đủ phiên/sổ mới không trùng lặp, khóa đúng trần Vault và bảo toàn quota hôm nay'
+        : 'Thất bại: Gộp sai phiên, nhân bản trùng hoặc tràn giới hạn mảng MemoryVault',
+    });
+  }
+
+  // TEST 70: Test_Day15_Backup_Validation_Corrupt_Guard
+  {
+    const badJsonRes = backupService.validateAndPreviewBackup('{not-valid-json');
+    const wrongAppRes = backupService.validateAndPreviewBackup(
+      JSON.stringify({ app: 'OtherApp', schemaVersion: 1, checksum: 'x', data: {} })
+    );
+
+    const validData = {
+      CHAT_SESSIONS_V2: [{ id: 's1', title: 'Test', updatedAt: Date.now(), messages: [] }],
+      USER_MEMORY_PROFILE_V1: null,
+      TOMORROW_THEME_MODE: 'dark',
+      TOMORROW_QUOTA_STATS_V1: {},
+      TOMORROW_NOTEBOOKS_V1: [],
+    };
+    const validBundle = {
+      app: 'Tomorrow',
+      schemaVersion: 1,
+      exportedAt: new Date().toISOString(),
+      appVersion: 'v4.11',
+      checksum: backupService.computeBackupChecksum(validData),
+      data: validData,
+    };
+    // Sửa nội dung data mà không cập nhật checksum
+    validBundle.data.CHAT_SESSIONS_V2[0].title = 'Tampered Title';
+    const tamperedRes = backupService.validateAndPreviewBackup(JSON.stringify(validBundle));
+
+    const badJsonCaught = badJsonRes.valid === false && typeof badJsonRes.error === 'string' && badJsonRes.error.length > 10;
+    const wrongAppCaught = wrongAppRes.valid === false && typeof wrongAppRes.error === 'string' && wrongAppRes.error.includes('Tomorrow');
+    const tamperedCaught =
+      tamperedRes.checksumValid === false &&
+      tamperedRes.preview &&
+      tamperedRes.preview.checksumValid === false &&
+      typeof tamperedRes.warning === 'string' &&
+      tamperedRes.warning.toLowerCase().includes('checksum');
+
+    const passed = badJsonCaught && wrongAppCaught && tamperedCaught;
+    results.push({
+      name: 'Test_Day15_Backup_Validation_Corrupt_Guard',
+      input: 'JSON lỗi cú pháp + app="OtherApp" + sửa nội dung sai checksum',
+      mode: 'DAY15_BACKUP_GUARD',
+      output: [
+        `badJson.valid=${badJsonRes.valid}`,
+        `wrongApp.valid=${wrongAppRes.valid}`,
+        `tampered.checksumValid=${tamperedRes.checksumValid}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Bắt lỗi chuẩn xác cả 3 trường hợp (JSON lỗi, sai app, sai checksum) với thông báo tiếng Việt rõ ràng, 0 exception'
+        : 'Thất bại: Không bắt được tệp lỗi hoặc văng exception ngoài ý muốn',
+    });
+  }
+
+  // TEST 71: Test_Day15_Phase1_Full_Integration_Audit
+  {
+    const testDate = new Date(2026, 10, 26, 14, 30, 0); // 14:30 chiều
+    const nowMs = testDate.getTime();
+    const userMsg = 't đang học Giải tích 2 phần tích phân bội nhưng hơi rối quá, nhắc lại bài hôm trước giúp t với';
+    const historySessions = [
+      {
+        id: 'sess-prev-calc2',
+        title: 'Giải tích 2 Tích phân bội',
+        notebookId: 'default-notebook',
+        updatedAt: nowMs - 24 * 3600 * 1000,
+        messages: [
+          { id: 'u1', role: 'user', text: 'Nhắc lại định lý Fubini tích phân bội hai trên miền chữ nhật', timestamp: nowMs - 24 * 3600000 },
+          { id: 'a1', role: 'model', text: 'Định lý Fubini cho phép tính tích phân bội hai bằng tích phân lặp theo dx và dy.', timestamp: nowMs - 24 * 3600000 + 3000 },
+        ],
+      },
+    ];
+    const vault = memoryVault.migrateAndNormalizeVault(
+      {
+        schemaVersion: 2,
+        pronouns: 't - m',
+        favorites: ['CR7'],
+        activeProjects: ['Tomorrow'],
+        habits: [],
+        recentContext: [],
+        studySubjects: [{ id: 's1', subject: 'Giải tích 2', level: 'weak', focusTopic: 'Tích phân bội', updatedAt: testDate.toISOString() }],
+        financeGoals: [],
+        moodHistory: [],
+        updatedAt: nowMs,
+      },
+      chronoService.buildChronoContext(testDate)
+    );
+
+    // Chuỗi liên thông Ngày 8 -> Ngày 14
+    const chronoCtx = chronoService.buildChronoContext(testDate, nowMs - 3600 * 1000);
+    const psych = profiler.analyzeMicroPsychology(userMsg, { charsPerSecond: 4.5, backspaceRatio: 0.15 }, []);
+    const directive = aiService.buildLocalReflexDirective(userMsg, [], false, chronoCtx, undefined, false);
+    const persona = personaRouter.resolveDualPersona({
+      intentMode: directive.intentMode,
+      expertDomain: directive.domain,
+      psychProfile: psych,
+      chrono: chronoCtx,
+      hasImage: false,
+      userText: userMsg,
+    });
+    const memorySlice = memoryVault.buildMemoryContextSlice(vault, {
+      persona: persona.persona,
+      intentMode: directive.intentMode,
+      domain: persona.domain,
+      userText: userMsg,
+    });
+    const recallSlice = semanticRecall.buildSemanticRecallContext({
+      userText: userMsg,
+      intentMode: directive.intentMode,
+      expertDomain: persona.domain,
+      activeNotebookId: 'default-notebook',
+      sessions: historySessions,
+      notebooks: [{ id: 'default-notebook', name: 'Ghi chú chung', createdAt: nowMs, updatedAt: nowMs }],
+      memoryVault: vault,
+    });
+    const fewShot = fewShotBank.selectDynamicFewShot({
+      intentMode: directive.intentMode,
+      persona: persona.persona,
+      expertDomain: persona.domain,
+      psychState: psych.psychState,
+      userText: userMsg,
+    });
+    const greeting = proactiveGreeting.generateProactiveGreeting({
+      sessions: historySessions,
+      activeNotebookId: 'default-notebook',
+      memoryVault: vault,
+      now: testDate,
+    });
+
+    const day8Ok = chronoCtx.period === 'AFTERNOON' && chronoCtx.allowLateNightRemark === false;
+    const day9Ok = Boolean(psych && psych.psychState && psych.directiveTag.includes('[PSYCH:'));
+    const day10Ok = persona.persona === 'JARVIS_LAB' && persona.dynamicMaxTokens >= 1500;
+    const day11Ok = memorySlice.startsWith('[MEMORY_VAULT:') && memorySlice.length <= 480;
+    const day12Ok = recallSlice.startsWith('[RECALL_MEMORY:') && recallSlice.length <= 520;
+    const day13Ok = fewShot.length <= 520;
+    const day14Ok = greeting.headline.length > 0 && greeting.headline.length <= 58 && greeting.contextTag.length <= 180;
+
+    const passed = day8Ok && day9Ok && day10Ok && day11Ok && day12Ok && day13Ok && day14Ok;
+    results.push({
+      name: 'Test_Day15_Phase1_Full_Integration_Audit',
+      input: 'Chuỗi liên thông Ngày 8 -> Ngày 14 trên 1 lượt hội thoại thực tế (Giải tích 2 + Recall)',
+      mode: 'DAY15_PHASE1_INTEGRATION',
+      output: [
+        `D8:${chronoCtx.period} | D9:${psych.psychState} | D10:${persona.persona}/${persona.domain}`,
+        `D11:${memorySlice.length}c | D12:${recallSlice.length}c | D13:${fewShot.length}c`,
+        `D14:headline=${greeting.headline.length}c, target=${greeting.targetSessionId}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Liên thông 100% chuỗi Giai đoạn 1 (Chrono -> MicroPsych -> DualPersona -> Vault -> BM25 Recall -> FewShot -> ProactiveGreeting) không xung đột'
+        : 'Thất bại: Có đứt gãy hoặc vượt ngân sách ở một mắt xích trong chuỗi Giai đoạn 1',
+    });
+  }
+
+  // TEST 72: Test_Day15_SystemPrompt_Budget_And_StorageKeys
+  {
+    const words = (aiService.SYSTEM_INSTRUCTION || '').trim().split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+    const budgetOk = wordCount > 0 && wordCount < 450;
+
+    const expectedKeys = [
+      'CHAT_SESSIONS_V2',
+      'USER_MEMORY_PROFILE_V1',
+      'TOMORROW_THEME_MODE',
+      'TOMORROW_QUOTA_STATS_V1',
+      'TOMORROW_NOTEBOOKS_V1',
+    ];
+    const actualKeys = Array.isArray(backupService.IMMUTABLE_STORAGE_KEYS)
+      ? backupService.IMMUTABLE_STORAGE_KEYS
+      : [];
+    const keysMatch =
+      expectedKeys.length === actualKeys.length &&
+      expectedKeys.every((k, idx) => actualKeys[idx] === k);
+
+    const passed = budgetOk && keysMatch;
+    results.push({
+      name: 'Test_Day15_SystemPrompt_Budget_And_StorageKeys',
+      input: 'SYSTEM_INSTRUCTION < 450 từ & 5 khóa AsyncStorage bất biến',
+      mode: 'DAY15_BUDGET_AND_KEYS',
+      output: [
+        `SYSTEM_INSTRUCTION: ${wordCount} words (< 450)`,
+        `IMMUTABLE_STORAGE_KEYS: ${JSON.stringify(actualKeys)}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? `SYSTEM_INSTRUCTION đạt ${wordCount} từ (< 450) và bảo toàn nguyên vẹn 5 khóa AsyncStorage bất biến`
+        : 'Thất bại: Vượt ngân sách 450 từ hoặc sai lệch tên khóa AsyncStorage',
+    });
+  }
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 67 SCENARIOS (TOMORROW V4.10.3 — ONLINE • V4.10.3):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 72 SCENARIOS (TOMORROW V4.11 — ONLINE • V4.11 — HOÀN THÀNH GIAI ĐOẠN 1):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
@@ -3708,10 +4129,20 @@ console.log('='.repeat(75));
 
 console.log('\n📊 BẢNG ĐIỂM 11 KỊCH BẢN NGÀY 14 & V4.10.2–V4.10.3 (PROACTIVE GREETING ENGINE):');
 console.log('='.repeat(75));
-const day14Results = results.slice(56);
+const day14Results = results.slice(56, 67);
 day14Results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
   console.log(`${icon} [DAY14 ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(48)} | Điểm: ${r.score}/10`);
+  console.log(`   Chi tiết: ${r.details}`);
+});
+console.log('='.repeat(75));
+
+console.log('\n📊 BẢNG ĐIỂM 5 KỊCH BẢN NGÀY 15 (SAO LƯU JSON & TỔNG DUYỆT GIAI ĐOẠN 1 — V4.11):');
+console.log('='.repeat(75));
+const day15Results = results.slice(67);
+day15Results.forEach((r, idx) => {
+  const icon = r.passed ? '✅' : '❌';
+  console.log(`${icon} [DAY15 ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(48)} | Điểm: ${r.score}/10`);
   console.log(`   Chi tiết: ${r.details}`);
 });
 console.log('='.repeat(75));
@@ -3725,15 +4156,16 @@ console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.10.3',
+  version: 'v4.11',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.10.3 — Desktop Sidebar Lock, Zero-Rerender Hover CSS, Instant Click & Completed Session Guard (< 450 words)',
+  architecture: 'Tomorrow v4.11 — Phase 1 Milestone Complete: Local JSON Backup/Restore with Checksum & Full Regression Audit (< 450 words)',
   totalScore,
   maxScore,
   allPassed,
   scenarios: results,
   day13Scenarios: day13Results,
   day14Scenarios: day14Results,
+  day15Scenarios: day15Results,
   liveEvaluations: liveEvaluations.length > 0 ? liveEvaluations : undefined,
 };
 
