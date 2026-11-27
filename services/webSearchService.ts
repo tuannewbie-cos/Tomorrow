@@ -1,6 +1,6 @@
-// services/webSearchService.ts — Tomorrow v3.6 Autonomous Web Search & URL Reader Engine
-import { Platform } from 'react-native';
+// services/webSearchService.ts — Tomorrow v4.12 Autonomous Web Search & URL Reader Engine
 import { WebSource } from '../types/chat';
+import { fetchHubEndpoint } from './edgeProxyService';
 
 export type WebIntelTopic =
   | 'FOLLOWUP_REF'
@@ -638,29 +638,34 @@ export async function performSmartWebSearch(
     query = resolveTemporalSearchQuery(query, chrono);
     const topic: WebIntelTopic = refResolution?.isRef ? 'FOLLOWUP_REF' : classifyWebIntelTopic(query);
 
-    // 1. Thử gọi API endpoint /api/search (Vercel Serverless Function)
-    let endpoint = '/api/search';
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-      endpoint = `${window.location.origin}/api/search`;
-    }
+    // 1. Thử gọi API endpoint /api/search qua Edge Proxy Hub (L1 cache + dedup + 4.5s timeout)
+    const searchL1TtlMs =
+      topic === 'WEATHER' ? 120_000 : topic === 'MARKET_FINANCE' ? 30_000 : 60_000;
 
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4500); // Timeout 4.5s
-
-      const res = await fetch(endpoint, {
+      const hubRes = await fetchHubEndpoint<{
+        results?: Array<{
+          title?: string;
+          url?: string;
+          source?: string;
+          snippet?: string;
+          publishedAt?: string;
+        }>;
+        pageContent?: string;
+        targetUrl?: string;
+      }>('/api/search', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, url, topic }),
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeoutId));
+        body: { query, url, topic },
+        timeoutMs: 4500,
+        ttlMs: searchL1TtlMs,
+      });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data && (Array.isArray(data.results) || data.pageContent)) {
-          let sources: WebSource[] = (data.results || []).slice(0, 4).map((r: any) => ({
+      if (hubRes.ok && hubRes.data) {
+        const data = hubRes.data;
+        if (Array.isArray(data.results) || data.pageContent) {
+          let sources: WebSource[] = (data.results || []).slice(0, 4).map((r) => ({
             title: r.title || 'Nguồn web',
-            url: r.url,
+            url: r.url || '',
             source: r.source || 'Web',
             snippet: r.snippet,
             publishedAt: r.publishedAt,

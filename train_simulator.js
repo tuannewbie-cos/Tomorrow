@@ -92,6 +92,7 @@ const backupService = loadTsModule(path.resolve(__dirname, 'services/backupServi
 const chronoService = loadTsModule(path.resolve(__dirname, 'services/chronoService.ts'));
 const personaRouter = loadTsModule(path.resolve(__dirname, 'services/personaRouter.ts'));
 const fewShotBank = loadTsModule(path.resolve(__dirname, 'services/fewShotBank.ts'));
+const edgeProxyService = loadTsModule(path.resolve(__dirname, 'services/edgeProxyService.ts'));
 
 // 1. BỘ LỌC TIÊU ĐỀ RÁC (Đồng bộ storage/chatStorage.ts)
 function isPlaceholderOrNoiseTitle(title) {
@@ -4105,8 +4106,309 @@ async function runAllTests() {
     });
   }
 
+  // ==================== BỘ KIỂM THỬ NGÀY 16: EDGE PROXY HUB (V4.12) ====================
+  const corsLib = await import('./api/_lib/cors.js');
+  const securityLib = await import('./api/_lib/security.js');
+  const cacheLib = await import('./api/_lib/cache.js');
+  const proxyHandlerModule = await import('./api/proxy.js');
+
+  function createMockReqRes({ method = 'GET', headers = {}, query = {} } = {}) {
+    const resHeaders = {};
+    let statusCode = 200;
+    let jsonBody = null;
+    let ended = false;
+    const req = { method, headers, query, socket: { remoteAddress: '127.0.0.1' } };
+    const res = {
+      setHeader(k, v) { resHeaders[k] = v; },
+      getHeader(k) { return resHeaders[k]; },
+      status(code) {
+        statusCode = code;
+        return this;
+      },
+      json(payload) {
+        jsonBody = payload;
+        ended = true;
+        return this;
+      },
+      end() {
+        ended = true;
+        return this;
+      },
+    };
+    return {
+      req,
+      res,
+      getState: () => ({ statusCode, resHeaders, jsonBody, ended }),
+    };
+  }
+
+  // TEST 73: Test_Day16_Proxy_Allowlist_And_SSRF_Guard
+  {
+    const allowedTargets = [
+      { url: 'https://api.open-meteo.com/v1/forecast?latitude=21.03&longitude=105.85', cat: 'weather' },
+      { url: 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd', cat: 'finance' },
+      { url: 'https://vnexpress.net/tin-tuc', cat: 'news' },
+    ];
+    const allowedResults = allowedTargets.map((item) => ({
+      ...item,
+      res: securityLib.validateProxyTarget(item.url),
+    }));
+    const allAllowedOk = allowedResults.every(
+      (item) => item.res.ok === true && item.res.matchedCategory === item.cat
+    );
+
+    const dangerousTargets = [
+      'http://127.0.0.1:8080',
+      'http://169.254.169.254/latest/meta-data/',
+      'http://localhost:3000',
+      'https://evil-unknown-site.example/steal',
+      'file:///etc/passwd',
+      'https://127.0.0.1/admin',
+      'https://user:pass@api.open-meteo.com/v1/forecast',
+    ];
+    const blockedResults = dangerousTargets.map((u) => ({
+      url: u,
+      res: securityLib.validateProxyTarget(u),
+    }));
+    const allBlockedOk = blockedResults.every(
+      (item) => item.res.ok === false && item.res.status === 403
+    );
+
+    const passed = allAllowedOk && allBlockedOk;
+    results.push({
+      name: 'Test_Day16_Proxy_Allowlist_And_SSRF_Guard',
+      input: '3 domain hợp lệ (open-meteo, coingecko, vnexpress) + 7 URL SSRF/ngoài allowlist',
+      mode: 'DAY16_SSRF_ALLOWLIST',
+      output: [
+        `allowed=${allowedResults.filter((x) => x.res.ok).length}/3`,
+        `blocked=${blockedResults.filter((x) => !x.res.ok).length}/7`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Cho phép 100% domain Giai đoạn 2 hợp lệ và chặn 100% URL nội bộ, metadata IP, file://, site lạ'
+        : 'Thất bại: Lọt URL nguy hiểm hoặc chặn nhầm domain hợp lệ trong allowlist',
+    });
+  }
+
+  // TEST 74: Test_Day16_EdgeCache_Headers_And_TTL
+  {
+    const profilesOk =
+      cacheLib.CACHE_PROFILES.MARKET_LIVE === 'public, s-maxage=60, stale-while-revalidate=120' &&
+      cacheLib.CACHE_PROFILES.NEWS_FEED === 'public, s-maxage=180, stale-while-revalidate=300' &&
+      cacheLib.CACHE_PROFILES.WEATHER === 'public, s-maxage=600, stale-while-revalidate=900' &&
+      cacheLib.CACHE_PROFILES.SCIENCE_STATIC === 'public, s-maxage=1800, stale-while-revalidate=3600' &&
+      cacheLib.CACHE_PROFILES.NO_STORE === 'no-store';
+
+    const mockWeather = createMockReqRes();
+    cacheLib.applyCacheHeaders(mockWeather.res, 'WEATHER', 'MISS');
+    const weatherHdrOk =
+      mockWeather.getState().resHeaders['Cache-Control'] === 'public, s-maxage=600, stale-while-revalidate=900' &&
+      mockWeather.getState().resHeaders['X-Tomorrow-Cache'] === 'MISS';
+
+    const mockError = createMockReqRes();
+    cacheLib.applyCacheHeaders(mockError.res, 'NO_STORE', 'HIT');
+    const errorHdrOk =
+      mockError.getState().resHeaders['Cache-Control'] === 'no-store' &&
+      mockError.getState().resHeaders['X-Tomorrow-Cache'] === 'BYPASS';
+
+    const healthMock = createMockReqRes({ method: 'GET', query: { action: 'health' } });
+    await proxyHandlerModule.default(healthMock.req, healthMock.res);
+    const healthState = healthMock.getState();
+    const healthOk =
+      healthState.statusCode === 200 &&
+      healthState.jsonBody?.ok === true &&
+      healthState.jsonBody?.version === 'v4.12' &&
+      healthState.resHeaders['Cache-Control'] === 'no-store';
+
+    const passed = profilesOk && weatherHdrOk && errorHdrOk && healthOk;
+    results.push({
+      name: 'Test_Day16_EdgeCache_Headers_And_TTL',
+      input: 'Kiểm tra CACHE_PROFILES (MARKET_LIVE, NEWS_FEED, WEATHER, SCIENCE_STATIC, NO_STORE) & /api/proxy?action=health',
+      mode: 'DAY16_EDGE_CACHE',
+      output: [
+        `profilesOk=${profilesOk}`,
+        `weatherHdrOk=${weatherHdrOk}`,
+        `errorNoStore=${errorHdrOk}`,
+        `healthVersion=${healthState.jsonBody?.version}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Xuất chuẩn xác header s-maxage + stale-while-revalidate, khóa no-store khi lỗi và health v4.12 trả 200'
+        : 'Thất bại: Sai header Cache-Control hoặc endpoint health chưa đúng chuẩn',
+    });
+  }
+
+  // TEST 75: Test_Day16_CORS_Origin_And_Preflight
+  {
+    const vercelMock = createMockReqRes({ headers: { origin: 'https://tomorrow-prod.vercel.app' } });
+    const vercelCors = corsLib.applyCorsHeaders(vercelMock.req, vercelMock.res);
+    const vercelOk =
+      vercelCors.allowed === true &&
+      vercelMock.getState().resHeaders['Access-Control-Allow-Origin'] === 'https://tomorrow-prod.vercel.app';
+
+    const localMock = createMockReqRes({ headers: { origin: 'http://localhost:8081' } });
+    const localCors = corsLib.applyCorsHeaders(localMock.req, localMock.res);
+    const localOk =
+      localCors.allowed === true &&
+      localMock.getState().resHeaders['Access-Control-Allow-Origin'] === 'http://localhost:8081';
+
+    const evilMock = createMockReqRes({ headers: { origin: 'https://evil-attacker.example' } });
+    const evilCors = corsLib.applyCorsHeaders(evilMock.req, evilMock.res);
+    const evilOriginHeader = evilMock.getState().resHeaders['Access-Control-Allow-Origin'];
+    const evilBlockedOk = evilCors.allowed === false && evilOriginHeader === undefined;
+
+    const nativeMock = createMockReqRes({ headers: {} });
+    const nativeCors = corsLib.applyCorsHeaders(nativeMock.req, nativeMock.res);
+    const nativeOk =
+      nativeCors.allowed === true &&
+      nativeMock.getState().resHeaders['Access-Control-Allow-Origin'] === undefined;
+
+    const preflightMock = createMockReqRes({
+      method: 'OPTIONS',
+      headers: { origin: 'http://localhost:8081' },
+    });
+    const handled = corsLib.handlePreflight(preflightMock.req, preflightMock.res);
+    const preflightOk =
+      handled === true &&
+      preflightMock.getState().statusCode === 204 &&
+      preflightMock.getState().ended === true;
+
+    const passed = vercelOk && localOk && evilBlockedOk && nativeOk && preflightOk;
+    results.push({
+      name: 'Test_Day16_CORS_Origin_And_Preflight',
+      input: 'Vercel origin + localhost + evil origin + native no-origin + OPTIONS preflight',
+      mode: 'DAY16_CORS_PREFLIGHT',
+      output: [
+        `vercel=${vercelOk}, localhost=${localOk}`,
+        `evilBlockedNoWildcard=${evilBlockedOk}`,
+        `native=${nativeOk}, options204=${preflightOk}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Chấp nhận chuẩn domain Vercel & localhost, không cấp wildcard * cho origin lạ, xử lý OPTIONS 204 gọn'
+        : 'Thất bại: Lỗi whitelist CORS hoặc trả sai status preflight',
+    });
+  }
+
+  // TEST 76: Test_Day16_Client_L1_Cache_And_Dedup
+  {
+    edgeProxyService.clearEdgeProxyCache();
+    const originalFetch = globalThis.fetch;
+    let realFetchCalls = 0;
+
+    globalThis.fetch = async () => {
+      realFetchCalls += 1;
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ok: true,
+          meta: {
+            source: 'api.coingecko.com',
+            category: 'finance',
+            profile: 'MARKET_LIVE',
+            cached: false,
+            fetchedAt: '2026-11-27T11:00:00.000Z',
+            latencyMs: 15,
+          },
+          contentType: 'application/json',
+          data: { bitcoin: { usd: 96500 } },
+        }),
+      };
+    };
+
+    let passed = false;
+    let parallel1;
+    let parallel2;
+    let sequential3;
+    try {
+      const target = 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd';
+      [parallel1, parallel2] = await Promise.all([
+        edgeProxyService.fetchViaEdgeProxy(target, { profile: 'MARKET_LIVE', ttlMs: 30000 }),
+        edgeProxyService.fetchViaEdgeProxy(target, { profile: 'MARKET_LIVE', ttlMs: 30000 }),
+      ]);
+      const callsAfterParallel = realFetchCalls;
+
+      sequential3 = await edgeProxyService.fetchViaEdgeProxy(target, {
+        profile: 'MARKET_LIVE',
+        ttlMs: 30000,
+      });
+      const callsAfterSeq = realFetchCalls;
+
+      passed =
+        callsAfterParallel === 1 &&
+        callsAfterSeq === 1 &&
+        parallel1.ok === true &&
+        parallel2.ok === true &&
+        parallel1.data?.bitcoin?.usd === 96500 &&
+        sequential3.ok === true &&
+        sequential3.fromL1Cache === true;
+    } finally {
+      globalThis.fetch = originalFetch;
+      edgeProxyService.clearEdgeProxyCache();
+    }
+
+    results.push({
+      name: 'Test_Day16_Client_L1_Cache_And_Dedup',
+      input: '2 request song song cùng URL + 1 request kế tiếp trong TTL',
+      mode: 'DAY16_L1_DEDUP',
+      output: [
+        `realFetchCalls=${realFetchCalls}`,
+        `parallel1.ok=${parallel1?.ok}, parallel2.ok=${parallel2?.ok}`,
+        `sequential3.fromL1Cache=${sequential3?.fromL1Cache}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Gộp 2 request song song thành 1 fetch thật duy nhất và lần gọi thứ 3 ăn L1 Cache (fromL1Cache: true)'
+        : 'Thất bại: Bắn trùng fetch thật hoặc không trả fromL1Cache: true',
+    });
+  }
+
+  // TEST 77: Test_Day16_BackwardCompat_And_PromptBudget
+  {
+    const prev72Passed = results.slice(0, 72).every((r) => r.passed);
+    const words = (aiService.SYSTEM_INSTRUCTION || '').trim().split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+    const budgetOk = wordCount > 0 && wordCount < 450;
+
+    const apiEntries = fs
+      .readdirSync(path.resolve(__dirname, 'api'))
+      .filter((name) => name.endsWith('.js') && !name.startsWith('_'));
+    const vercelConfig = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, 'vercel.json'), 'utf8')
+    );
+    const hasExcludedApiRewrite =
+      Array.isArray(vercelConfig.rewrites) &&
+      vercelConfig.rewrites.some(
+        (rw) => typeof rw.source === 'string' && rw.source.includes('(?!api/)')
+      );
+
+    const passed = prev72Passed && budgetOk && apiEntries.length <= 12 && hasExcludedApiRewrite;
+    results.push({
+      name: 'Test_Day16_BackwardCompat_And_PromptBudget',
+      input: '72 test hồi quy Ngày 8-15 + SYSTEM_INSTRUCTION < 450 từ + giới hạn Vercel function & vercel.json',
+      mode: 'DAY16_REGRESSION_BUDGET',
+      output: [
+        `prev72Passed=${prev72Passed}`,
+        `SYSTEM_INSTRUCTION=${wordCount} words`,
+        `apiFunctions=${apiEntries.length} (${apiEntries.join(', ')})`,
+        `vercelExcludeApiRewrite=${hasExcludedApiRewrite}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? `72/72 test nền tảng PASS, SYSTEM_INSTRUCTION giữ nguyên ${wordCount} từ (< 450), có ${apiEntries.length} serverless functions`
+        : 'Thất bại: Hồi quy Ngày 8-15 gãy, vượt 450 từ, hoặc cấu hình vercel.json sai',
+    });
+  }
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 72 SCENARIOS (TOMORROW V4.11 — ONLINE • V4.11 — HOÀN THÀNH GIAI ĐOẠN 1):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 77 SCENARIOS (TOMORROW V4.12 — ONLINE • V4.12 — NGÀY 16 EDGE PROXY HUB):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
@@ -4139,10 +4441,20 @@ console.log('='.repeat(75));
 
 console.log('\n📊 BẢNG ĐIỂM 5 KỊCH BẢN NGÀY 15 (SAO LƯU JSON & TỔNG DUYỆT GIAI ĐOẠN 1 — V4.11):');
 console.log('='.repeat(75));
-const day15Results = results.slice(67);
+const day15Results = results.slice(67, 72);
 day15Results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
   console.log(`${icon} [DAY15 ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(48)} | Điểm: ${r.score}/10`);
+  console.log(`   Chi tiết: ${r.details}`);
+});
+console.log('='.repeat(75));
+
+console.log('\n📊 BẢNG ĐIỂM 5 KỊCH BẢN NGÀY 16 (EDGE PROXY HUB & PHASE 2 LAUNCH — V4.12):');
+console.log('='.repeat(75));
+const day16Results = results.slice(72);
+day16Results.forEach((r, idx) => {
+  const icon = r.passed ? '✅' : '❌';
+  console.log(`${icon} [DAY16 ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(48)} | Điểm: ${r.score}/10`);
   console.log(`   Chi tiết: ${r.details}`);
 });
 console.log('='.repeat(75));
@@ -4156,9 +4468,9 @@ console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.11',
+  version: 'v4.12',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.11 — Phase 1 Milestone Complete: Local JSON Backup/Restore with Checksum & Full Regression Audit (< 450 words)',
+  architecture: 'Tomorrow v4.12 — Phase 2 Launch (Day 16): Vercel Edge Proxy Hub (_lib CORS/SSRF/Cache/Fetcher, /api/proxy, upgraded /api/search, client L1 cache+dedup)',
   totalScore,
   maxScore,
   allPassed,
@@ -4166,6 +4478,7 @@ const reportData = {
   day13Scenarios: day13Results,
   day14Scenarios: day14Results,
   day15Scenarios: day15Results,
+  day16Scenarios: day16Results,
   liveEvaluations: liveEvaluations.length > 0 ? liveEvaluations : undefined,
 };
 

@@ -2247,7 +2247,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: themeMode === 'dark' ? '#FFFFFF' : '#09090B' }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.11.1</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.12</Text>
               </View>
             </View>
           </View>

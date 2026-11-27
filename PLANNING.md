@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.11` | **Trạng thái:** HOÀN THÀNH 100% GIAI ĐOẠN 1 (Ngày 1 – Ngày 15) — Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.12` | **Trạng thái:** ĐANG TRIỂN KHAI GIAI ĐOẠN 2 (Ngày 16 — Edge Proxy Hub `Online • v4.12`) — Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -18,7 +18,7 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
 | Giai đoạn | Nội dung trọng tâm | Thời gian | Trạng thái |
 | :--- | :--- | :--- | :--- |
 | **Phase 1** | **Core Foundation, 3-Layer Reflex, Quota Shield & Vision Lab** | Ngày 1 – 15 | ✅ HOÀN THÀNH 100% (Mốc `Online • v4.11`) |
-| **Phase 2** | **Tri thức Chuyên sâu, Khoa học & Thị trường** | Ngày 16 – 30 | ⚪ Chưa bắt đầu |
+| **Phase 2** | **Tri thức Chuyên sâu, Khoa học & Thị trường** | Ngày 16 – 30 | 🟡 Đang triển khai (Ngày 16: Edge Proxy Hub `Online • v4.12`) |
 | **Phase 3** | **Voice HUD, Realtime Waveform & Voiceprint** | Ngày 31 – 45 | ⚪ Chưa bắt đầu |
 | **Phase 4** | **Camera MediaPipe Nội bộ (100% Private RAM)** | Ngày 46 – 60 | ⚪ Chưa bắt đầu |
 | **Phase 5** | **Autonomous Local Memory & Knowledge Synthesis** | Ngày 61 – 75 | ⚪ Chưa bắt đầu |
@@ -489,6 +489,15 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
 ---
 
 ### GIAI ĐOẠN 2: TRI THỨC KHOA HỌC & THỊ TRƯỜNG CHUYÊN SÂU (NGÀY 16 – 30)
+- [x] **Ngày 16 (`backend/vercel-edge-proxy-hub` — Phiên bản `Online • v4.12`): Khởi động Giai đoạn 2 — Hạ tầng Vercel Edge Proxy Hub & Client L1 Cache**
+  - **Lõi tiện ích dùng chung `api/_lib/` (0 tốn slot Vercel Function):**
+    + `api/_lib/cors.js`: Whitelist CORS an toàn (`*.vercel.app`, `localhost`, `127.0.0.1`, `capacitor://localhost`, native no-origin) không cấp wildcard `*` cho origin lạ, xử lý `OPTIONS` trả HTTP `204`.
+    + `api/_lib/security.js`: Rào chắn SSRF chặn tuyệt đối IP nội bộ/private/metadata (`127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`, IPv6 `::1`/`fc00::/7`/`fe80::/10`, `file://`, credentials nhúng), `ALLOWED_PROXY_DOMAINS` cho 5 nhóm (`weather`, `finance`, `news`, `science`, `reader`), và `checkSoftRateLimit` (45 req/phút).
+    + `api/_lib/cache.js`: 7 hồ sơ Edge Cache (`MARKET_LIVE` 60s, `NEWS_FEED` 180s, `SEARCH_RESULT` 180s, `WEATHER` 600s, `SCIENCE_STATIC` 1800s, `URL_READER` 600s, `NO_STORE`) + L2 warm RAM cache tối đa 80 mục.
+    + `api/_lib/fetcher.js`: `safeUpstreamFetch` dùng `AbortController`, giới hạn dung lượng `<= 1.5MB`, retry tối đa 1 lần khi lỗi mạng/`502`/`503`/`504` (cấm retry `4xx`).
+  - **Cổng trung tâm `api/proxy.js` & `vercel.json`:** Hỗ trợ `?action=health` (`200`, `NO_STORE`) và gateway chuẩn hóa envelope JSON + Edge Cache; `vercel.json` loại trừ `/api/` khỏi SPA rewrite (`/((?!api/).*)`), giữ gọn 2 serverless functions (`proxy.js`, `search.js`) trong giới hạn Vercel Hobby.
+  - **Nâng cấp `api/search.js` & Client Hub `services/edgeProxyService.ts`:** `api/search.js` dùng chung `api/_lib/*` với cache thông minh theo chủ đề (không cache lỗi lên CDN); `services/edgeProxyService.ts` chuẩn hóa `resolveApiBaseUrl()`, L1 RAM cache (`<= 60` mục) + in-flight deduplication và tích hợp nhẹ vào `services/webSearchService.ts`.
+  - **Kiểm thử & Giao diện (`train_simulator.js`, `App.tsx`):** Bổ sung +5 test Ngày 16 (`Test_Day16_Proxy_Allowlist_And_SSRF_Guard`, `Test_Day16_EdgeCache_Headers_And_TTL`, `Test_Day16_CORS_Origin_And_Preflight`, `Test_Day16_Client_L1_Cache_And_Dedup`, `Test_Day16_BackwardCompat_And_PromptBudget`), đạt **77/77 PASS (770/770 điểm)**, giữ nguyên `SYSTEM_INSTRUCTION` < 450 từ, cập nhật Header **`Online • v4.12`**.
 - [ ] **Deep Research Mode:** Khả năng tự động tổng hợp tài liệu nhiều bước (multi-hop web queries).
 - [ ] **Market & Financial Intel:** Tích hợp dữ liệu thời gian thực cho tỷ giá, mã cổ phiếu, xu hướng công nghệ qua Serverless API caching.
 - [ ] **Code Sandbox & Visual Artifacts:** Hỗ trợ render trực tiếp sơ đồ Mermaid, biểu đồ dữ liệu và khối mã có syntax highlighting chuẩn macOS.
