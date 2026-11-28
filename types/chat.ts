@@ -15,6 +15,12 @@ export interface WebSource {
   publishedAt?: string;
 }
 
+export interface QuotedSelection {
+  text: string;
+  messageId: string;
+  paneId: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'model';
@@ -29,6 +35,8 @@ export interface ChatMessage {
   jarvisIntent?: string;
   sources?: WebSource[];
   searchQuery?: string;
+  quotedText?: string;
+  quotedMessageId?: string;
 }
 
 export interface StudySubject {

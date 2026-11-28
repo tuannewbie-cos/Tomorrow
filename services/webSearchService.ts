@@ -1,11 +1,17 @@
-// services/webSearchService.ts — Tomorrow v4.13 Autonomous Web Search & URL Reader Engine
-import { WebSource } from '../types/chat';
+// services/webSearchService.ts — Tomorrow v4.13.1 Autonomous Web Search & URL Reader Engine
+import { ChatMessage, WebSource } from '../types/chat';
 import { fetchHubEndpoint } from './edgeProxyService';
 import {
   detectNewsRadarIntent,
   fetchNewsRadar,
   formatNewsContextForAI,
 } from './newsRadarService';
+
+export interface MatchedQuoteContext {
+  quotedText: string;
+  itemIndex?: number;
+  matchedSource?: { title: string; url: string; domain?: string; source?: string };
+}
 
 export type WebIntelTopic =
   | 'FOLLOWUP_REF'
@@ -618,6 +624,181 @@ export function resolveTemporalSearchQuery(query: string, chrono?: { dateStr: st
   return `${query} ${dateStr}`.trim();
 }
 
+const QUOTE_STOPWORDS = new Set([
+  'cua', 'va', 'la', 'trong', 'cho', 'voi', 'mot', 'nhung', 'cac', 'da', 'dang', 'se',
+  'nay', 'do', 'tai', 'tu', 've', 'theo', 'nhu', 'the', 'khi', 'sau', 'truoc', 'den',
+  'and', 'for', 'with', 'from', 'this', 'that', 'are', 'was', 'has', 'have', 'had', 'over', 'into',
+]);
+
+function normalizeQuoteMatchText(input: string): string {
+  return (input || '')
+    .replace(/\*\*|__|`/g, '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'd')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function tokenizeQuoteWords(normText: string): Set<string> {
+  const words = normText
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((w) => w.length >= 2 && !QUOTE_STOPWORDS.has(w));
+  return new Set(words);
+}
+
+/**
+ * Matches a user-highlighted text excerpt back to the exact source item in sourceMessage.sources.
+ * Priority 1: Numbered list index match (1., 2., 3...) inside sourceMessage.text.
+ * Priority 2: Title + source-name + entity keyword overlap across sourceMessage.sources.
+ */
+export function matchQuotedTextToSource(
+  quotedText: string,
+  sourceMessage?: ChatMessage
+): MatchedQuoteContext {
+  const clamped = (quotedText || '').trim().slice(0, 500);
+  if (!clamped || !sourceMessage) {
+    return { quotedText: clamped };
+  }
+
+  const sources = Array.isArray(sourceMessage.sources) ? sourceMessage.sources : [];
+  if (sources.length === 0) {
+    return { quotedText: clamped };
+  }
+
+  const normQuoted = normalizeQuoteMatchText(clamped)
+    .replace(/^\d+\.\s*/, '')
+    .trim();
+  const probe = normQuoted.slice(0, 42).trim();
+
+  // Priority 1: Check numbered list items in sourceMessage.text (1., 2., 3...)
+  if (sourceMessage.text && probe.length >= 4) {
+    const lines = sourceMessage.text.split('\n');
+    const listBlocks: Array<{ index: number; text: string }> = [];
+    let currentBlock: { index: number; text: string } | null = null;
+
+    for (const line of lines) {
+      const listMatch = line.match(/^\s*(\d+)\.\s+(.+)$/);
+      if (listMatch) {
+        if (currentBlock) listBlocks.push(currentBlock);
+        currentBlock = {
+          index: parseInt(listMatch[1], 10),
+          text: listMatch[2],
+        };
+      } else if (currentBlock && line.trim()) {
+        currentBlock.text += ' ' + line.trim();
+      }
+    }
+    if (currentBlock) listBlocks.push(currentBlock);
+
+    for (const blk of listBlocks) {
+      const normBlk = normalizeQuoteMatchText(blk.text);
+      if (
+        normBlk.includes(probe) ||
+        (normQuoted.length >= 8 && normQuoted.includes(normBlk.slice(0, 36)))
+      ) {
+        const matched = sources[blk.index - 1];
+        if (matched && matched.url) {
+          return {
+            quotedText: clamped,
+            itemIndex: blk.index,
+            matchedSource: {
+              title: matched.title,
+              url: matched.url,
+              domain: matched.domain,
+              source: matched.source,
+            },
+          };
+        }
+      }
+    }
+  }
+
+  // Priority 2: Keyword & source-name overlap across sourceMessage.sources
+  const bracketMatch = clamped.match(/\[([^\]•]+)(?:•[^\]]*)?\]/);
+  const bracketSourceNorm = bracketMatch ? normalizeQuoteMatchText(bracketMatch[1]) : '';
+  const quotedTokens = tokenizeQuoteWords(normQuoted);
+  const properNouns = (clamped.match(/\b[A-ZÀ-Ỹ][a-zà-ỹ0-9]{2,}\b/g) || []).map((w) =>
+    normalizeQuoteMatchText(w)
+  );
+
+  let bestScore = 0;
+  let bestSource: WebSource | null = null;
+  let bestIndex: number | undefined;
+
+  sources.forEach((src, idx) => {
+    if (!src || !src.url) return;
+    const srcCombinedNorm = normalizeQuoteMatchText(
+      `${src.title || ''} ${src.source || ''} ${src.snippet || ''}`
+    );
+    const srcTokens = tokenizeQuoteWords(srcCombinedNorm);
+    const srcTitleTokens = tokenizeQuoteWords(normalizeQuoteMatchText(src.title || ''));
+    const srcNameNorm = normalizeQuoteMatchText(src.source || '');
+
+    let overlapCount = 0;
+    for (const tok of quotedTokens) {
+      if (srcTokens.has(tok) || (tok.length >= 4 && srcCombinedNorm.includes(tok))) {
+        overlapCount += 1;
+      }
+    }
+
+    let titleOverlap = 0;
+    for (const tok of quotedTokens) {
+      if (srcTitleTokens.has(tok)) titleOverlap += 1;
+    }
+
+    const denom = Math.max(1, Math.min(quotedTokens.size, srcTokens.size));
+    let score = overlapCount / denom;
+
+    const sourceMatched =
+      Boolean(srcNameNorm) &&
+      (normQuoted.includes(srcNameNorm) ||
+        (bracketSourceNorm &&
+          (bracketSourceNorm.includes(srcNameNorm) || srcNameNorm.includes(bracketSourceNorm))));
+
+    if (sourceMatched && overlapCount >= 1) {
+      score += 0.3;
+    }
+
+    let properHits = 0;
+    for (const pn of properNouns) {
+      if (pn.length >= 3 && srcCombinedNorm.includes(pn)) {
+        properHits += 1;
+      }
+    }
+    if (properHits >= 2) {
+      score += 0.25;
+    } else if (properHits === 1 && titleOverlap >= 1) {
+      score += 0.15;
+    }
+
+    if (score > bestScore && (score >= 0.2 || (sourceMatched && titleOverlap >= 1))) {
+      bestScore = score;
+      bestSource = src;
+      bestIndex = idx + 1;
+    }
+  });
+
+  if (bestSource) {
+    const chosen = bestSource as WebSource;
+    return {
+      quotedText: clamped,
+      itemIndex: bestIndex,
+      matchedSource: {
+        title: chosen.title,
+        url: chosen.url,
+        domain: chosen.domain,
+        source: chosen.source,
+      },
+    };
+  }
+
+  return { quotedText: clamped };
+}
+
 /**
  * 3. THỰC HIỆN TÌM KIẾM ĐA TẦNG VỚI CLIENT-SIDE FALLBACK (performSmartWebSearch)
  * Giới hạn tối đa 3.5s và đảm bảo 100% không bao giờ ném lỗi (Graceful Fallback)
@@ -626,7 +807,8 @@ export async function performSmartWebSearch(
   userText: string,
   recentHistory: any[] = [],
   forceSearch: boolean = false,
-  chrono?: { dateStr: string }
+  chrono?: { dateStr: string },
+  quotedContext?: MatchedQuoteContext
 ): Promise<WebSearchContext> {
   const fallbackEmpty: WebSearchContext = {
     searched: false,
@@ -636,6 +818,108 @@ export async function performSmartWebSearch(
   };
 
   try {
+    const isAskLinkIntent =
+      /\b(link|đường dẫn|duong dan|nguồn|nguon|trích dẫn|trich dan|bài gốc|bai goc|url|ở đâu|o dau|báo nào|bao nao)\b/i.test(
+        userText
+      );
+    const hasQuoted = Boolean(quotedContext && quotedContext.quotedText);
+
+    // Smart routing when user highlighted a quote
+    if (hasQuoted && quotedContext) {
+      const matched = quotedContext.matchedSource;
+      if (matched && matched.url) {
+        const isGoogleRss = matched.url.includes('news.google.com/rss/articles/');
+        let pageContent = '';
+        if (!isGoogleRss) {
+          try {
+            const readerRes = await fetchHubEndpoint<{ pageContent?: string }>('/api/search', {
+              method: 'POST',
+              body: { url: matched.url, topic: 'URL_READER' },
+              timeoutMs: 3200,
+              ttlMs: 180_000,
+            });
+            if (readerRes.ok && readerRes.data?.pageContent) {
+              pageContent = readerRes.data.pageContent;
+            }
+          } catch {
+            // Keep matched source even if deep read times out
+          }
+        }
+
+        if (isAskLinkIntent || pageContent || isGoogleRss) {
+          const sourceEntry: WebSource = {
+            title: matched.title,
+            url: matched.url,
+            domain: matched.domain,
+            source: matched.source || matched.domain || 'Nguồn tin',
+            snippet: quotedContext.quotedText,
+          };
+          let formatted = `[NGUỒN BÀI GỐC KHỚP TỪ ĐOẠN TRÍCH DẪN]:\n1. [${sourceEntry.source}] ${sourceEntry.title}\nURL: ${sourceEntry.url}`;
+          if (pageContent) {
+            formatted += `\n\n[NỘI DUNG BÀI BÁO]:\n${pageContent.slice(0, 2200)}`;
+          }
+          return {
+            searched: true,
+            query: matched.title,
+            formattedContext: formatted,
+            sources: [sourceEntry],
+            pageContent: pageContent || undefined,
+            targetUrl: matched.url,
+            topic: 'URL_READER',
+          };
+        }
+      } else if (isAskLinkIntent) {
+        // User asked for link/source from a message without attached sources -> search excerpt
+        const entityQuery = quotedContext.quotedText
+          .replace(/\[[^\]]+\]/g, ' ')
+          .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 90);
+        if (entityQuery) {
+          const searchRes = await fetchHubEndpoint<{
+            results?: Array<{
+              title?: string;
+              url?: string;
+              source?: string;
+              snippet?: string;
+              publishedAt?: string;
+            }>;
+          }>('/api/search', {
+            method: 'POST',
+            body: { query: entityQuery, topic: 'NEWS_RADAR' },
+            timeoutMs: 4200,
+            ttlMs: 60_000,
+          });
+          if (searchRes.ok && Array.isArray(searchRes.data?.results) && searchRes.data.results.length > 0) {
+            const sources: WebSource[] = searchRes.data.results.slice(0, 4).map((r) => ({
+              title: r.title || 'Nguồn web',
+              url: r.url || '',
+              source: r.source || 'Web',
+              snippet: r.snippet,
+              publishedAt: r.publishedAt,
+            }));
+            let formatted = `[KẾT QUẢ TÌM BÀI GỐC CHO ĐOẠN TRÍCH DẪN "${entityQuery}"]:\n`;
+            sources.forEach((s, idx) => {
+              formatted += `${idx + 1}. [${s.source || 'Web'}] ${s.title}\nLink: ${s.url}\n\n`;
+            });
+            return {
+              searched: true,
+              query: entityQuery,
+              formattedContext: formatted.trim(),
+              sources,
+              topic: 'NEWS_RADAR',
+            };
+          }
+        }
+      } else {
+        // Group B without matchedSource (e.g. STEM/code/math/casual) -> skip unnecessary web search unless forced or explicitly web-triggered
+        if (!forceSearch && !shouldTriggerWebSearch(userText, false)) {
+          return fallbackEmpty;
+        }
+      }
+    }
+
     const needsSearch = shouldTriggerWebSearch(userText, forceSearch);
     if (!needsSearch) {
       return fallbackEmpty;

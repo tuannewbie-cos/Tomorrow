@@ -32,6 +32,8 @@ import {
   resolveTemporalSearchQuery,
   classifyWebIntelTopic,
   resolveReferenceFromHistory,
+  matchQuotedTextToSource,
+  MatchedQuoteContext,
   WebIntelTopic,
   ReferenceResolution,
 } from './webSearchService';
@@ -94,8 +96,10 @@ export {
   ExpertDomain,
   WebIntelTopic,
   ReferenceResolution,
+  MatchedQuoteContext,
   classifyWebIntelTopic,
   resolveReferenceFromHistory,
+  matchQuotedTextToSource,
   shouldTriggerWebSearch,
   performSmartWebSearch,
   resolveTemporalSearchQuery,
@@ -1653,10 +1657,16 @@ export function sanitizeWebReplyUrls(replies: string[], hasSources: boolean = fa
   return replies
     .map((reply) => {
       return cleanReplyPreservingCode(reply, (text) => {
-        let cleaned = text;
+        // Mask clean Markdown links [label](https://...) so they are always preserved
+        const mdLinks: string[] = [];
+        let cleaned = text.replace(/\[[^\]]+\]\(https?:\/\/[^\s)]+\)/gi, (full) => {
+          const token = `__TMR_MD_LINK_${mdLinks.length}__`;
+          mdLinks.push(full);
+          return token;
+        });
 
         if (hasSources) {
-          // Cắt bỏ dòng link/nguồn ở cuối nếu đã có sources pills
+          // Cắt bỏ dòng link/nguồn thô ở cuối nếu đã có sources pills
           cleaned = cleaned
             .replace(/\n+\s*(?:Link|Nguồn|Đường dẫn|URL|Source)\s*:\s*https?:\/\/[^\s]+/gi, '')
             .replace(/\n+\s*https?:\/\/news\.google\.com\/[^\s]+/gi, '')
@@ -1668,6 +1678,11 @@ export function sanitizeWebReplyUrls(replies: string[], hasSources: boolean = fa
             'https://news.google.com'
           );
         }
+
+        // Restore preserved Markdown links
+        mdLinks.forEach((link, idx) => {
+          cleaned = cleaned.replace(`__TMR_MD_LINK_${idx}__`, link);
+        });
 
         return cleaned.trimEnd();
       });
@@ -3601,7 +3616,8 @@ async function doSendMessageToTomorrow(
   sessions?: ChatSession[],
   notebooks?: Notebook[],
   externalSignal?: AbortSignal,
-  proactiveContextTag?: string
+  proactiveContextTag?: string,
+  quotedSelection?: { text: string; messageId: string }
 ): Promise<AIResponsePayload> {
   if (externalSignal?.aborted) {
     return {
@@ -3621,19 +3637,64 @@ async function doSendMessageToTomorrow(
     const chrono = buildChronoContext(customNow, lastTimestamp);
     const userStyle = extractUserStyleLocal(userText, recentChats);
 
+    // 0A. KHỚP ĐOẠN BÔI ĐEN VỚI NGUỒN BÀI GỐC (v4.13.1 Quoted Selection Matcher)
+    const sourceMessage = quotedSelection?.messageId
+      ? recentChats.find((m) => m.id === quotedSelection.messageId)
+      : undefined;
+    const quotedMatch =
+      quotedSelection && quotedSelection.text
+        ? matchQuotedTextToSource(quotedSelection.text, sourceMessage)
+        : undefined;
+    const isAskLinkIntent = Boolean(
+      quotedMatch &&
+        /\b(link|đường dẫn|duong dan|nguồn|nguon|trích dẫn|trich dan|bài gốc|bai goc|url|ở đâu|o dau|báo nào|bao nao)\b/i.test(
+          userText
+        )
+    );
+    const shouldSearchForQuote = Boolean(
+      quotedMatch && (isAskLinkIntent || quotedMatch.matchedSource)
+    );
+
     // 0. TRA CỨU WEB THỜI GIAN THỰC (Nếu cần hoặc người dùng ép buộc)
     let webSearchContext: any = { searched: false, query: '', formattedContext: '', sources: [] };
-    const needsWebSearch = shouldTriggerWebSearch(userText, forceWebSearch);
+    const needsWebSearch = shouldTriggerWebSearch(userText, forceWebSearch) || shouldSearchForQuote;
 
     if (needsWebSearch) {
       try {
         if (onSearchStatusChange) onSearchStatusChange(true);
-        webSearchContext = await performSmartWebSearch(userText, recentChats, forceWebSearch, chrono);
+        webSearchContext = await performSmartWebSearch(
+          userText,
+          recentChats,
+          forceWebSearch,
+          chrono,
+          quotedMatch
+        );
       } catch (e: any) {
         console.warn('[AI Service] Tra cứu web gặp sự cố:', e?.message || e);
       } finally {
         if (onSearchStatusChange) onSearchStatusChange(false);
       }
+    }
+
+    // Đảm bảo matchedSource đứng đầu mảng sources nếu đã khớp chuẩn từ tin nhắn gốc
+    if (quotedMatch?.matchedSource?.url) {
+      const topMatched = {
+        title: quotedMatch.matchedSource.title,
+        url: quotedMatch.matchedSource.url,
+        domain: quotedMatch.matchedSource.domain,
+        source: quotedMatch.matchedSource.source,
+        snippet: quotedMatch.quotedText,
+      };
+      const existingList = Array.isArray(webSearchContext.sources) ? webSearchContext.sources : [];
+      const deduped = [
+        topMatched,
+        ...existingList.filter((s: any) => s?.url && s.url !== topMatched.url),
+      ].slice(0, 4);
+      webSearchContext = {
+        ...webSearchContext,
+        searched: true,
+        sources: deduped,
+      };
     }
 
     // LỚP 1 — PHẢN XẠ CỤC BỘ TRÊN MÁY: XUẤT ĐÚNG 1 NHÃN CHỈ ĐẠO DUY NHẤT
@@ -3650,33 +3711,86 @@ async function doSendMessageToTomorrow(
       webSearchContext.topic
     );
 
+    if (quotedMatch) {
+      directive.dynamicMaxTokens = Math.max(directive.dynamicMaxTokens, 1600);
+      if (directive.intentMode === 'CASUAL_FRIEND' && (quotedMatch.matchedSource || directive.domain !== 'GENERAL')) {
+        directive.intentMode = 'EXPERT_JARVIS';
+      }
+    }
+
     const isNewsRadarLive = Boolean(
       webSearchContext.searched &&
         typeof webSearchContext.formattedContext === 'string' &&
         webSearchContext.formattedContext.includes('[NEWS_RADAR_LIVE')
     );
 
-    const dualPersona = directive.dualPersona || resolveDualPersona({
-      intentMode: directive.intentMode,
-      expertDomain: directive.domain || 'GENERAL',
-      psychProfile: directive.psych,
-      chrono,
-      hasImage,
-      userText,
-      outputFormat: isNewsRadarLive ? 'NEWS_BRIEF' : undefined,
-      webTopic: webSearchContext.topic,
-    });
+    const dualPersona =
+      quotedMatch && directive.dualPersona?.persona !== 'JARVIS_LAB'
+        ? resolveDualPersona({
+            intentMode: quotedMatch.matchedSource ? 'WEB_INTEL' : 'EXPERT_JARVIS',
+            expertDomain: directive.domain || 'GENERAL',
+            psychProfile: directive.psych,
+            chrono,
+            hasImage,
+            userText,
+            outputFormat: isAskLinkIntent ? 'DEEP_CITE' : undefined,
+            webTopic: webSearchContext.topic,
+          })
+        : directive.dualPersona ||
+          resolveDualPersona({
+            intentMode: directive.intentMode,
+            expertDomain: directive.domain || 'GENERAL',
+            psychProfile: directive.psych,
+            chrono,
+            hasImage,
+            userText,
+            outputFormat: isNewsRadarLive ? 'NEWS_BRIEF' : undefined,
+            webTopic: webSearchContext.topic,
+          });
 
     const psychTag = directive.psych?.directiveTag ? `${directive.psych.directiveTag}\n\n` : '';
     const personaTag = `${dualPersona.personaDirectiveTag}\n\n`;
     const playbookTag = dualPersona.domainPlaybook ? `${dualPersona.domainPlaybook}\n\n` : '';
 
-    let finalUserMessage = `${chrono.directiveTag}\n${psychTag}${personaTag}${playbookTag}${userText}\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
+    // Bơm thẻ [QUOTED_SELECTION: ...] <= 680 ký tự theo lượt khi có đoạn bôi đen
+    let quotedSelectionTag = '';
+    if (quotedMatch && quotedMatch.quotedText) {
+      const intentLabel = isAskLinkIntent ? 'LINK_CITE' : 'DEEP_EXPLAIN';
+      const srcTitle = (quotedMatch.matchedSource?.title || webSearchContext.sources?.[0]?.title || '')
+        .replace(/"/g, "'")
+        .slice(0, 120);
+      const srcUrl = (quotedMatch.matchedSource?.url || webSearchContext.sources?.[0]?.url || '').slice(0, 180);
+      const srcName = (quotedMatch.matchedSource?.source || webSearchContext.sources?.[0]?.source || 'Nguồn gốc')
+        .replace(/"/g, "'")
+        .slice(0, 40);
+      const prefix = `[QUOTED_SELECTION: excerpt="`;
+      const suffix = `" | matchedSourceTitle="${srcTitle}" | matchedSourceUrl="${srcUrl}" | intent="${intentLabel}"]`;
+      const maxExcerptLen = Math.max(40, 680 - prefix.length - suffix.length);
+      const safeExcerpt = quotedMatch.quotedText
+        .replace(/[\r\n]+/g, ' ')
+        .replace(/"/g, "'")
+        .slice(0, maxExcerptLen);
+      quotedSelectionTag = `${prefix}${safeExcerpt}${suffix}`;
+
+      if (isAskLinkIntent && srcUrl) {
+        const isLongRss = srcUrl.includes('news.google.com/rss/articles/') || srcUrl.length > 95;
+        const linkHint = isLongRss
+          ? `[${srcName} — Xem bài gốc](${srcUrl})`
+          : `[${srcName} — ${srcTitle.slice(0, 60) || 'Xem bài gốc'}](${srcUrl})`;
+        quotedSelectionTag += `\n[QUOTE_RULE: Trả lời gọn trong 1 bong bóng tập trung đúng đoạn trích dẫn trên, kèm liên kết Markdown sạch: ${linkHint} và KHÔNG xả URL thô dài.]`;
+      } else {
+        quotedSelectionTag += `\n[QUOTE_RULE: Tập trung trả lời/giải thích sâu trực tiếp vào đoạn [QUOTED_SELECTION] trên trong 1 bong bóng mạch lạc.]`;
+      }
+    }
+
+    const quotePrefix = quotedSelectionTag ? `${quotedSelectionTag}\n\n` : '';
+
+    let finalUserMessage = `${chrono.directiveTag}\n${psychTag}${personaTag}${playbookTag}${quotePrefix}${userText}\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
     if (webSearchContext.searched && webSearchContext.formattedContext) {
       if (isNewsRadarLive) {
-        finalUserMessage = `${chrono.directiveTag}\n${psychTag}${personaTag}${playbookTag}${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU NEWS RADAR LIVE]:\n- Chỉ dùng sự kiện từ [NEWS_RADAR_LIVE] ở trên để trả lời trọn vẹn trong 1 bong bóng duy nhất (mảng "replies" có đúng 1 phần tử).\n- Trình bày dạng danh sách đánh số 1., 2., 3.... với **tiêu đề in đậm** + 1-2 dòng tóm tắt sắc gọn + [Tên báo • độ mới].\n- KHÔNG xả link URL thô vào nội dung vì cụm Nguồn trích dẫn đã gắn tự động bên dưới.\n- CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', CẤM bịa thêm sự kiện.\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
+        finalUserMessage = `${chrono.directiveTag}\n${psychTag}${personaTag}${playbookTag}${quotePrefix}${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU NEWS RADAR LIVE]:\n- Chỉ dùng sự kiện từ [NEWS_RADAR_LIVE] ở trên để trả lời trọn vẹn trong 1 bong bóng duy nhất (mảng "replies" có đúng 1 phần tử).\n- Trình bày dạng danh sách đánh số 1., 2., 3.... với **tiêu đề in đậm** + 1-2 dòng tóm tắt sắc gọn + [Tên báo • độ mới].\n- KHÔNG xả link URL thô vào nội dung vì cụm Nguồn trích dẫn đã gắn tự động bên dưới.\n- CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', CẤM bịa thêm sự kiện.\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
       } else {
-        finalUserMessage = `${chrono.directiveTag}\n${psychTag}${personaTag}${playbookTag}${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- TUYỆT ĐỐI CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', 'để mình tìm' vì dữ liệu đã được cung cấp sẵn ngay ở trên.\n- Nếu người dùng có yêu cầu xin link/đường dẫn: Hãy chèn trực tiếp URL thật (https://...) từ kết quả tìm kiếm vào câu trả lời.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
+        finalUserMessage = `${chrono.directiveTag}\n${psychTag}${personaTag}${playbookTag}${quotePrefix}${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- TUYỆT ĐỐI CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', 'để mình tìm' vì dữ liệu đã được cung cấp sẵn ngay ở trên.\n- Nếu người dùng có yêu cầu xin link/đường dẫn: Hãy chèn trực tiếp Markdown link gọn ([Tên nguồn — Tiêu đề](https://...)) từ kết quả tìm kiếm vào câu trả lời.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
       }
     }
 
@@ -4060,7 +4174,8 @@ export async function sendMessageToTomorrow(
   sessions?: ChatSession[],
   notebooks?: Notebook[],
   externalSignal?: AbortSignal,
-  proactiveContextTag?: string
+  proactiveContextTag?: string,
+  quotedSelection?: { text: string; messageId: string }
 ): Promise<AIResponsePayload> {
   if (externalSignal?.aborted) {
     return {
@@ -4091,7 +4206,8 @@ export async function sendMessageToTomorrow(
       sessions,
       notebooks,
       externalSignal,
-      proactiveContextTag
+      proactiveContextTag,
+      quotedSelection
     );
   } finally {
     releaseAISlot();

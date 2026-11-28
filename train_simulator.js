@@ -4750,8 +4750,151 @@ async function runAllTests() {
     });
   }
 
+  // ==================== BỘ KIỂM THỬ NGÀY 17.1: TEXT SELECTION & SMART QUOTE CITATION (V4.13.1) ====================
+
+  const mockNewsBubbleMessage = {
+    id: 'msg-news-radar-1',
+    role: 'model',
+    sender: 'ai',
+    timestamp: Date.now(),
+    text:
+      '1. **Bronson Reed qua đời**: Đô vật Australia Bronson Reed đã qua đời ở tuổi 38 sau tai nạn giao thông. [BBC World • 1 giờ trước]\n' +
+      '2. **Iran cảnh báo eo biển Hormuz**: Căng thẳng hàng hải tăng cao tại Trung Đông sáng nay. [Reuters • 2 giờ trước]',
+    sources: [
+      {
+        title: 'Bronson Reed qua đời: Đô vật Australia ra đi ở tuổi 38',
+        url: 'https://www.bbc.com/sport/wrestling/bronson-reed-123456',
+        domain: 'bbc.com',
+        source: 'BBC World',
+      },
+      {
+        title: 'Iran cảnh báo an ninh hàng hải tại eo biển Hormuz',
+        url: 'https://www.reuters.com/world/middle-east/iran-hormuz-999',
+        domain: 'reuters.com',
+        source: 'Reuters',
+      },
+    ],
+  };
+
+  // TEST 83: Test_Day17_1_MatchQuotedText_ByListIndex
+  {
+    const excerpt = 'Bronson Reed qua đời: Đô vật Australia Bronson Reed đã qua đời ở tuổi 38 [BBC World • 1 giờ trước]';
+    const matched = aiService.matchQuotedTextToSource(excerpt, mockNewsBubbleMessage);
+    const passed =
+      matched.itemIndex === 1 &&
+      matched.matchedSource?.url === 'https://www.bbc.com/sport/wrestling/bronson-reed-123456' &&
+      matched.matchedSource?.source === 'BBC World';
+
+    results.push({
+      name: 'Test_Day17_1_MatchQuotedText_ByListIndex',
+      input: 'Bôi đen mục 1 ("Bronson Reed qua đời... [BBC World]") -> khớp index 1 & link BBC World',
+      mode: 'DAY17_1_QUOTE_LIST_INDEX',
+      output: [
+        `itemIndex=${matched.itemIndex}`,
+        `matchedUrl=${matched.matchedSource?.url}`,
+        `source=${matched.matchedSource?.source}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Khớp chuẩn xác itemIndex=1 và URL bài gốc BBC World dù văn bản bôi đen không chứa ký tự ** Markdown'
+        : 'Thất bại: Không khớp đúng itemIndex=1 hoặc sai URL bài gốc BBC World',
+    });
+  }
+
+  // TEST 84: Test_Day17_1_MatchQuotedText_ByKeywordOverlap
+  {
+    const midExcerpt = 'Đô vật Australia Bronson Reed đã qua đời ở tuổi 38';
+    const matched = aiService.matchQuotedTextToSource(midExcerpt, mockNewsBubbleMessage);
+    const passed =
+      matched.matchedSource?.url === 'https://www.bbc.com/sport/wrestling/bronson-reed-123456';
+
+    results.push({
+      name: 'Test_Day17_1_MatchQuotedText_ByKeywordOverlap',
+      input: 'Bôi đen 1 câu giữa đoạn không có số "1." -> khớp sources[0] theo thực thể/từ khóa',
+      mode: 'DAY17_1_QUOTE_KEYWORD',
+      output: [
+        `matchedTitle=${matched.matchedSource?.title}`,
+        `matchedUrl=${matched.matchedSource?.url}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Khớp chuẩn xác bài gốc BBC World từ câu trích giữa đoạn không cần số thứ tự'
+        : 'Thất bại: Không khớp được sources[0] theo độ trùng lặp từ khóa/thực thể',
+    });
+  }
+
+  // TEST 85: Test_Day17_1_SanitizeWebReplyUrls_KeepMarkdownCitation
+  {
+    const rawRssWithMarkdown = [
+      'Đây là bài viết gốc từ BBC World: [BBC World — Bronson Reed qua đời](https://www.bbc.com/sport/wrestling/bronson-reed-123456)\nLink: https://news.google.com/rss/articles/CBMi4wFA1234567890abcdefghijklmnopqrstuvwxyz',
+    ];
+    const sanitizedWithSources = aiService.sanitizeWebReplyUrls(rawRssWithMarkdown, true);
+    const hasCleanMarkdown =
+      sanitizedWithSources.length === 1 &&
+      sanitizedWithSources[0].includes('[BBC World — Bronson Reed qua đời](https://www.bbc.com/sport/wrestling/bronson-reed-123456)');
+    const strippedTrailingRss =
+      sanitizedWithSources.length === 1 &&
+      !sanitizedWithSources[0].includes('news.google.com/rss/articles/');
+
+    const passed = hasCleanMarkdown && strippedTrailingRss;
+    results.push({
+      name: 'Test_Day17_1_SanitizeWebReplyUrls_KeepMarkdownCitation',
+      input: 'sanitizeWebReplyUrls với Markdown link sạch + trailing RSS link trần (hasSources=true)',
+      mode: 'DAY17_1_SANITIZE_MARKDOWN',
+      output: [
+        `hasCleanMarkdown=${hasCleanMarkdown}`,
+        `strippedTrailingRss=${strippedTrailingRss}`,
+        `cleaned="${sanitizedWithSources[0]}"`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Xóa sạch trailing RSS link rác nhưng bảo toàn 100% Markdown link trích dẫn gọn gàng'
+        : 'Thất bại: Lỗi xóa nhầm Markdown link hoặc còn sót trailing RSS URL rác',
+    });
+  }
+
+  // TEST 86: Test_Day17_1_PromptBudget_And_StorageKeys
+  {
+    const words = (aiService.SYSTEM_INSTRUCTION || '').trim().split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+    const budgetOk = wordCount > 0 && wordCount < 450;
+
+    const expectedKeys = [
+      'CHAT_SESSIONS_V2',
+      'USER_MEMORY_PROFILE_V1',
+      'TOMORROW_THEME_MODE',
+      'TOMORROW_QUOTA_STATS_V1',
+      'TOMORROW_NOTEBOOKS_V1',
+    ];
+    const actualKeys = Array.isArray(backupService.IMMUTABLE_STORAGE_KEYS)
+      ? backupService.IMMUTABLE_STORAGE_KEYS
+      : [];
+    const keysMatch =
+      expectedKeys.length === actualKeys.length &&
+      expectedKeys.every((k, idx) => actualKeys[idx] === k);
+
+    const passed = budgetOk && keysMatch;
+    results.push({
+      name: 'Test_Day17_1_PromptBudget_And_StorageKeys',
+      input: 'SYSTEM_INSTRUCTION < 450 từ & 5 khóa AsyncStorage bất biến (v4.13.1)',
+      mode: 'DAY17_1_BUDGET_AND_KEYS',
+      output: [
+        `SYSTEM_INSTRUCTION: ${wordCount} words (< 450)`,
+        `IMMUTABLE_STORAGE_KEYS: ${JSON.stringify(actualKeys)}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? `SYSTEM_INSTRUCTION giữ nguyên ${wordCount} từ (< 450) và bảo toàn 5/5 khóa AsyncStorage bất biến`
+        : 'Thất bại: Vượt 450 từ hoặc sai lệch tên khóa AsyncStorage',
+    });
+  }
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 82 SCENARIOS (TOMORROW V4.13 — ONLINE • V4.13 — NGÀY 17 WORLD NEWS RADAR):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 86 SCENARIOS (TOMORROW V4.13.1 — ONLINE • V4.13.1 — TEXT SELECTION & QUOTE CITATION):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
@@ -4804,10 +4947,20 @@ console.log('='.repeat(75));
 
 console.log('\n📊 BẢNG ĐIỂM 5 KỊCH BẢN NGÀY 17 (WORLD NEWS RADAR — V4.13):');
 console.log('='.repeat(75));
-const day17Results = results.slice(77);
+const day17Results = results.slice(77, 82);
 day17Results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
   console.log(`${icon} [DAY17 ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(48)} | Điểm: ${r.score}/10`);
+  console.log(`   Chi tiết: ${r.details}`);
+});
+console.log('='.repeat(75));
+
+console.log('\n📊 BẢNG ĐIỂM 4 KỊCH BẢN NGÀY 17.1 (TEXT SELECTION & QUOTE CITATION — V4.13.1):');
+console.log('='.repeat(75));
+const day17_1Results = results.slice(82);
+day17_1Results.forEach((r, idx) => {
+  const icon = r.passed ? '✅' : '❌';
+  console.log(`${icon} [DAY17.1 ${String(idx + 1).padStart(1, ' ')}] ${r.name.padEnd(48)} | Điểm: ${r.score}/10`);
   console.log(`   Chi tiết: ${r.details}`);
 });
 console.log('='.repeat(75));
@@ -4821,9 +4974,9 @@ console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.13',
+  version: 'v4.13.1',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.13 — Day 17 (World News Radar): zero-dep rssParser, /api/news RSS+HackerNews aggregator, L1/L2 cached newsRadarService, NEWS_RADAR integration & Cmd+K briefing',
+  architecture: 'Tomorrow v4.13.1 — Day 17.1 (Text Selection Popover + Quote Chip + Exact Source Link Matcher) on top of World News Radar v4.13',
   totalScore,
   maxScore,
   allPassed,
@@ -4833,6 +4986,7 @@ const reportData = {
   day15Scenarios: day15Results,
   day16Scenarios: day16Results,
   day17Scenarios: day17Results,
+  day17_1Scenarios: day17_1Results,
   liveEvaluations: liveEvaluations.length > 0 ? liveEvaluations : undefined,
 };
 

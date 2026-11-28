@@ -8,6 +8,7 @@ export { formatCodeForDisplay, normalizeMarkdownFences };
 
 interface ChatBubbleProps {
   message: ChatMessage;
+  paneId?: string;
   onPressImage?: (uri: string) => void;
   isDesktop?: boolean;
   theme?: ThemeColors;
@@ -17,6 +18,7 @@ interface ChatBubbleProps {
 
 const ChatBubbleBase: React.FC<ChatBubbleProps> = ({
   message,
+  paneId = 'pane-1',
   onPressImage,
   isDesktop: propIsDesktop,
   theme = DARK_THEME,
@@ -113,6 +115,16 @@ const ChatBubbleBase: React.FC<ChatBubbleProps> = ({
     <View style={[styles.container, isAI ? styles.containerAI : styles.containerUser]}>
       {/* Khung bong bóng chat thích ứng kép (Dual-Width Bubble) phong cách Messenger & J.A.R.V.I.S HUD */}
       <View
+        {...(Platform.OS === 'web'
+          ? ({
+              dataSet: {
+                tomorrowBubble: 'true',
+                messageId: message.id,
+                messageRole: message.role,
+                paneId,
+              },
+            } as any)
+          : {})}
         style={[
           styles.bubble,
           {
@@ -123,10 +135,20 @@ const ChatBubbleBase: React.FC<ChatBubbleProps> = ({
             paddingVertical: compact ? 9 : (hasRichBlock ? 12 : 10),
             shadowOpacity: theme.mode === 'light' ? 0.05 : 0.12,
           },
+          Platform.OS === 'web' && ({ userSelect: 'text', WebkitUserSelect: 'text' } as any),
           codeTableBubbleStyle,
           isAI ? styles.bubbleAI : styles.bubbleUser,
         ]}
       >
+        {/* Trích dẫn bôi đen đính kèm của User (nếu có) */}
+        {!isAI && !!message.quotedText && (
+          <View style={styles.quotedSnippetBlock}>
+            <Text style={styles.quotedSnippetText} numberOfLines={2}>
+              ↳ "{message.quotedText}"
+            </Text>
+          </View>
+        )}
+
         {/* Ảnh đính kèm */}
         {message.imageUri && (
           <Pressable
@@ -250,6 +272,8 @@ export const ChatBubble = React.memo(ChatBubbleBase, (prevProps, nextProps) => {
     prevProps.message.role === nextProps.message.role &&
     prevProps.message.imageUri === nextProps.message.imageUri &&
     prevProps.message.imageBase64 === nextProps.message.imageBase64 &&
+    prevProps.message.quotedText === nextProps.message.quotedText &&
+    prevProps.paneId === nextProps.paneId &&
     prevProps.isDesktop === nextProps.isDesktop &&
     prevProps.compact === nextProps.compact &&
     prevProps.isSplitMode === nextProps.isSplitMode &&
@@ -282,6 +306,18 @@ const styles = StyleSheet.create({
   },
   bubbleUser: {
     borderTopRightRadius: 4,
+  },
+  quotedSnippetBlock: {
+    borderLeftWidth: 2,
+    borderLeftColor: 'rgba(255, 255, 255, 0.45)',
+    paddingLeft: 8,
+    marginBottom: 6,
+  },
+  quotedSnippetText: {
+    fontSize: 12,
+    lineHeight: 16,
+    color: 'rgba(255, 255, 255, 0.85)',
+    fontStyle: 'italic',
   },
   messageImage: {
     width: 260,

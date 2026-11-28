@@ -13,7 +13,7 @@
 3. **KIỂM TRA ĐƯỜNG DẪN TRƯỚC MỌI LỆNH TERMINAL:**
    - Mọi lệnh thao tác tệp trong Terminal phải dùng đường dẫn tương đối (`./...`) xuất phát từ thư mục gốc repo, không dùng `cd ..` thoát ra khỏi thư mục dự án.
 
-# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.13 — NGÀY 17 WORLD NEWS RADAR)
+# TOMORROW (PROTO-JARVIS) — ARCHITECTURAL RULES & GUARDRAILS (MASTER PLAN 90 NGÀY / v4.13.1 — TEXT SELECTION & SMART QUOTE CITATION)
 
 ## 1. MÔI TRƯỜNG, NỀN TẢNG CỐT LÕI & CÁC KHÓA LƯU TRỮ
 - **Hệ điều hành phát triển & vận hành:** macOS (Ứng dụng đích chạy tại `/Applications/Tomorrow.app` kết nối Vercel Production). Mọi script/shell dùng chuẩn Unix/macOS, không dùng cú pháp Windows.
@@ -38,6 +38,7 @@
   - `services/backupService.ts`: Dịch vụ sao lưu & khôi phục JSON cục bộ (Ngày 15 — Mốc hoàn thành Giai đoạn 1 `v4.11`): đóng gói `TomorrowBackupBundleV1` đủ 5 khóa `AsyncStorage` (không kèm `.env`/API key), kiểm định toàn vẹn `FNV-1a + DJB2 checksum` (`validateAndPreviewBackup`), và khôi phục an toàn chế độ `MERGE` / `REPLACE` (`restoreBackupBundle`).
   - `components/BackupRestoreModal.tsx`: Modal khôi phục JSON chuẩn Ember Monochrome Dark/Light (`maxWidth: 560`), chọn/kéo-thả `.json`, xem trước thống kê & checksum, tích hợp qua `Cmd + K` (`CommandPalette.tsx`).
   - `api/_lib/*` (`cors.js`, `security.js`, `cache.js`, `fetcher.js`, `rssParser.js`), `api/proxy.js`, `api/search.js`, `api/news.js`, `services/edgeProxyService.ts` & `services/newsRadarService.ts` (Ngày 16–17 `v4.12` -> `v4.13`): Hạ tầng Vercel Edge Proxy Hub chống SSRF/CORS, phân tầng Edge Cache + L2 warm cache + L1 client cache/dedup, và Trạm tổng hợp Tin tức Thế giới, Công nghệ, Tài chính & Việt Nam `/api/news` (BBC, Reuters, Hacker News, VnExpress, CafeF, Tuổi Trẻ) + lệnh nhanh `Cmd + K`.
+  - Bổ sung `v4.13.1` (Text Selection `"✦ Hỏi Tomorrow"` + Smart Quote Citation): `components/TextSelectionPopover.tsx` (chỉ hiện khi bôi đen trong `[data-tomorrow-bubble="true"]`), Quote Chip theo pane trong `PromptBox.tsx`, `matchQuotedTextToSource` (`services/webSearchService.ts`) & thẻ `[QUOTED_SELECTION]` (`services/aiService.ts`).
 
 ## 2. LUẬT BẢO TOÀN GIAO DIỆN DESKTOP & MOBILE (`DESIGN.md`, `App.tsx`, `SidebarDrawer.tsx`, `ChatBubble.tsx`, `RichMarkdownView.tsx`, `TypingIndicator.tsx`)
 - **LUẬT THIẾT KẾ CỨNG (`DESIGN.md`):** Trước mọi thay đổi liên quan đến giao diện, bố cục, nút bấm, phím tắt hay hoạt ảnh, BẮT BUỘC đọc và tuân thủ nghiêm ngặt `DESIGN.md`. Cấm tự ý thêm lại các nút/thẻ đã loại bỏ (nhãn sổ trên Header, nút Split Screen, nút Mặt trăng Sáng/Tối, icon Emote/Ngôn ngữ, Footer `Cmd+K`, thẻ gợi ý màn hình trống).
@@ -63,7 +64,7 @@
   + Công thức Toán học LaTeX Unicode (`$$...$$` hộp căn giữa viền Indigo `#6366F1`, `$...$` nội dòng).
   + Nút Quick Copy phản hồi ở góc dưới bên phải cho tin nhắn >120 ký tự hoặc có rich block.
 - **Thanh Nhập Liệu Prompt Box Lucian #452 1 Hàng Ngang (`components/PromptBox.tsx` — `v4.9.4`):** Thiết kế 1 hàng ngang thẳng tâm tuyệt đối bo góc `28px` (`[+]` — `Ô nhập chữ 34px` — `[↑]`), textarea tự giãn từ `34px` đến `106px` (tối đa 4 dòng); hiệu ứng chữ bay mờ `flyTextAnimation` khi gửi; viền `conic-gradient` xoay sáng khi đang sinh phản hồi; triệt tiêu hoàn toàn độ khựng nút `+` nhờ GPU SVG rotation, keep-mounted popover `📎 Tệp` và `pointerdown` dismiss; nút tròn Gửi / Dừng biến hình; đo đạc nhịp gõ ẩn `KeystrokeTelemetry` bằng `useRef` (zero re-render); TUYỆT ĐỐI CẤM nút chọn model, emote, icon quả cầu.
-- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.13`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
+- **Dấu hiệu kiểm chứng Cache trên Header:** Mọi bản cập nhật giao diện hoặc logic phải tăng số phiên bản trên Header (Hiện tại: `Online • v4.13.1`) để xác nhận cửa sổ `Tomorrow.app` đã nạp bản build mới.
 - **Quy chuẩn Sidebar Desktop Lock & Instant Click (`v4.10.3`):**
   + Trên Desktop (`width >= 768`), TUYỆT ĐỐI KHÔNG đóng Sidebar khi chọn đoạn chat/sổ; chỉ đóng khi ở Mobile (`< 768`) hoặc người dùng bấm `☰` / `PanelLeftClose` / `Cmd + B`.
   + Dùng CSS `:hover` thuần (`.tmr-sidebar-row`, `.tmr-folder-row`) và `React.memo` cho từng dòng chat (0 re-render khi di chuột, `keyboardShouldPersistTaps="always"` trên `ScrollView`, debounce `saveNotebookWorkspace` 150ms).
@@ -164,5 +165,5 @@
 - Mọi bản cập nhật phải vượt qua:
   1. `npm run typecheck`
   2. `npx expo export -p web` (đảm bảo 0 lỗi biên dịch web)
-  3. `node train_simulator.js` (đảm bảo 82/82 kịch bản PASS tuyệt đối 820/820 điểm)
+  3. `node train_simulator.js` (đảm bảo 86/86 kịch bản PASS tuyệt đối 860/860 điểm)
 - Chỉ chạy `npx vercel --prod --yes` sau khi đã kiểm tra đầy đủ và được người dùng phê duyệt.

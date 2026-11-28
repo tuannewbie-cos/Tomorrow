@@ -14,10 +14,11 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Plus, X, Paperclip, ArrowUp, FileText, Square } from 'lucide-react-native';
 import { ThemeColors, DARK_THEME } from '../constants/theme';
+import { QuotedSelection } from '../types/chat';
 import { KeystrokeTelemetry } from '../services/microPsychProfiler';
 import { compressImageForVision, cleanBase64 } from '../utils/imageOptimizer';
 
-export { KeystrokeTelemetry };
+export { KeystrokeTelemetry, QuotedSelection };
 
 export interface AttachedFileInfo {
   name: string;
@@ -35,8 +36,11 @@ export interface PromptBoxProps {
     imageBase64?: string,
     imageUri?: string,
     forceWebSearch?: boolean,
-    telemetry?: KeystrokeTelemetry
+    telemetry?: KeystrokeTelemetry,
+    quotedSelection?: QuotedSelection | null
   ) => void;
+  quotedSelection?: QuotedSelection | null;
+  onClearQuote?: () => void;
   isLoading?: boolean;
   isGenerating?: boolean;
   onStopGeneration?: () => void;
@@ -251,6 +255,8 @@ function ensureWebStylesInjected() {
 
 export const PromptBox = forwardRef<PromptBoxRef, PromptBoxProps>(({
   onSendMessage,
+  quotedSelection = null,
+  onClearQuote,
   isLoading = false,
   isGenerating: propIsGenerating,
   onStopGeneration,
@@ -713,7 +719,11 @@ export const PromptBox = forwardRef<PromptBoxRef, PromptBoxProps>(({
       triggerFlyTextAnimation(trimmed);
     }
 
-    onSendMessage(effectiveText, effectiveBase64, effectiveUri, false, telemetry);
+    const activeQuote = quotedSelection || null;
+    onSendMessage(effectiveText, effectiveBase64, effectiveUri, false, telemetry, activeQuote);
+    if (activeQuote && onClearQuote) {
+      onClearQuote();
+    }
 
     setInputText('');
     setInputHeight(34);
@@ -765,11 +775,19 @@ export const PromptBox = forwardRef<PromptBoxRef, PromptBoxProps>(({
 
     if (key === 'Backspace') {
       backspaceCountRef.current++;
+      if (inputText.length === 0 && quotedSelection && onClearQuote) {
+        onClearQuote();
+        return;
+      }
     }
 
     if (key === 'Escape') {
       if (isAttachMenuOpen) {
         setIsAttachMenuOpen(false);
+        return;
+      }
+      if (quotedSelection && onClearQuote && !isGenerating) {
+        onClearQuote();
         return;
       }
       if (isGenerating && typeof onStopGeneration === 'function') {
@@ -980,6 +998,42 @@ export const PromptBox = forwardRef<PromptBoxRef, PromptBoxProps>(({
                 </Pressable>
               </View>
             )}
+          </View>
+        )}
+
+        {/* HÀNG QUOTE CHIP KHI BÔI ĐEN TỪ BONG BÓNG CHAT ("✦ Hỏi Tomorrow") */}
+        {quotedSelection && (
+          <View
+            style={[
+              styles.quoteChipRow,
+              {
+                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+                borderColor: tokens.borderSubtle,
+              },
+            ]}
+          >
+            <Text style={[styles.quoteChipIcon, { color: tokens.sub }]}>↳</Text>
+            <Text
+              style={[styles.quoteChipText, { color: tokens.text }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {quotedSelection.text.length > 120
+                ? `${quotedSelection.text.slice(0, 117).trim()}...`
+                : quotedSelection.text}
+            </Text>
+            <Pressable
+              onPress={() => onClearQuote?.()}
+              hitSlop={6}
+              aria-label="Gỡ đoạn trích dẫn"
+              style={({ pressed }) => [
+                styles.quoteChipClearBtn,
+                pressed && { opacity: 0.6 },
+                Platform.OS === 'web' && ({ cursor: 'pointer' } as any),
+              ]}
+            >
+              <X size={13} color={tokens.sub} strokeWidth={2.2} />
+            </Pressable>
           </View>
         )}
 
@@ -1435,5 +1489,35 @@ const styles = StyleSheet.create({
     height: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  quoteChipRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 4,
+    width: '100%',
+  },
+  quoteChipIcon: {
+    fontSize: 13,
+    fontWeight: '600',
+    flexShrink: 0,
+  },
+  quoteChipText: {
+    flex: 1,
+    fontSize: 12.5,
+    fontWeight: '500',
+    lineHeight: 17,
+  },
+  quoteChipClearBtn: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
   },
 });

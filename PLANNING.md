@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.13` | **Trạng thái:** ĐANG TRIỂN KHAI GIAI ĐOẠN 2 (Ngày 17 — World News Radar `Online • v4.13`) — Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.13.1` | **Trạng thái:** ĐANG TRIỂN KHAI GIAI ĐOẠN 2 (Ngày 17.1 — Text Selection `"✦ Hỏi Tomorrow"` & Smart Quote Citation `Online • v4.13.1`) — Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -18,7 +18,7 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
 | Giai đoạn | Nội dung trọng tâm | Thời gian | Trạng thái |
 | :--- | :--- | :--- | :--- |
 | **Phase 1** | **Core Foundation, 3-Layer Reflex, Quota Shield & Vision Lab** | Ngày 1 – 15 | ✅ HOÀN THÀNH 100% (Mốc `Online • v4.11`) |
-| **Phase 2** | **Tri thức Chuyên sâu, Khoa học & Thị trường** | Ngày 16 – 30 | 🟡 Đang triển khai (Ngày 17: World News Radar `Online • v4.13`) |
+| **Phase 2** | **Tri thức Chuyên sâu, Khoa học & Thị trường** | Ngày 16 – 30 | 🟡 Đang triển khai (Ngày 17.1: World News Radar + Text Selection Quote Citation `Online • v4.13.1`) |
 | **Phase 3** | **Voice HUD, Realtime Waveform & Voiceprint** | Ngày 31 – 45 | ⚪ Chưa bắt đầu |
 | **Phase 4** | **Camera MediaPipe Nội bộ (100% Private RAM)** | Ngày 46 – 60 | ⚪ Chưa bắt đầu |
 | **Phase 5** | **Autonomous Local Memory & Knowledge Synthesis** | Ngày 61 – 75 | ⚪ Chưa bắt đầu |
@@ -502,6 +502,7 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
   - **Bộ đọc XML/RSS 0-dependency & Endpoint `/api/news.js`:** Tạo `api/_lib/rssParser.js` (parse RSS 2.0/Atom, làm sạch CDATA/HTML/entities, cắt `summary <= 180` ký tự, gỡ `utm_*`/`fbclid`/`gclid`, khử trùng URL + Jaccard tiêu đề `>= 0.62`, cân bằng đa nguồn `<= 40%` khi `category=all`) và `api/news.js` hợp nhất BBC, Reuters (Google News), Hacker News (Algolia), VnExpress, CafeF, Tuổi Trẻ với Edge Cache `s-maxage=300, stale-while-revalidate=600`.
   - **Dịch vụ Radar Client & Nối Web Intel (`services/newsRadarService.ts`, `services/webSearchService.ts`, `services/aiService.ts`):** `detectNewsRadarIntent` phân loại 5 nhánh (`all`, `world`, `vietnam`, `tech`, `finance`), `fetchNewsRadar` dùng L1 RAM cache 5 phút + in-flight dedup, `formatNewsContextForAI` khóa ngữ cảnh `<= 1400` ký tự không raw URL và đồng bộ `sources` cho trích dẫn nối tiếp `resolveReferenceFromHistory`; `aiService.ts` khóa `JARVIS_LAB` + `NEWS_BRIEF` (1 bong bóng duy nhất, `temperature <= 0.35`, `dynamicMaxTokens = 1800`).
   - **Lệnh nhanh `Cmd + K` & Kiểm thử (`CommandPalette.tsx`, `App.tsx`, `train_simulator.js`):** Thêm tác vụ `📡 Quét Tin tức Thế giới & VN (News Radar)` trong `Cmd + K`, giữ nguyên khóa giao diện tối giản `DESIGN.md`, bổ sung +5 test Ngày 17 đạt **82/82 PASS (820/820 điểm)**, cập nhật Header **`Online • v4.13`**.
+  - **Bổ sung `v4.13.1` (Text Selection `"✦ Hỏi Tomorrow"` + Smart Quote Citation):** Thanh nổi `TextSelectionPopover` khi bôi đen văn bản trong bubble (`✦ Hỏi Tomorrow` / `Giải thích kỹ`), Quote Chip theo từng pane trong `PromptBox`, khớp bài gốc từ `sources` qua `matchQuotedTextToSource`, giữ nguyên Markdown citation link khi user xin link, +4 test mới đạt **86/86 PASS (860/860 điểm)**, Header **`Online • v4.13.1`**.
 - [ ] **Deep Research Mode:** Khả năng tự động tổng hợp tài liệu nhiều bước (multi-hop web queries).
 - [ ] **Market & Financial Intel:** Tích hợp dữ liệu thời gian thực cho tỷ giá, mã cổ phiếu, xu hướng công nghệ qua Serverless API caching.
 - [ ] **Code Sandbox & Visual Artifacts:** Hỗ trợ render trực tiếp sơ đồ Mermaid, biểu đồ dữ liệu và khối mã có syntax highlighting chuẩn macOS.

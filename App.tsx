@@ -48,6 +48,7 @@ import { ChatBubble } from './components/ChatBubble';
 import { ColdGreeting } from './components/ColdGreeting';
 import { TomorrowGlyph, getTimeBasedGreeting } from './components/TomorrowGlyph';
 import { PromptBox, PromptBoxRef } from './components/PromptBox';
+import { TextSelectionPopover } from './components/TextSelectionPopover';
 import { SidebarDrawer } from './components/SidebarDrawer';
 import { TypingIndicator } from './components/TypingIndicator';
 import { CommandPalette } from './components/CommandPalette';
@@ -55,7 +56,7 @@ import { CommandTriggerButton, CommandTriggerButtonRef } from './components/Comm
 import { MemoryVaultModal } from './components/MemoryVaultModal';
 import { BackupRestoreModal } from './components/BackupRestoreModal';
 import { RestoreBackupResult } from './services/backupService';
-import { StructuredMemoryVault } from './types/chat';
+import { StructuredMemoryVault, QuotedSelection } from './types/chat';
 import {
   Notebook,
   loadNotebooks,
@@ -132,8 +133,11 @@ interface ChatPaneViewProps {
     imageBase64?: string,
     imageUri?: string,
     forceWebSearch?: boolean,
-    telemetry?: KeystrokeTelemetry
+    telemetry?: KeystrokeTelemetry,
+    quotedSelection?: QuotedSelection | null
   ) => void;
+  quotedSelection?: QuotedSelection | null;
+  onClearQuoteInPane?: (paneId: string) => void;
   isGenerating?: boolean;
   onStopGeneration?: () => void;
   proactiveGreeting?: ProactiveGreetingPayload;
@@ -180,6 +184,8 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
   handleClosePane,
   handleSwitchSessionInPane,
   handleSendMessageInPane,
+  quotedSelection = null,
+  onClearQuoteInPane,
   onScroll,
   onScrollDownPress,
   setFlatListRef,
@@ -547,9 +553,11 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
               {/* Khung nhập liệu PromptBox Lucian #452 đặt NGAY DƯỚI dòng chào ở chính giữa màn hình */}
               <PromptBox
                 ref={setInputBarRef}
-                onSendMessage={(text, imgBase64, imgUri, forceWebSearch, telemetry) =>
-                  handleSendMessageInPane(pane.id, text, imgBase64, imgUri, forceWebSearch, telemetry)
+                onSendMessage={(text, imgBase64, imgUri, forceWebSearch, telemetry, quoteSel) =>
+                  handleSendMessageInPane(pane.id, text, imgBase64, imgUri, forceWebSearch, telemetry, quoteSel)
                 }
+                quotedSelection={quotedSelection}
+                onClearQuote={() => onClearQuoteInPane?.(pane.id)}
                 isLoading={false}
                 isGenerating={isGenerating}
                 onStopGeneration={onStopGeneration}
@@ -573,6 +581,7 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
               renderItem={({ item }) => (
                 <ChatBubble
                   message={item}
+                  paneId={pane.id}
                   isDesktop={isDesktop}
                   theme={theme}
                   compact={isSplitMode}
@@ -622,9 +631,11 @@ const ChatPaneView: React.FC<ChatPaneViewProps> = React.memo(({
             {/* Prompt Box Lucian #452 cố định ở đáy khi có tin nhắn */}
             <PromptBox
               ref={setInputBarRef}
-              onSendMessage={(text, imgBase64, imgUri, forceWebSearch, telemetry) =>
-                handleSendMessageInPane(pane.id, text, imgBase64, imgUri, forceWebSearch, telemetry)
+              onSendMessage={(text, imgBase64, imgUri, forceWebSearch, telemetry, quoteSel) =>
+                handleSendMessageInPane(pane.id, text, imgBase64, imgUri, forceWebSearch, telemetry, quoteSel)
               }
+              quotedSelection={quotedSelection}
+              onClearQuote={() => onClearQuoteInPane?.(pane.id)}
               isLoading={false}
               isGenerating={isGenerating}
               onStopGeneration={onStopGeneration}
@@ -683,6 +694,8 @@ export default function App() {
   const [typingStatusBySession, setTypingStatusBySession] = useState<Record<string, string | undefined>>({});
   const [searchingWebBySession, setSearchingWebBySession] = useState<Record<string, boolean>>({});
   const [scrollDownByPane, setScrollDownByPane] = useState<Record<string, boolean>>({});
+  // v4.13.1: Trạng thái Quote Chip theo từng pane khi bôi đen văn bản -> "✦ Hỏi Tomorrow"
+  const [quotedByPaneId, setQuotedByPaneId] = useState<Record<string, QuotedSelection | null>>({});
 
   // Concurrency & Session in-flight + Timers isolation across split panes
   const inFlightSessionsRef = useRef<Set<string>>(new Set());
@@ -1065,9 +1078,14 @@ export default function App() {
     imageBase64?: string,
     imageUri?: string,
     forceWebSearch?: boolean,
-    telemetry?: KeystrokeTelemetry
+    telemetry?: KeystrokeTelemetry,
+    quotedSelection?: QuotedSelection | null
   ) => {
     const targetPaneId = paneId;
+    const activeQuote = quotedSelection ?? quotedByPaneId[targetPaneId] ?? null;
+    if (activeQuote) {
+      setQuotedByPaneId((prev) => ({ ...prev, [targetPaneId]: null }));
+    }
     const pane = panesRef.current.find((p) => p.id === targetPaneId) || panesRef.current[0];
     let targetSessionId = pane?.sessionId;
 
@@ -1084,6 +1102,8 @@ export default function App() {
       timestamp: Date.now(),
       imageUri: resolvedUri,
       imageBase64: resolvedBase64,
+      quotedText: activeQuote?.text,
+      quotedMessageId: activeQuote?.messageId,
     };
 
     if (!targetSessionId) {
@@ -1230,10 +1250,11 @@ export default function App() {
         sessionsRef.current,
         notebooksRef.current,
         abortController.signal,
-        firstTurnProactiveTag
+        firstTurnProactiveTag,
+        activeQuote ? { text: activeQuote.text, messageId: activeQuote.messageId } : undefined
       );
 
-      const isDeepOrVision = Boolean(effectiveImage || text.length > 80 || forceWebSearch);
+      const isDeepOrVision = Boolean(effectiveImage || text.length > 80 || forceWebSearch || activeQuote);
       const watchdogMs = isDeepOrVision ? 35000 : 15000;
       let watchdogTimeoutId: ReturnType<typeof setTimeout> | undefined;
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -1441,10 +1462,52 @@ export default function App() {
     imageBase64?: string,
     imageUri?: string,
     forceWebSearch?: boolean,
-    telemetry?: KeystrokeTelemetry
+    telemetry?: KeystrokeTelemetry,
+    quotedSelection?: QuotedSelection | null
   ) => {
-    return handleSendMessageInPane(activePaneIdRef.current, text, imageBase64, imageUri, forceWebSearch, telemetry);
+    return handleSendMessageInPane(
+      activePaneIdRef.current,
+      text,
+      imageBase64,
+      imageUri,
+      forceWebSearch,
+      telemetry,
+      quotedSelection
+    );
   };
+
+  // v4.13.1: Xử lý "✦ Hỏi Tomorrow" & "Giải thích kỹ" từ thanh nổi TextSelectionPopover
+  const handleAskWithQuote = useCallback((selection: QuotedSelection) => {
+    const targetPaneId = selection.paneId || activePaneIdRef.current || 'pane-1';
+    setQuotedByPaneId((prev) => ({ ...prev, [targetPaneId]: selection }));
+    if (activePaneIdRef.current !== targetPaneId) {
+      setActivePaneId(targetPaneId);
+      activePaneIdRef.current = targetPaneId;
+    }
+    setTimeout(() => {
+      inputBarRefs.current[targetPaneId]?.focus();
+    }, 30);
+  }, []);
+
+  const handleQuickExplain = useCallback(
+    (selection: QuotedSelection) => {
+      const targetPaneId = selection.paneId || activePaneIdRef.current || 'pane-1';
+      if (activePaneIdRef.current !== targetPaneId) {
+        setActivePaneId(targetPaneId);
+        activePaneIdRef.current = targetPaneId;
+      }
+      handleSendMessageInPane(
+        targetPaneId,
+        'Giải thích kỹ hơn phần thông tin này và trích dẫn nguồn liên quan nếu có.',
+        undefined,
+        undefined,
+        false,
+        undefined,
+        selection
+      );
+    },
+    []
+  );
 
   // 3. TẠO CUỘC TRÒ CHUYỆN MỚI TRÊN PANE ĐANG ACTIVE (handleNewChat / handleNewChatInActivePane)
   const handleNewChat = useCallback(() => {
@@ -2247,7 +2310,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: themeMode === 'dark' ? '#FFFFFF' : '#09090B' }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.13</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.13.1</Text>
               </View>
             </View>
           </View>
@@ -2407,6 +2470,10 @@ export default function App() {
                     handleClosePane={handleClosePane}
                     handleSwitchSessionInPane={handleSwitchSessionInPane}
                     handleSendMessageInPane={handleSendMessageInPane}
+                    quotedSelection={quotedByPaneId[pane.id] || null}
+                    onClearQuoteInPane={(pId) =>
+                      setQuotedByPaneId((prev) => ({ ...prev, [pId]: null }))
+                    }
                     onScroll={(e) => {
                       const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
                       const distanceFromBottom = contentSize.height - layoutMeasurement.height - contentOffset.y;
@@ -2490,6 +2557,12 @@ export default function App() {
             setUserMemory(newProfile);
             userMemoryRef.current = newProfile;
           }}
+        />
+        {/* Thanh nổi bôi đen văn bản ("✦ Hỏi Tomorrow" / "Giải thích kỹ") — chỉ hiện khi chọn text trong bubble */}
+        <TextSelectionPopover
+          theme={theme}
+          onAskWithQuote={handleAskWithQuote}
+          onQuickExplain={handleQuickExplain}
         />
       </SafeAreaView>
     </SafeAreaProvider>
