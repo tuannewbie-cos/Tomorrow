@@ -9,6 +9,7 @@ export interface EmotionData {
 export interface WebSource {
   title: string;
   url: string;
+  domain?: string;
   source?: string;
   snippet?: string;
   publishedAt?: string;

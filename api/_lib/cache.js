@@ -4,6 +4,7 @@
 export const CACHE_PROFILES = Object.freeze({
   MARKET_LIVE: 'public, s-maxage=60, stale-while-revalidate=120',
   NEWS_FEED: 'public, s-maxage=180, stale-while-revalidate=300',
+  NEWS_RADAR: 'public, s-maxage=300, stale-while-revalidate=600',
   SEARCH_RESULT: 'public, s-maxage=180, stale-while-revalidate=360',
   WEATHER: 'public, s-maxage=600, stale-while-revalidate=900',
   SCIENCE_STATIC: 'public, s-maxage=1800, stale-while-revalidate=3600',
@@ -14,6 +15,7 @@ export const CACHE_PROFILES = Object.freeze({
 export const CACHE_TTL_MS = Object.freeze({
   MARKET_LIVE: 60 * 1000,
   NEWS_FEED: 180 * 1000,
+  NEWS_RADAR: 300 * 1000,
   SEARCH_RESULT: 180 * 1000,
   WEATHER: 600 * 1000,
   SCIENCE_STATIC: 1800 * 1000,

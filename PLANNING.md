@@ -1,5 +1,5 @@
 # TOMORROW (PROTO-JARVIS) — 90-DAY EXECUTION ROADMAP & STATUS TRACKER
-> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.12` | **Trạng thái:** ĐANG TRIỂN KHAI GIAI ĐOẠN 2 (Ngày 16 — Edge Proxy Hub `Online • v4.12`) — Hoạt động ổn định trên macOS & Vercel Web
+> **File quy chuẩn:** `PLANNING.md` | **Phiên bản hiện tại:** `v4.13` | **Trạng thái:** ĐANG TRIỂN KHAI GIAI ĐOẠN 2 (Ngày 17 — World News Radar `Online • v4.13`) — Hoạt động ổn định trên macOS & Vercel Web
 
 Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của dự án **Tomorrow (Proto-Jarvis)**, bảo đảm mọi phiên làm việc duy trì tính nhất quán kiến trúc, không suy giảm hiệu năng và bám sát lộ trình từ Core Chatbot đến Trợ lý Cá nhân AI Đa phương tiện thế hệ mới.
 
@@ -18,7 +18,7 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
 | Giai đoạn | Nội dung trọng tâm | Thời gian | Trạng thái |
 | :--- | :--- | :--- | :--- |
 | **Phase 1** | **Core Foundation, 3-Layer Reflex, Quota Shield & Vision Lab** | Ngày 1 – 15 | ✅ HOÀN THÀNH 100% (Mốc `Online • v4.11`) |
-| **Phase 2** | **Tri thức Chuyên sâu, Khoa học & Thị trường** | Ngày 16 – 30 | 🟡 Đang triển khai (Ngày 16: Edge Proxy Hub `Online • v4.12`) |
+| **Phase 2** | **Tri thức Chuyên sâu, Khoa học & Thị trường** | Ngày 16 – 30 | 🟡 Đang triển khai (Ngày 17: World News Radar `Online • v4.13`) |
 | **Phase 3** | **Voice HUD, Realtime Waveform & Voiceprint** | Ngày 31 – 45 | ⚪ Chưa bắt đầu |
 | **Phase 4** | **Camera MediaPipe Nội bộ (100% Private RAM)** | Ngày 46 – 60 | ⚪ Chưa bắt đầu |
 | **Phase 5** | **Autonomous Local Memory & Knowledge Synthesis** | Ngày 61 – 75 | ⚪ Chưa bắt đầu |
@@ -498,6 +498,10 @@ Tài liệu này theo dõi toàn bộ tiến trình phát triển 90 ngày của
   - **Cổng trung tâm `api/proxy.js` & `vercel.json`:** Hỗ trợ `?action=health` (`200`, `NO_STORE`) và gateway chuẩn hóa envelope JSON + Edge Cache; `vercel.json` loại trừ `/api/` khỏi SPA rewrite (`/((?!api/).*)`), giữ gọn 2 serverless functions (`proxy.js`, `search.js`) trong giới hạn Vercel Hobby.
   - **Nâng cấp `api/search.js` & Client Hub `services/edgeProxyService.ts`:** `api/search.js` dùng chung `api/_lib/*` với cache thông minh theo chủ đề (không cache lỗi lên CDN); `services/edgeProxyService.ts` chuẩn hóa `resolveApiBaseUrl()`, L1 RAM cache (`<= 60` mục) + in-flight deduplication và tích hợp nhẹ vào `services/webSearchService.ts`.
   - **Kiểm thử & Giao diện (`train_simulator.js`, `App.tsx`):** Bổ sung +5 test Ngày 16 (`Test_Day16_Proxy_Allowlist_And_SSRF_Guard`, `Test_Day16_EdgeCache_Headers_And_TTL`, `Test_Day16_CORS_Origin_And_Preflight`, `Test_Day16_Client_L1_Cache_And_Dedup`, `Test_Day16_BackwardCompat_And_PromptBudget`), đạt **77/77 PASS (770/770 điểm)**, giữ nguyên `SYSTEM_INSTRUCTION` < 450 từ, cập nhật Header **`Online • v4.12`**.
+- [x] **Ngày 17 (`intel/world-news-radar` — Phiên bản `Online • v4.13`): Trạm Tổng hợp Tin tức Thế giới, Công nghệ, Tài chính & Việt Nam Thời gian Thực**
+  - **Bộ đọc XML/RSS 0-dependency & Endpoint `/api/news.js`:** Tạo `api/_lib/rssParser.js` (parse RSS 2.0/Atom, làm sạch CDATA/HTML/entities, cắt `summary <= 180` ký tự, gỡ `utm_*`/`fbclid`/`gclid`, khử trùng URL + Jaccard tiêu đề `>= 0.62`, cân bằng đa nguồn `<= 40%` khi `category=all`) và `api/news.js` hợp nhất BBC, Reuters (Google News), Hacker News (Algolia), VnExpress, CafeF, Tuổi Trẻ với Edge Cache `s-maxage=300, stale-while-revalidate=600`.
+  - **Dịch vụ Radar Client & Nối Web Intel (`services/newsRadarService.ts`, `services/webSearchService.ts`, `services/aiService.ts`):** `detectNewsRadarIntent` phân loại 5 nhánh (`all`, `world`, `vietnam`, `tech`, `finance`), `fetchNewsRadar` dùng L1 RAM cache 5 phút + in-flight dedup, `formatNewsContextForAI` khóa ngữ cảnh `<= 1400` ký tự không raw URL và đồng bộ `sources` cho trích dẫn nối tiếp `resolveReferenceFromHistory`; `aiService.ts` khóa `JARVIS_LAB` + `NEWS_BRIEF` (1 bong bóng duy nhất, `temperature <= 0.35`, `dynamicMaxTokens = 1800`).
+  - **Lệnh nhanh `Cmd + K` & Kiểm thử (`CommandPalette.tsx`, `App.tsx`, `train_simulator.js`):** Thêm tác vụ `📡 Quét Tin tức Thế giới & VN (News Radar)` trong `Cmd + K`, giữ nguyên khóa giao diện tối giản `DESIGN.md`, bổ sung +5 test Ngày 17 đạt **82/82 PASS (820/820 điểm)**, cập nhật Header **`Online • v4.13`**.
 - [ ] **Deep Research Mode:** Khả năng tự động tổng hợp tài liệu nhiều bước (multi-hop web queries).
 - [ ] **Market & Financial Intel:** Tích hợp dữ liệu thời gian thực cho tỷ giá, mã cổ phiếu, xu hướng công nghệ qua Serverless API caching.
 - [ ] **Code Sandbox & Visual Artifacts:** Hỗ trợ render trực tiếp sơ đồ Mermaid, biểu đồ dữ liệu và khối mã có syntax highlighting chuẩn macOS.

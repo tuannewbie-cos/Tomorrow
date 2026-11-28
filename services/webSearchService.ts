@@ -1,6 +1,11 @@
-// services/webSearchService.ts — Tomorrow v4.12 Autonomous Web Search & URL Reader Engine
+// services/webSearchService.ts — Tomorrow v4.13 Autonomous Web Search & URL Reader Engine
 import { WebSource } from '../types/chat';
 import { fetchHubEndpoint } from './edgeProxyService';
+import {
+  detectNewsRadarIntent,
+  fetchNewsRadar,
+  formatNewsContextForAI,
+} from './newsRadarService';
 
 export type WebIntelTopic =
   | 'FOLLOWUP_REF'
@@ -149,6 +154,8 @@ export function shouldTriggerWebSearch(userText: string, forceSearch: boolean = 
   const realTimeKeywords = [
     'hôm nay', 'hom nay', 'mới nhất', 'moi nhat',
     'vừa mới', 'vua moi', 'tin tức', 'tin tuc', 'tình hình', 'tinh hinh',
+    'điểm tin', 'diem tin', 'bản tin', 'ban tin', 'tin nóng', 'tin nong',
+    'có biến gì', 'co bien gi', 'tin mới', 'tin moi', 'radar',
     'năm nay', 'nam nay', '2025', '2026', 'bây giờ', 'bay gio',
     'lịch thi đấu', 'lich thi dau', 'kết quả bóng đá', 'kết quả trận đấu', 'tỷ số', 'ty so',
     'bảng xếp hạng', 'bang xep hang', 'vòng bảng', 'chung kết', 'bán kết'
@@ -637,6 +644,37 @@ export async function performSmartWebSearch(
     let { query, url, refResolution } = buildOptimizedSearchQuery(userText, recentHistory);
     query = resolveTemporalSearchQuery(query, chrono);
     const topic: WebIntelTopic = refResolution?.isRef ? 'FOLLOWUP_REF' : classifyWebIntelTopic(query);
+
+    // 0. NEWS RADAR LIVE (/api/news): Ưu tiên nguồn tin RSS + Hacker News đa nguồn cho nhánh NEWS_RADAR
+    if (topic === 'NEWS_RADAR' && !url) {
+      try {
+        const radarIntent = detectNewsRadarIntent(userText);
+        const radarRes = await fetchNewsRadar({
+          category: radarIntent.category,
+          q: radarIntent.keywordFilter || '',
+          limit: 12,
+        });
+        if (radarRes.ok && radarRes.items.length >= 2) {
+          const { formattedContext, sources } = formatNewsContextForAI(
+            radarRes.items,
+            1400,
+            radarRes.updatedAt
+          );
+          if (formattedContext && sources.length >= 2) {
+            return {
+              searched: true,
+              query,
+              formattedContext,
+              sources,
+              topic: 'NEWS_RADAR',
+              refResolution,
+            };
+          }
+        }
+      } catch (radarErr) {
+        console.warn('[WebSearchService] News Radar fallback sang /api/search:', radarErr);
+      }
+    }
 
     // 1. Thử gọi API endpoint /api/search qua Edge Proxy Hub (L1 cache + dedup + 4.5s timeout)
     const searchL1TtlMs =

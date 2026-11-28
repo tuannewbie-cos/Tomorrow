@@ -24,8 +24,10 @@ export const ALLOWED_PROXY_DOMAINS = Object.freeze({
     'hn.algolia.com',
     'hacker-news.firebaseio.com',
     'vnexpress.net',
+    'cafef.vn',
     'tuoitre.vn',
     'thanhnien.vn',
+    'theguardian.com',
   ]),
   science: Object.freeze([
     'en.wikipedia.org',

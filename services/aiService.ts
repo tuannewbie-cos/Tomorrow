@@ -628,7 +628,8 @@ export function buildLocalReflexDirective(
   isWebSearched: boolean = false,
   chronoContext?: ChronoContext,
   telemetry?: Partial<KeystrokeTelemetry>,
-  hasImage: boolean = false
+  hasImage: boolean = false,
+  webTopicOverride?: WebIntelTopic
 ): ReflexDirective {
   const chrono = chronoContext || buildChronoContext();
   const psych = analyzeMicroPsychology(userText, telemetry, recentHistory);
@@ -810,8 +811,11 @@ export function buildLocalReflexDirective(
 
   // C. WEB_INTEL
   if (isWebSearched) {
-    const webTopic = classifyWebIntelTopic(userText);
-    const outputFormat = detectOutputFormatIntent(userText, webTopic);
+    const webTopic = webTopicOverride || classifyWebIntelTopic(userText);
+    let outputFormat = detectOutputFormatIntent(userText, webTopic);
+    if (webTopic === 'NEWS_RADAR' && outputFormat === 'STANDARD') {
+      outputFormat = 'NEWS_BRIEF';
+    }
     const domainLine = getDomainDirectiveLine(domain);
     const domainPart = domainLine ? ` ${domainLine} |` : '';
     const formatDirective = getWebFormatDirective(outputFormat);
@@ -3642,7 +3646,14 @@ async function doSendMessageToTomorrow(
       needsWebSearch || webSearchContext.searched,
       chrono,
       telemetry,
-      hasImage
+      hasImage,
+      webSearchContext.topic
+    );
+
+    const isNewsRadarLive = Boolean(
+      webSearchContext.searched &&
+        typeof webSearchContext.formattedContext === 'string' &&
+        webSearchContext.formattedContext.includes('[NEWS_RADAR_LIVE')
     );
 
     const dualPersona = directive.dualPersona || resolveDualPersona({
@@ -3652,6 +3663,8 @@ async function doSendMessageToTomorrow(
       chrono,
       hasImage,
       userText,
+      outputFormat: isNewsRadarLive ? 'NEWS_BRIEF' : undefined,
+      webTopic: webSearchContext.topic,
     });
 
     const psychTag = directive.psych?.directiveTag ? `${directive.psych.directiveTag}\n\n` : '';
@@ -3660,7 +3673,11 @@ async function doSendMessageToTomorrow(
 
     let finalUserMessage = `${chrono.directiveTag}\n${psychTag}${personaTag}${playbookTag}${userText}\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
     if (webSearchContext.searched && webSearchContext.formattedContext) {
-      finalUserMessage = `${chrono.directiveTag}\n${psychTag}${personaTag}${playbookTag}${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- TUYỆT ĐỐI CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', 'để mình tìm' vì dữ liệu đã được cung cấp sẵn ngay ở trên.\n- Nếu người dùng có yêu cầu xin link/đường dẫn: Hãy chèn trực tiếp URL thật (https://...) từ kết quả tìm kiếm vào câu trả lời.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
+      if (isNewsRadarLive) {
+        finalUserMessage = `${chrono.directiveTag}\n${psychTag}${personaTag}${playbookTag}${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU NEWS RADAR LIVE]:\n- Chỉ dùng sự kiện từ [NEWS_RADAR_LIVE] ở trên để trả lời trọn vẹn trong 1 bong bóng duy nhất (mảng "replies" có đúng 1 phần tử).\n- Trình bày dạng danh sách đánh số 1., 2., 3.... với **tiêu đề in đậm** + 1-2 dòng tóm tắt sắc gọn + [Tên báo • độ mới].\n- KHÔNG xả link URL thô vào nội dung vì cụm Nguồn trích dẫn đã gắn tự động bên dưới.\n- CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', CẤM bịa thêm sự kiện.\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
+      } else {
+        finalUserMessage = `${chrono.directiveTag}\n${psychTag}${personaTag}${playbookTag}${webSearchContext.formattedContext}\n\n[CÂU HỎI / TIN NHẮN CỦA NGƯỜI DÙNG]:\n${userText}\n\n[QUY TẮC BẮT BUỘC KHI CÓ DỮ LIỆU TÌM KIẾM WEB THỜI GIAN THỰC]:\n- Bắt buộc dùng sự kiện, số liệu, ngày tháng từ [DỮ LIỆU WEB THỜI GIAN THỰC] ở trên để trả lời chính xác tuyệt đối, KHÔNG dùng dữ liệu quá khứ.\n- TUYỆT ĐỐI CẤM hứa hẹn câu giờ kiểu 'chờ mình chút', 'để mình tìm' vì dữ liệu đã được cung cấp sẵn ngay ở trên.\n- Nếu người dùng có yêu cầu xin link/đường dẫn: Hãy chèn trực tiếp URL thật (https://...) từ kết quả tìm kiếm vào câu trả lời.\n- Vẫn giữ nguyên xưng hô và cá tính bạn bè như đã chỉ định, trả lời súc tích, sắc bén, tự nhiên.\n\n${directive.directivePrompt}\n\n${userStyle.styleHint}`;
+      }
     }
 
     const currentVault = migrateAndNormalizeVault(userMemory.vault || userMemory, chrono);

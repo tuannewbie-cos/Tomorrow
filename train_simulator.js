@@ -93,6 +93,7 @@ const chronoService = loadTsModule(path.resolve(__dirname, 'services/chronoServi
 const personaRouter = loadTsModule(path.resolve(__dirname, 'services/personaRouter.ts'));
 const fewShotBank = loadTsModule(path.resolve(__dirname, 'services/fewShotBank.ts'));
 const edgeProxyService = loadTsModule(path.resolve(__dirname, 'services/edgeProxyService.ts'));
+const newsRadarService = loadTsModule(path.resolve(__dirname, 'services/newsRadarService.ts'));
 
 // 1. BỘ LỌC TIÊU ĐỀ RÁC (Đồng bộ storage/chatStorage.ts)
 function isPlaceholderOrNoiseTitle(title) {
@@ -4407,8 +4408,350 @@ async function runAllTests() {
     });
   }
 
+  // ==================== BỘ KIỂM THỬ NGÀY 17: WORLD NEWS RADAR (V4.13) ====================
+  const rssParserLib = await import('./api/_lib/rssParser.js');
+
+  // TEST 78: Test_Day17_RSS_Parser_Clean_And_StripTracking
+  {
+    const nowMs = Date.parse('2026-11-28T08:30:00.000Z');
+    const longDesc =
+      '<p><b>Breaking &amp; Hot:</b> &quot;AI Chips&quot; demand surges in 2026 &amp; beyond &#39;globally&#39;. ' +
+      'Extra details repeated here so the summary exceeds one hundred eighty characters and must be trimmed cleanly without breaking HTML tags or leaving raw entities behind.</p>';
+    const sampleXml = `<?xml version="1.0" encoding="UTF-8"?>
+      <rss version="2.0">
+        <channel>
+          <title>Tech Feed</title>
+          <item>
+            <title><![CDATA[NVIDIA &amp; OpenAI launch &quot;Next-Gen&quot; chip &#39;2026&#39;]]></title>
+            <link>https://www.vnexpress.net/ai-chip-2026.html?utm_source=rss&amp;utm_medium=feed&amp;fbclid=abc123&amp;id=42</link>
+            <description><![CDATA[${longDesc}]]></description>
+            <pubDate>Sat, 28 Nov 2026 08:06:00 GMT</pubDate>
+          </item>
+        </channel>
+      </rss>`;
+
+    const parsed = rssParserLib.parseRssXml(sampleXml, {
+      source: 'VnExpress',
+      category: 'tech',
+      nowMs,
+    });
+    const item = parsed[0];
+    const cleanTitleOk =
+      Boolean(item) &&
+      item.title === `NVIDIA & OpenAI launch "Next-Gen" chip '2026'` &&
+      !item.title.includes('<![CDATA[');
+    const summaryOk =
+      Boolean(item) &&
+      item.summary.length > 0 &&
+      item.summary.length <= 180 &&
+      !item.summary.includes('<p>') &&
+      !item.summary.includes('&amp;') &&
+      !item.summary.includes('&quot;');
+    const urlCleanOk =
+      Boolean(item) &&
+      !item.url.includes('utm_source') &&
+      !item.url.includes('utm_medium') &&
+      !item.url.includes('fbclid') &&
+      item.url.includes('id=42');
+    const metaOk =
+      Boolean(item) &&
+      item.domain === 'vnexpress.net' &&
+      item.publishedAt === '2026-11-28T08:06:00.000Z' &&
+      item.ageMinutes === 24;
+
+    const passed = parsed.length === 1 && cleanTitleOk && summaryOk && urlCleanOk && metaOk;
+    results.push({
+      name: 'Test_Day17_RSS_Parser_Clean_And_StripTracking',
+      input: 'XML RSS có CDATA, HTML, &amp;/&quot;/&#39; và ?utm_source=rss&fbclid=abc',
+      mode: 'DAY17_RSS_PARSER',
+      output: [
+        `title="${item?.title}"`,
+        `summaryLen=${item?.summary?.length}`,
+        `url="${item?.url}"`,
+        `domain=${item?.domain}, publishedAt=${item?.publishedAt}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Parse sạch CDATA/HTML/entities, cắt summary <= 180 ký tự, gỡ sạch utm_*/fbclid, đúng domain và ISO publishedAt'
+        : 'Thất bại: Lỗi parse CDATA/entities, vượt 180 ký tự hoặc còn sót tham số tracking',
+    });
+  }
+
+  // TEST 79: Test_Day17_News_Dedupe_And_SourceDiversity
+  {
+    const baseTime = Date.parse('2026-11-28T08:00:00.000Z');
+    const mockNewsPool = [
+      // 2 tin trùng nội dung từ 2 báo khác nhau
+      {
+        id: 'dup-1',
+        title: 'Giá vàng thế giới tăng mạnh vượt đỉnh lịch sử sáng nay',
+        summary: 'Giá vàng bật tăng mạnh',
+        url: 'https://vnexpress.net/gia-vang-1.html',
+        domain: 'vnexpress.net',
+        source: 'VnExpress',
+        category: 'vietnam',
+        publishedAt: new Date(baseTime - 2 * 60000).toISOString(),
+        ageMinutes: 2,
+      },
+      {
+        id: 'dup-2',
+        title: 'Giá vàng thế giới tăng mạnh vượt đỉnh lịch sử hôm nay',
+        summary: 'Thị trường vàng lập đỉnh mới',
+        url: 'https://tuoitre.vn/gia-vang-2.html',
+        domain: 'tuoitre.vn',
+        source: 'Tuổi Trẻ',
+        category: 'vietnam',
+        publishedAt: new Date(baseTime - 3 * 60000).toISOString(),
+        ageMinutes: 3,
+      },
+      // 8 tin dồn từ 1 nguồn (BBC World) với tiêu đề khác nhau
+      ...[
+        'EU energy ministers agree on winter reserve grid sharing plan',
+        'Pacific island nations sign maritime climate resilience pact',
+        'UK rail union schedules autumn wage talks with operators',
+        'Arctic shipping route traffic rises sharply during warm season',
+        'NASA prepares lunar communications relay satellite deployment',
+        'UN food agency expands drought relief corridors in East Africa',
+        'European aviation authority reviews supersonic noise standards',
+        'Nordic central banks test cross-border instant settlement rail',
+      ].map((headline, idx) => ({
+        id: `bbc-${idx}`,
+        title: headline,
+        summary: `BBC dispatch ${idx + 1}`,
+        url: `https://feeds.bbci.co.uk/news/world-${idx + 1}`,
+        domain: 'feeds.bbci.co.uk',
+        source: 'BBC World',
+        category: 'world',
+        publishedAt: new Date(baseTime - (idx + 5) * 60000).toISOString(),
+        ageMinutes: idx + 5,
+      })),
+      // 4 tin từ nguồn khác (CafeF) với tiêu đề khác nhau
+      ...[
+        'Ngân hàng Nhà nước điều hành tỷ giá trung tâm ổn định',
+        'Doanh nghiệp dệt may tăng đơn hàng xuất khẩu sang Nhật Bản',
+        'Thanh khoản sàn HOSE cải thiện nhờ nhóm cổ phiếu bán lẻ',
+        'Lãi suất huy động kỳ hạn dài nhích nhẹ tại khối thương mại',
+      ].map((headline, idx) => ({
+        id: `cafef-${idx}`,
+        title: headline,
+        summary: `CafeF update ${idx + 1}`,
+        url: `https://cafef.vn/thi-truong-${idx + 1}.chn`,
+        domain: 'cafef.vn',
+        source: 'CafeF',
+        category: 'finance',
+        publishedAt: new Date(baseTime - (idx + 20) * 60000).toISOString(),
+        ageMinutes: idx + 20,
+      })),
+      // 2 tin từ Hacker News để đủ phân bổ đa nguồn với limit=10
+      {
+        id: 'hn-1',
+        title: 'Open source local compiler breakthrough announced',
+        summary: 'HN frontpage',
+        url: 'https://news.ycombinator.com/item?id=1001',
+        domain: 'news.ycombinator.com',
+        source: 'Hacker News',
+        category: 'tech',
+        publishedAt: new Date(baseTime - 30 * 60000).toISOString(),
+        ageMinutes: 30,
+      },
+    ];
+
+    const ranked = rssParserLib.dedupeAndRankNews(mockNewsPool, 10, { category: 'all' });
+    const dupCount = ranked.filter((it) => it.title.includes('Giá vàng thế giới')).length;
+    const sourceFreq = {};
+    for (const it of ranked) {
+      sourceFreq[it.source] = (sourceFreq[it.source] || 0) + 1;
+    }
+    const maxShare = Math.max(...Object.values(sourceFreq)) / ranked.length;
+    const bbcCount = sourceFreq['BBC World'] || 0;
+    const cafefCount = sourceFreq['CafeF'] || 0;
+
+    const passed =
+      dupCount === 1 &&
+      ranked.length === 10 &&
+      bbcCount <= 4 &&
+      cafefCount === 4 &&
+      maxShare <= 0.4;
+    results.push({
+      name: 'Test_Day17_News_Dedupe_And_SourceDiversity',
+      input: '2 tin trùng tiêu đề khác báo + 8 tin dồn BBC World + 4 tin CafeF + 1 tin HN (limit=10)',
+      mode: 'DAY17_DEDUPE_DIVERSITY',
+      output: [
+        `dupKept=${dupCount}`,
+        `total=${ranked.length}`,
+        `sourceFreq=${JSON.stringify(sourceFreq)}`,
+        `maxShare=${(maxShare * 100).toFixed(0)}%`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Khử trùng 2 tiêu đề giống nhau còn 1 và giữ cân bằng đa nguồn (<= 40%/nguồn khi category=all)'
+        : 'Thất bại: Lọt tin trùng lặp hoặc 1 nguồn chiếm quá 40% danh sách',
+    });
+  }
+
+  // TEST 80: Test_Day17_News_Category_Detection
+  {
+    const cases = [
+      { query: 'tin công nghệ AI hackernews hôm nay', expected: 'tech' },
+      { query: 'tin kinh tế chứng khoán cafef', expected: 'finance' },
+      { query: 'tin tức trong nước vnexpress', expected: 'vietnam' },
+      { query: 'tình hình thế giới reuters bbc', expected: 'world' },
+      { query: 'hôm nay có tin gì nổi bật', expected: 'all' },
+    ];
+    const evals = cases.map((c) => {
+      const detected = newsRadarService.detectNewsRadarIntent(c.query);
+      return {
+        query: c.query,
+        expected: c.expected,
+        actual: detected.category,
+        isNewsIntent: detected.isNewsIntent,
+        ok: detected.isNewsIntent === true && detected.category === c.expected,
+      };
+    });
+    const narrowCase = newsRadarService.detectNewsRadarIntent('tin mới về AI hôm nay');
+    const narrowOk =
+      narrowCase.isNewsIntent === true &&
+      narrowCase.category === 'tech' &&
+      narrowCase.keywordFilter === 'AI';
+
+    const passed = evals.every((e) => e.ok) && narrowOk;
+    results.push({
+      name: 'Test_Day17_News_Category_Detection',
+      input: '5 nhánh NewsCategory (tech, finance, vietnam, world, all) + trích xuất từ khóa hẹp',
+      mode: 'DAY17_CATEGORY_INTENT',
+      output: evals.map((e) => `${e.actual}/${e.expected}:${e.ok}`).concat([`narrowAI=${narrowOk}`]),
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? 'Phân loại chuẩn 5/5 chuyên mục (tech, finance, vietnam, world, all) và bóc tách chuẩn keywordFilter="AI"'
+        : 'Thất bại: Phân loại sai chuyên mục hoặc lỗi trích xuất keywordFilter',
+    });
+  }
+
+  // TEST 81: Test_Day17_News_Context_Budget_And_Followup_Compat
+  {
+    const sampleItems = [
+      {
+        id: 'n1',
+        title: 'Reuters: Global central banks signal cautious rate outlook for 2027',
+        summary: 'Policymakers emphasize data dependence amid cooling inflation trends worldwide.',
+        url: 'https://news.google.com/rss/articles/CBMiWWh0dHBzOi8vd3d3LnJldXRlcnMuY29tL21hcmtldHMvcmF0ZXMtb3V0bG9vay0yMDI2LTAxLTAxL9IBAA',
+        domain: 'news.google.com',
+        source: 'Reuters',
+        category: 'world',
+        publishedAt: '2026-11-28T08:10:00.000Z',
+        ageMinutes: 20,
+      },
+      {
+        id: 'n2',
+        title: 'VnExpress: Xuất khẩu công nghệ Việt Nam tăng trưởng 18% trong quý 4',
+        summary: 'Lĩnh vực phần mềm và linh kiện bán dẫn đóng góp tỷ trọng cao kỷ lục.',
+        url: 'https://vnexpress.net/xuat-khau-cong-nghe-tang-18-phan-tram-123456.html',
+        domain: 'vnexpress.net',
+        source: 'VnExpress',
+        category: 'vietnam',
+        publishedAt: '2026-11-28T08:00:00.000Z',
+        ageMinutes: 30,
+      },
+      {
+        id: 'n3',
+        title: 'Hacker News: Minimalist local-first database benchmark in Rust',
+        summary: '412 points • 98 comments on Hacker News',
+        url: 'https://news.ycombinator.com/item?id=420999',
+        domain: 'news.ycombinator.com',
+        source: 'Hacker News',
+        category: 'tech',
+        publishedAt: '2026-11-28T07:30:00.000Z',
+        ageMinutes: 60,
+      },
+    ];
+
+    const formatted = newsRadarService.formatNewsContextForAI(sampleItems, 1400, '2026-11-28T08:30:00.000Z');
+    const budgetOk =
+      formatted.formattedContext.startsWith('[NEWS_RADAR_LIVE') &&
+      formatted.formattedContext.length <= 1400 &&
+      !formatted.formattedContext.includes('news.google.com/rss/articles/') &&
+      !formatted.formattedContext.includes('https://');
+
+    const sourcesAlignedOk =
+      formatted.sources.length === 3 &&
+      formatted.sources[0].url === sampleItems[0].url &&
+      formatted.sources[1].url === sampleItems[1].url;
+
+    const mockHistory = [
+      { role: 'user', text: 'điểm tin hôm nay đi' },
+      {
+        role: 'model',
+        text: '1. **Reuters: Global central banks...**\n2. **VnExpress: Xuất khẩu công nghệ...**',
+        sources: formatted.sources,
+      },
+    ];
+    const refRes = aiService.resolveReferenceFromHistory('trích dẫn tin tức 1 đi', mockHistory);
+    const followupOk =
+      refRes.isRef === true &&
+      refRes.itemIndex === 1 &&
+      refRes.targetUrl === sampleItems[0].url &&
+      refRes.targetText === sampleItems[0].title;
+
+    const passed = budgetOk && sourcesAlignedOk && followupOk;
+    results.push({
+      name: 'Test_Day17_News_Context_Budget_And_Followup_Compat',
+      input: 'formatNewsContextForAI(<=1400 chars, no raw URL) + resolveReferenceFromHistory("trích dẫn tin tức 1 đi")',
+      mode: 'DAY17_CONTEXT_AND_FOLLOWUP',
+      output: [
+        `contextLen=${formatted.formattedContext.length}`,
+        `noRawUrl=${!formatted.formattedContext.includes('https://')}`,
+        `refIdx=${refRes.itemIndex}, matchedUrl=${refRes.targetUrl === sampleItems[0].url}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? `Thẻ [NEWS_RADAR_LIVE] dài ${formatted.formattedContext.length} ký tự (<=1400), 0 raw URL, nối chuẩn xác sang trích dẫn tin số 1`
+        : 'Thất bại: Vượt 1400 ký tự, lọt raw URL Google News, hoặc gãy tham chiếu tin số 1',
+    });
+  }
+
+  // TEST 82: Test_Day17_SystemPrompt_Budget_And_StorageKeys
+  {
+    const words = (aiService.SYSTEM_INSTRUCTION || '').trim().split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+    const budgetOk = wordCount > 0 && wordCount < 450;
+
+    const expectedKeys = [
+      'CHAT_SESSIONS_V2',
+      'USER_MEMORY_PROFILE_V1',
+      'TOMORROW_THEME_MODE',
+      'TOMORROW_QUOTA_STATS_V1',
+      'TOMORROW_NOTEBOOKS_V1',
+    ];
+    const actualKeys = Array.isArray(backupService.IMMUTABLE_STORAGE_KEYS)
+      ? backupService.IMMUTABLE_STORAGE_KEYS
+      : [];
+    const keysMatch =
+      expectedKeys.length === actualKeys.length &&
+      expectedKeys.every((k, idx) => actualKeys[idx] === k);
+
+    const passed = budgetOk && keysMatch;
+    results.push({
+      name: 'Test_Day17_SystemPrompt_Budget_And_StorageKeys',
+      input: 'SYSTEM_INSTRUCTION < 450 từ & 5 khóa AsyncStorage bất biến (Day 17 v4.13)',
+      mode: 'DAY17_BUDGET_AND_KEYS',
+      output: [
+        `SYSTEM_INSTRUCTION: ${wordCount} words (< 450)`,
+        `IMMUTABLE_STORAGE_KEYS: ${JSON.stringify(actualKeys)}`,
+      ],
+      score: passed ? 10 : 0,
+      passed,
+      details: passed
+        ? `SYSTEM_INSTRUCTION giữ nguyên ${wordCount} từ (< 450) và bảo toàn 5/5 khóa AsyncStorage bất biến`
+        : 'Thất bại: Vượt 450 từ hoặc sai lệch tên khóa AsyncStorage',
+    });
+  }
+
 // ==================== BÁO CÁO BẢNG TỔNG KẾT VÀ GHI FILE JSON ====================
-console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 77 SCENARIOS (TOMORROW V4.12 — ONLINE • V4.12 — NGÀY 16 EDGE PROXY HUB):');
+console.log('\n📊 BẢNG ĐIỂM KIỂM THỬ 82 SCENARIOS (TOMORROW V4.13 — ONLINE • V4.13 — NGÀY 17 WORLD NEWS RADAR):');
 console.log('-'.repeat(75));
 results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
@@ -4451,10 +4794,20 @@ console.log('='.repeat(75));
 
 console.log('\n📊 BẢNG ĐIỂM 5 KỊCH BẢN NGÀY 16 (EDGE PROXY HUB & PHASE 2 LAUNCH — V4.12):');
 console.log('='.repeat(75));
-const day16Results = results.slice(72);
+const day16Results = results.slice(72, 77);
 day16Results.forEach((r, idx) => {
   const icon = r.passed ? '✅' : '❌';
   console.log(`${icon} [DAY16 ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(48)} | Điểm: ${r.score}/10`);
+  console.log(`   Chi tiết: ${r.details}`);
+});
+console.log('='.repeat(75));
+
+console.log('\n📊 BẢNG ĐIỂM 5 KỊCH BẢN NGÀY 17 (WORLD NEWS RADAR — V4.13):');
+console.log('='.repeat(75));
+const day17Results = results.slice(77);
+day17Results.forEach((r, idx) => {
+  const icon = r.passed ? '✅' : '❌';
+  console.log(`${icon} [DAY17 ${String(idx + 1).padStart(2, ' ')}] ${r.name.padEnd(48)} | Điểm: ${r.score}/10`);
   console.log(`   Chi tiết: ${r.details}`);
 });
 console.log('='.repeat(75));
@@ -4468,9 +4821,9 @@ console.log('='.repeat(75));
 
 // Ghi file training_results.json
 const reportData = {
-  version: 'v4.12',
+  version: 'v4.13',
   timestamp: new Date().toISOString(),
-  architecture: 'Tomorrow v4.12 — Phase 2 Launch (Day 16): Vercel Edge Proxy Hub (_lib CORS/SSRF/Cache/Fetcher, /api/proxy, upgraded /api/search, client L1 cache+dedup)',
+  architecture: 'Tomorrow v4.13 — Day 17 (World News Radar): zero-dep rssParser, /api/news RSS+HackerNews aggregator, L1/L2 cached newsRadarService, NEWS_RADAR integration & Cmd+K briefing',
   totalScore,
   maxScore,
   allPassed,
@@ -4479,6 +4832,7 @@ const reportData = {
   day14Scenarios: day14Results,
   day15Scenarios: day15Results,
   day16Scenarios: day16Results,
+  day17Scenarios: day17Results,
   liveEvaluations: liveEvaluations.length > 0 ? liveEvaluations : undefined,
 };
 

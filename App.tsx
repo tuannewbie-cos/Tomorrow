@@ -2247,7 +2247,7 @@ export default function App() {
               <Text style={[styles.headerTitle, { color: themeMode === 'dark' ? '#FFFFFF' : '#09090B' }]}>Tomorrow</Text>
               <View style={[styles.liveBadge, { backgroundColor: theme.liveBadgeBg }]}>
                 <Dot size={18} color={theme.liveBadgeText} />
-                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.12</Text>
+                <Text style={[styles.liveText, { color: theme.liveBadgeText }]}>Online • v4.13</Text>
               </View>
             </View>
           </View>
@@ -2449,6 +2449,10 @@ export default function App() {
           onToggleSplitPanes={handleToggleSplitPanes}
           onOpenMemoryVault={() => setIsMemoryVaultOpen(true)}
           onOpenBackupRestore={() => setIsBackupRestoreOpen(true)}
+          onTriggerNewsRadar={() => {
+            setIsCommandPaletteOpen(false);
+            handleSendMessage('Điểm tin tức Thế giới & Việt Nam mới nhất hôm nay', undefined, undefined, true);
+          }}
           isSplitPanes={panes.length > 1}
           theme={theme}
           themeMode={themeMode}

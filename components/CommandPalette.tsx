@@ -27,6 +27,7 @@ import {
   Download,
   Upload,
   CheckCircle2,
+  Radio,
 } from 'lucide-react-native';
 import { ChatSession, UserMemoryProfile } from '../types/chat';
 import { ThemeColors, ThemeMode } from '../constants/theme';
@@ -57,6 +58,7 @@ export interface CommandPaletteProps {
   onToggleSplitPanes?: () => void;
   onOpenMemoryVault?: () => void;
   onOpenBackupRestore?: () => void;
+  onTriggerNewsRadar?: () => void;
   isSplitPanes?: boolean;
   theme: ThemeColors;
   themeMode: ThemeMode;
@@ -84,6 +86,7 @@ export interface PaletteItem {
     | 'new_notebook'
     | 'export_backup'
     | 'import_backup'
+    | 'news_radar'
     | 'recall_turn';
   sessionId?: string;
   notebookId?: string;
@@ -160,6 +163,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onToggleSplitPanes,
   onOpenMemoryVault,
   onOpenBackupRestore,
+  onTriggerNewsRadar,
   isSplitPanes = false,
   theme,
   themeMode,
@@ -325,6 +329,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         },
       },
       {
+        id: 'act-news-radar',
+        type: 'action',
+        title: '📡 Quét Tin tức Thế giới & VN (News Radar)',
+        subtitle: 'Tổng hợp nhanh điểm tin Thế giới, Công nghệ & Việt Nam theo thời gian thực',
+        badge: 'News',
+        iconType: 'news_radar',
+        group: 'actions',
+        action: () => {
+          onClose();
+          onTriggerNewsRadar?.();
+        },
+      },
+      {
         id: 'act-import-backup',
         type: 'action',
         title: '📥 Khôi phục dữ liệu từ JSON (Import Backup)',
@@ -338,7 +355,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         },
       },
     ],
-    [themeMode, isSplitPanes, handleTriggerNewChat, onCreateNewNotebook, onToggleSidebar, onToggleTheme, onToggleSplitPanes, onOpenMemoryVault, onOpenBackupRestore, onClose]
+    [themeMode, isSplitPanes, handleTriggerNewChat, onCreateNewNotebook, onToggleSidebar, onToggleTheme, onToggleSplitPanes, onOpenMemoryVault, onOpenBackupRestore, onTriggerNewsRadar, onClose]
   );
 
   // Nhóm Các Phiên Gần Đây (hiển thị khi chưa tìm kiếm)
@@ -466,6 +483,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       const importAction = quickActions.find((a) => a.id === 'act-import-backup');
       if (importAction && !matchedActions.includes(importAction)) {
         matchedActions.push(importAction);
+      }
+    }
+    if (
+      'quét tin tức thế giới vn news radar báo điểm tin'.includes(q) ||
+      'news'.includes(q) ||
+      'tin tức'.includes(q) ||
+      'radar'.includes(q) ||
+      'thế giới'.includes(q) ||
+      'báo'.includes(q) ||
+      'điểm tin'.includes(q)
+    ) {
+      const newsAction = quickActions.find((a) => a.id === 'act-news-radar');
+      if (newsAction && !matchedActions.includes(newsAction)) {
+        matchedActions.push(newsAction);
       }
     }
 
@@ -644,6 +675,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         return <Download size={16} color={isSelected ? activeColor : '#10B981'} />;
       case 'import_backup':
         return <Upload size={16} color={isSelected ? activeColor : '#3B82F6'} />;
+      case 'news_radar':
+        return <Radio size={16} color={isSelected ? activeColor : '#0EA5E9'} />;
       case 'recall_turn':
         return <Clock size={15} color={isSelected ? activeColor : theme.textSecondary} />;
       case 'session':
